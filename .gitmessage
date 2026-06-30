@@ -1,0 +1,20 @@
+# <type>: <subject> (Max 50 char)
+# |<----  Using 50 characters is a good rule of thumb  ---->|
+#
+# Explain why this change is being made. Keep lines to 72 characters.
+# |<----  Using 72 characters is a good rule of thumb  ---->|
+
+# --- COMMIT TYPES ---
+#feat:     A new feature
+#fix:      A bug fix
+#docs:     Documentation changes
+#style:    Formatting, missing semi-colons, etc; no code change
+#refactor: Refactoring production code (e.g. renaming variables)
+#test:     Adding missing tests, refactoring tests; no production code change
+#chore:    Updating build tasks, package manager configs, etc; no production code change
+#
+# --- EXAMPLE ---
+# feat: add custom vibe slider matching react app
+#
+# Replace the default Material 3 slider with a custom gesture-based VibeSlider
+# to match the design aesthetic and responsive tick coloring of the React app.
