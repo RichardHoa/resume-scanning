@@ -6,3 +6,6 @@ pymupdf>=1.23.0
 pypdf>=4.0.0
 jinja2
 huggingface_hub
+easyocr
+pytesseract
+pillow

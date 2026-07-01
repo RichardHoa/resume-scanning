@@ -4,12 +4,63 @@ import sys
 import json
 import argparse
 
+# Fallback OCR Helper
+def run_fallback_ocr(page):
+    import io
+    pix = page.get_pixmap(dpi=150)
+    img_bytes = pix.tobytes("png")
+    
+    # Try EasyOCR first
+    try:
+        import easyocr
+        reader = easyocr.Reader(['vi', 'en'])
+        results = reader.readtext(img_bytes)
+        
+        blocks = []
+        for i, (bbox, text, conf) in enumerate(results):
+            x0 = bbox[0][0]
+            y0 = bbox[0][1]
+            x1 = bbox[2][0]
+            y1 = bbox[2][1]
+            blocks.append((x0, y0, x1, y1, text + "\n", i, 0))
+        return blocks, pix.width
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Warning: EasyOCR failed: {e}. Trying pytesseract fallback...", file=sys.stderr)
+        
+    # Try pytesseract
+    try:
+        import pytesseract
+        from PIL import Image
+        img = Image.open(io.BytesIO(img_bytes))
+        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT, lang='vie+eng')
+        
+        blocks = []
+        n_boxes = len(data['text'])
+        for i in range(n_boxes):
+            text = data['text'][i].strip()
+            if text:
+                x0 = data['left'][i]
+                y0 = data['top'][i]
+                x1 = x0 + data['width'][i]
+                y1 = y0 + data['height'][i]
+                blocks.append((x0, y0, x1, y1, text + " \n", i, 0))
+        return blocks, pix.width
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Warning: pytesseract failed: {e}", file=sys.stderr)
+        
+    raise RuntimeError("No OCR libraries (easyocr, pytesseract) available or working.")
+
+
 # Robust PDF Text Extraction Function
 def extract_text_from_pdf(pdf_path):
     """
     Extracts text from a PDF file using multiple fallbacks:
-    1. pdfplumber
-    2. fitz (PyMuPDF)
+    1. fitz (PyMuPDF) - with layout-aware column sorting and OCR fallback
+    2. pdfplumber
     3. pypdf
     """
     if not os.path.exists(pdf_path):
@@ -19,6 +70,105 @@ def extract_text_from_pdf(pdf_path):
     missing_libs = []
     attempted_libs = []
     
+    # Try PyMuPDF (fitz) with layout-aware sorting first
+    try:
+        import fitz
+        attempted_libs.append("pymupdf (fitz)")
+        doc = fitz.open(pdf_path)
+        pages_text = []
+        for page_idx, page in enumerate(doc):
+            rect = page.rect
+            W = rect.width
+            blocks = page.get_text("blocks")
+            
+            # Check if the page is empty/scanned
+            has_text = any(b[6] == 0 and b[4].strip() for b in blocks)
+            
+            used_ocr = False
+            if not has_text:
+                print(f"Page {page_idx+1} has no digital text. Attempting OCR...", file=sys.stderr)
+                try:
+                    # 1. Try PyMuPDF native Tesseract integration
+                    tp = page.get_textpage_ocr(flags=0, full=True)
+                    blocks = page.get_text("blocks", textpage=tp)
+                    has_text = any(b[6] == 0 and b[4].strip() for b in blocks)
+                    if has_text:
+                        used_ocr = True
+                except Exception as ocr_err:
+                    pass
+                
+                # 2. Try Python fallbacks
+                if not used_ocr:
+                    try:
+                        blocks, W = run_fallback_ocr(page)
+                        used_ocr = True
+                    except Exception as fallback_err:
+                        print(f"OCR fallback failed on page {page_idx+1}: {fallback_err}", file=sys.stderr)
+            
+            # Filter and clean text blocks
+            text_blocks = []
+            for b in blocks:
+                if b[6] == 0:  # text block
+                    txt = b[4].strip()
+                    if txt:
+                        text_blocks.append(b)
+            
+            # Sort blocks by y0 (top to bottom) first
+            text_blocks.sort(key=lambda x: x[1])
+            
+            # Group blocks separated by spanning (full-width) blocks (width > 60% of page width)
+            sections = []
+            current_section = []
+            for b in text_blocks:
+                x0, y0, x1, y1, txt, block_no, block_type = b
+                block_width = x1 - x0
+                is_spanning = block_width > (0.6 * W)
+                if is_spanning:
+                    if current_section:
+                        sections.append((False, current_section))
+                        current_section = []
+                    sections.append((True, [b]))
+                else:
+                    current_section.append(b)
+            if current_section:
+                sections.append((False, current_section))
+                
+            page_lines = []
+            for is_span, sec_blocks in sections:
+                if is_span:
+                    page_lines.append(sec_blocks[0][4])
+                else:
+                    # Two-column section: separate into left and right columns
+                    left_col = []
+                    right_col = []
+                    mid_x = W / 2
+                    for b in sec_blocks:
+                        x0, y0, x1, y1, txt, block_no, block_type = b
+                        center_x = (x0 + x1) / 2
+                        if center_x < mid_x:
+                            left_col.append(b)
+                        else:
+                            right_col.append(b)
+                    
+                    left_col.sort(key=lambda x: x[1])
+                    right_col.sort(key=lambda x: x[1])
+                    for b in left_col:
+                        page_lines.append(b[4])
+                    for b in right_col:
+                        page_lines.append(b[4])
+            
+            page_text = "\n".join(page_lines)
+            if page_text.strip():
+                pages_text.append(page_text)
+                
+        text = "\n\n".join(pages_text)
+        if text.strip():
+            return text
+    except ImportError:
+        missing_libs.append("pymupdf (fitz)")
+    except Exception as e:
+        print(f"Warning: PyMuPDF failed: {e}. Trying fallback...", file=sys.stderr)
+
     # Try pdfplumber
     try:
         import pdfplumber
@@ -36,24 +186,6 @@ def extract_text_from_pdf(pdf_path):
         missing_libs.append("pdfplumber")
     except Exception as e:
         print(f"Warning: pdfplumber failed: {e}. Trying fallback...", file=sys.stderr)
-
-    # Try PyMuPDF (fitz)
-    try:
-        import fitz
-        attempted_libs.append("pymupdf (fitz)")
-        doc = fitz.open(pdf_path)
-        pages_text = []
-        for page in doc:
-            page_text = page.get_text()
-            if page_text:
-                pages_text.append(page_text)
-        text = "\n\n".join(pages_text)
-        if text.strip():
-            return text
-    except ImportError:
-        missing_libs.append("pymupdf (fitz)")
-    except Exception as e:
-        print(f"Warning: PyMuPDF failed: {e}. Trying fallback...", file=sys.stderr)
 
     # Try pypdf
     try:
@@ -117,7 +249,7 @@ Nhiệm vụ của bạn là đọc kỹ văn bản CV và trích xuất thông 
 Hãy tuân thủ nghiêm ngặt cấu trúc JSON sau đây:
 {
   "position_applied": {
-    "title": "Tên vị trí ứng tuyển hoặc công việc chính (ví dụ: Nhân viên Hành chính Nhân sự, Lập trình viên Python, ...)",
+    "title": "Tên vị trí ứng tuyển hoặc công việc chính (ví dụ: Nhân viên Hành chính Nhân sự, Lập trình viên Python, ...). LƯU Ý: Hãy đọc toàn bộ CV (bao gồm cả tóm tắt mục tiêu, kinh nghiệm gần đây, và các câu đầu tiên của CV) để tìm ra vị trí công việc cụ thể nhất (ví dụ: 'iOS Developer', 'Chuyên viên C&B'). Tránh dùng các từ chung chung như 'Nhân viên' hay 'Chuyên viên' nếu CV có ghi rõ chức danh chuyên môn hoặc vị trí cụ thể.",
     "level": "Cấp bậc tương ứng. Chỉ chọn một trong các giá trị sau: 'junior', 'mid-level', 'senior', 'leadership', 'unknown'"
   },
   "self_evaluation": "Tóm tắt định hướng nghề nghiệp hoặc phần tự giới thiệu bản thân của ứng viên. Nếu không có, để trống.",
@@ -148,9 +280,8 @@ Hãy tuân thủ nghiêm ngặt cấu trúc JSON sau đây:
   "work_experience": [
     {
       "company_name": "Tên công ty hoạt động",
-      "company_description": "Mô tả ngắn gọn về công ty bao gồm quy mô (scale, ví dụ: quy mô hơn 1600 nhân viên), lĩnh vực hoạt động, hoặc bất kỳ thông tin mô tả nào khác về công ty được ghi trong CV. Nếu không có, để trống.",
-      "location": "Địa điểm làm việc (ví dụ: Hà Nội, TP.HCM, ...). Nếu không có, để trống.",
-      "position": "Chức danh đảm nhận tại công ty đó",
+      "company_description": "Mô tả ngắn gọn về công ty bao gồm quy mô (scale/scope, ví dụ: quy mô hơn 1600 nhân viên, scope: 500+), lĩnh vực hoạt động, đối tác/loại khách hàng (ví dụ: FMCG client), hoặc bất kỳ thông tin mô tả nào khác về công ty hoặc quy mô dự án được ghi trong CV. Nếu không có, để trống.",
+      "position": "Chức danh đảm nhận tại công ty đó. LƯU Ý: Chỉ điền chức danh công việc chính thức (ví dụ: 'Nhân viên C&B', 'Lập trình viên iOS'). Tuyệt đối KHÔNG gộp thông tin quy mô, phạm vi công việc (ví dụ: 'Scope: 500+', 'Scope: 4000-5000') hay thông tin phân loại khách hàng (ví dụ: 'FMCG CLIENT') vào trường này. Các thông tin này phải được đưa vào trường `company_description`.",
       "duration": "Thời gian làm việc (ví dụ: 01/2009 - Hiện tại hoặc 2021 - 2023)",
       "responsibilities": "Mô tả chi tiết nhiệm vụ, trách nhiệm, công việc chính hoặc thành tựu đạt được. Bạn phải thu thập toàn bộ các chi tiết nhiệm vụ và trách nhiệm được ghi trong CV. Định dạng chuỗi này tuân thủ cấu trúc phân cấp danh sách như sau:\n- Mỗi nhiệm vụ chính bắt đầu bằng dấu '- ' và kết thúc bằng xuống dòng '\\n'.\n- Nếu trong nhiệm vụ chính có danh sách các đầu việc con (danh sách cấp 2), mỗi đầu việc con bắt đầu bằng dấu '+ ' và kết thúc bằng xuống dòng '\\n'.\n- Nếu trong đầu việc con tiếp tục có danh sách con nhỏ hơn (danh sách cấp 3), bắt đầu bằng dấu '++ ' và kết thúc bằng xuống dòng '\\n'.\nVí dụ:\n- Quản lý hợp đồng lao động và dữ liệu nhân viên:\\n  + Theo dõi, kiểm tra dữ liệu chấm công và quản lý loại ngày nghỉ trong năm của nhân viên tại hơn 100 siêu thị trên toàn quốc.\\n  + Thực hiện báo cáo..."
     }
@@ -164,10 +295,10 @@ Hãy tuân thủ nghiêm ngặt cấu trúc JSON sau đây:
   "education_background": [
     {
       "university_name": "Tên trường đại học, cao đẳng hoặc cơ sở đào tạo",
-      "degree": "Bằng cấp đạt được (ví dụ: Cử nhân, Thạc sĩ, Kỹ sư, Bằng nghề, ...)",
-      "field_of_study": "Ngành học hoặc chuyên ngành đào tạo. LƯU Ý: Nếu CV không có chuyên ngành học cụ thể, hoặc chỉ ghi đề mục chung không rõ ràng (ví dụ: 'Học vấn & Chứng chỉ'), hãy để trống (chuỗi rỗng) chứ không tự ý điền.",
+      "degree": "Bằng cấp đạt được (ví dụ: Cử nhân, Thạc sĩ, Kỹ sư, Bằng nghề, ...). Nếu trong CV ghi bằng tiếng Anh, hãy dịch sang tiếng Việt phù hợp (ví dụ: 'Bachelor's Degree' dịch thành 'Cử nhân').",
+      "field_of_study": "Ngành học hoặc chuyên ngành đào tạo. LƯU Ý: Nếu trong CV ghi bằng tiếng Anh, hãy dịch sang tiếng Việt phù hợp (ví dụ: 'Information Technology' dịch thành 'Công nghệ thông tin'). Nếu CV không có chuyên ngành học cụ thể, hoặc chỉ ghi đề mục chung không rõ ràng (ví dụ: 'Học vấn & Chứng chỉ'), hãy để trống (chuỗi rỗng) chứ không tự ý điền.",
       "graduation_year": "Năm tốt nghiệp hoặc trạng thái hoàn thành",
-      "gpa": "Điểm trung bình tích lũy GPA (ví dụ: 2.87/4.0 hoặc 7.5/10). Nếu không có trong CV, để trống."
+      "gpa": "Điểm trung bình tích lũy GPA (ví dụ: 2.87/4.0 hoặc 7.5/10). Nếu CV ghi xếp loại bằng chữ bằng tiếng Anh (ví dụ: 'very good grades' hoặc 'Good Standing'), hãy chuyển đổi/dịch sang tiếng Việt tương ứng (ví dụ: 'Giỏi', 'Khá'). Nếu không có trong CV, để trống."
     }
   ]
 }
@@ -181,7 +312,10 @@ LƯU Ý QUAN TRỌNG:
    - leadership: Trưởng phòng (Manager), Giám đốc (Director), Trưởng bộ phận (Head of), v.v.
    - unknown: Nếu không thể xác định.
 3. Ngoại ngữ (như Tiếng Anh, Tiếng Nhật, ...) KHÔNG phải là một phần của kỹ năng (skills_and_specialties), hãy đưa toàn bộ thông tin ngoại ngữ và chứng chỉ ngoại ngữ liên quan vào mục 'languages'.
-4. Giữ nguyên ngôn ngữ tiếng Việt của nội dung trích xuất từ CV.
+4. Giữ nguyên ngôn ngữ tiếng Việt của nội dung trích xuất từ CV. Ưu tiên dịch các tên chuyên ngành học vấn, bằng cấp, và xếp loại học lực từ tiếng Anh sang tiếng Việt tương ứng (ví dụ: 'Information Technology' -> 'Công nghệ thông tin', 'Bachelor's Degree' -> 'Cử nhân', 'very good grades' -> 'Giỏi') để đảm bảo tính nhất quán của kết quả bằng tiếng Việt.
+5. Trích xuất đầy đủ và toàn bộ (COMPLETENESS): Bạn phải thu thập toàn bộ các chi tiết nhiệm vụ và trách nhiệm (`responsibilities`) được ghi trong CV. Tuyệt đối không được bỏ sót, bỏ qua, tóm tắt hoặc gộp chung các đầu việc lại làm mất thông tin chi tiết. Đọc kỹ từng cột và từng phần của CV để không bỏ sót các phần văn bản.
+6. Tất cả các vị trí công việc (All Work Experiences): Nếu một ứng viên có nhiều vị trí công việc hoặc dự án khác nhau tại cùng một công ty hoặc tại các công ty khác nhau, hãy trích xuất chúng thành các phần tử riêng biệt trong mảng `work_experience`. Tuyệt đối không được bỏ sót hoặc gộp chúng lại thành một phần tử duy nhất nếu chúng được liệt kê riêng biệt trong CV.
+7. Phân biệt rõ ràng giữa bằng cấp giáo dục (education_background) và chứng chỉ chuyên môn (certifications): Tuyệt đối không được tự ý kết hợp chức danh công việc của ứng viên ở đầu CV (ví dụ: 'Chuyên viên C&B') với tên trường đại học/cao đẳng để tạo thành một chứng chỉ giả định trong mục `certifications`. Chỉ đưa vào mục `certifications` những chứng chỉ đào tạo thực sự (như chứng chỉ nghề, chứng chỉ hoàn thành khóa học ngắn hạn) được ghi rõ ràng trong CV.
 """
 
 def run_mock_extraction(resume_text):
@@ -205,7 +339,7 @@ def run_mock_extraction(resume_text):
         "work_experience": [
             {
                 "company_name": "Công ty Công nghệ ABC",
-                "location": "Hà Nội, Việt Nam",
+                "company_description": "Công ty phát triển phần mềm và dịch vụ IT",
                 "position": "Lập trình viên Python",
                 "duration": "06/2022 - Hiện tại",
                 "responsibilities": "Phát triển và bảo trì hệ thống backend, tối ưu hóa truy vấn cơ sở dữ liệu."
