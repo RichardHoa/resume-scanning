@@ -1,2 +1,5 @@
 /Vietnamese-dataset
 .DS_Store
+__pycache__
+approved_jsons
+output_jsons

@@ -122,29 +122,52 @@ Hãy tuân thủ nghiêm ngặt cấu trúc JSON sau đây:
   },
   "self_evaluation": "Tóm tắt định hướng nghề nghiệp hoặc phần tự giới thiệu bản thân của ứng viên. Nếu không có, để trống.",
   "skills_and_specialties": [
-    "Kỹ năng hoặc chuyên môn trích xuất được (ví dụ: Python, Quản lý thời gian, Kế toán tổng hợp, ...)"
+    "Kỹ năng hoặc chuyên môn trích xuất được (ví dụ: Python, Quản lý thời gian, Kế toán tổng hợp, ...). LƯU Ý: Không đưa ngoại ngữ (tiếng Anh, tiếng Nhật, v.v.) vào danh sách này."
+  ],
+  "languages": [
+    {
+      "language": "Tên ngoại ngữ (ví dụ: Tiếng Anh, Tiếng Nhật, ...)",
+      "proficiency": "Mức độ thông thạo hoặc mô tả khả năng ngôn ngữ (ví dụ: Thành thạo, Giao tiếp tốt, Bản xứ, ...). Nếu không có, để trống.",
+      "certificates": [
+        {
+          "name": "Tên chứng chỉ ngoại ngữ (ví dụ: TOEIC, IELTS, TOEFL, ...)",
+          "score": "Điểm số hoặc mức điểm đạt được (ví dụ: 525, 6.5, ...). Nếu không có, để trống.",
+          "issuing_organization": "Tổ chức cấp chứng chỉ (ví dụ: IIG VIET NAM, British Council, ...). Nếu không có, để trống.",
+          "duration": "Thời gian/năm cấp hoặc thời hạn (ví dụ: 08/2017 - 12/2018 hoặc 2017). Nếu không có, để trống."
+        }
+      ]
+    }
+  ],
+  "certifications": [
+    {
+      "name": "Tên chứng chỉ chuyên môn hoặc các chứng chỉ khác không phải ngoại ngữ (ví dụ: Chuyên viên kế toán tin học, Quản trị nhân sự chuyên nghiệp, ...)",
+      "issuing_organization": "Tổ chức cấp chứng chỉ (ví dụ: Trường Đại học Kinh tế TP. HCM, ...). Nếu không có, để trống.",
+      "duration": "Thời gian/năm cấp hoặc thời hạn. Nếu không có, để trống."
+    }
   ],
   "work_experience": [
     {
       "company_name": "Tên công ty hoạt động",
+      "company_description": "Mô tả ngắn gọn về công ty bao gồm quy mô (scale, ví dụ: quy mô hơn 1600 nhân viên), lĩnh vực hoạt động, hoặc bất kỳ thông tin mô tả nào khác về công ty được ghi trong CV. Nếu không có, để trống.",
       "location": "Địa điểm làm việc (ví dụ: Hà Nội, TP.HCM, ...). Nếu không có, để trống.",
       "position": "Chức danh đảm nhận tại công ty đó",
       "duration": "Thời gian làm việc (ví dụ: 01/2009 - Hiện tại hoặc 2021 - 2023)",
-      "responsibilities": "Mô tả ngắn gọn về nhiệm vụ, công việc chính hoặc thành tựu đạt được"
+      "responsibilities": "Mô tả chi tiết nhiệm vụ, trách nhiệm, công việc chính hoặc thành tựu đạt được. Bạn phải thu thập toàn bộ các chi tiết nhiệm vụ và trách nhiệm được ghi trong CV. Định dạng chuỗi này tuân thủ cấu trúc phân cấp danh sách như sau:\n- Mỗi nhiệm vụ chính bắt đầu bằng dấu '- ' và kết thúc bằng xuống dòng '\\n'.\n- Nếu trong nhiệm vụ chính có danh sách các đầu việc con (danh sách cấp 2), mỗi đầu việc con bắt đầu bằng dấu '+ ' và kết thúc bằng xuống dòng '\\n'.\n- Nếu trong đầu việc con tiếp tục có danh sách con nhỏ hơn (danh sách cấp 3), bắt đầu bằng dấu '++ ' và kết thúc bằng xuống dòng '\\n'.\nVí dụ:\n- Quản lý hợp đồng lao động và dữ liệu nhân viên:\\n  + Theo dõi, kiểm tra dữ liệu chấm công và quản lý loại ngày nghỉ trong năm của nhân viên tại hơn 100 siêu thị trên toàn quốc.\\n  + Thực hiện báo cáo..."
     }
   ],
   "basic_information": {
     "email": "Email liên hệ",
     "phone": "Số điện thoại liên hệ",
-    "location": "Nơi ở hiện tại hoặc quê quán",
+    "location": "Nơi ở hiện tại hoặc quê quán. LƯU Ý: Nếu CV không ghi nơi ở/quê quán/địa chỉ, tuyệt đối để trống (chuỗi rỗng), không được tự ý điền thông tin khác như số điện thoại vào trường này.",
     "other_info": "Thông tin liên hệ bổ sung như LinkedIn, Website cá nhân, Skype, v.v. Nếu không có, để trống."
   },
   "education_background": [
     {
       "university_name": "Tên trường đại học, cao đẳng hoặc cơ sở đào tạo",
       "degree": "Bằng cấp đạt được (ví dụ: Cử nhân, Thạc sĩ, Kỹ sư, Bằng nghề, ...)",
-      "field_of_study": "Ngành học hoặc chuyên ngành đào tạo",
-      "graduation_year": "Năm tốt nghiệp hoặc trạng thái hoàn thành"
+      "field_of_study": "Ngành học hoặc chuyên ngành đào tạo. LƯU Ý: Nếu CV không có chuyên ngành học cụ thể, hoặc chỉ ghi đề mục chung không rõ ràng (ví dụ: 'Học vấn & Chứng chỉ'), hãy để trống (chuỗi rỗng) chứ không tự ý điền.",
+      "graduation_year": "Năm tốt nghiệp hoặc trạng thái hoàn thành",
+      "gpa": "Điểm trung bình tích lũy GPA (ví dụ: 2.87/4.0 hoặc 7.5/10). Nếu không có trong CV, để trống."
     }
   ]
 }
@@ -157,7 +180,8 @@ LƯU Ý QUAN TRỌNG:
    - senior: > 5 năm kinh nghiệm, chuyên viên cao cấp, team lead.
    - leadership: Trưởng phòng (Manager), Giám đốc (Director), Trưởng bộ phận (Head of), v.v.
    - unknown: Nếu không thể xác định.
-3. Giữ nguyên ngôn ngữ tiếng Việt của nội dung trích xuất từ CV.
+3. Ngoại ngữ (như Tiếng Anh, Tiếng Nhật, ...) KHÔNG phải là một phần của kỹ năng (skills_and_specialties), hãy đưa toàn bộ thông tin ngoại ngữ và chứng chỉ ngoại ngữ liên quan vào mục 'languages'.
+4. Giữ nguyên ngôn ngữ tiếng Việt của nội dung trích xuất từ CV.
 """
 
 def run_mock_extraction(resume_text):
