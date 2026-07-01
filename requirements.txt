@@ -1,0 +1,8 @@
+torch>=2.0.0
+transformers>=4.37.0
+accelerate>=0.26.0
+pdfplumber>=0.10.0
+pymupdf>=1.23.0
+pypdf>=4.0.0
+jinja2
+huggingface_hub
