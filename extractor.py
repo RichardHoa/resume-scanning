@@ -13,14 +13,16 @@ def extract_text_from_pdf(pdf_path):
     3. pypdf
     """
     if not os.path.exists(pdf_path):
-        print(f"Error: File not found at {pdf_path}", file=sys.stderr)
-        sys.exit(1)
+        raise FileNotFoundError(f"File not found at {pdf_path}")
 
     text = ""
+    missing_libs = []
+    attempted_libs = []
     
     # Try pdfplumber
     try:
         import pdfplumber
+        attempted_libs.append("pdfplumber")
         with pdfplumber.open(pdf_path) as pdf:
             pages_text = []
             for i, page in enumerate(pdf.pages):
@@ -31,13 +33,14 @@ def extract_text_from_pdf(pdf_path):
             if text.strip():
                 return text
     except ImportError:
-        pass
+        missing_libs.append("pdfplumber")
     except Exception as e:
         print(f"Warning: pdfplumber failed: {e}. Trying fallback...", file=sys.stderr)
 
     # Try PyMuPDF (fitz)
     try:
         import fitz
+        attempted_libs.append("pymupdf (fitz)")
         doc = fitz.open(pdf_path)
         pages_text = []
         for page in doc:
@@ -48,13 +51,14 @@ def extract_text_from_pdf(pdf_path):
         if text.strip():
             return text
     except ImportError:
-        pass
+        missing_libs.append("pymupdf (fitz)")
     except Exception as e:
         print(f"Warning: PyMuPDF failed: {e}. Trying fallback...", file=sys.stderr)
 
     # Try pypdf
     try:
         from pypdf import PdfReader
+        attempted_libs.append("pypdf")
         reader = PdfReader(pdf_path)
         pages_text = []
         for page in reader.pages:
@@ -65,19 +69,34 @@ def extract_text_from_pdf(pdf_path):
         if text.strip():
             return text
     except ImportError:
-        pass
+        missing_libs.append("pypdf")
     except Exception as e:
         print(f"Warning: pypdf failed: {e}", file=sys.stderr)
 
+    # Print diagnostic information
+    if len(missing_libs) == 3:
+        raise ImportError(
+            "Error: No PDF extraction libraries ('pdfplumber', 'pymupdf', 'pypdf') could be imported. "
+            "Please install the dependencies first using:\n  pip install -r requirements.txt"
+        )
+        
     if not text.strip():
-        print(f"Error: Could not extract any text from {pdf_path}", file=sys.stderr)
-        sys.exit(1)
+        error_msg = (
+            f"Could not extract any text from {pdf_path}. "
+            f"We successfully tried using {', '.join(attempted_libs)} but they returned empty text. "
+            "This usually happens if the PDF is a scanned image (non-searchable PDF)."
+        )
+        if missing_libs:
+            error_msg += f"\nNote: The following libraries were missing and could not be tried: {', '.join(missing_libs)}"
+        raise ValueError(error_msg)
 
     return text
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Vietnamese Resume Extractor using Qwen2.5 7B-Instruct")
-    parser.add_argument("--pdf", type=str, required=True, help="Path to the PDF resume file")
+    parser.add_argument("--pdf", type=str, help="Path to a single PDF resume file")
+    parser.add_argument("--dir", type=str, help="Path to a directory containing PDF resumes to scan")
     parser.add_argument("--provider", type=str, choices=["local", "api"], default="local",
                         help="Model inference provider: 'local' (Hugging Face transformers) or 'api' (OpenAI-compatible server)")
     parser.add_argument("--model-name", type=str, default="Qwen/Qwen2.5-7B-Instruct",
@@ -88,7 +107,7 @@ def parse_args():
                         help="API key (only used if provider is 'api')")
     parser.add_argument("--mock", action="store_true",
                         help="Mock run: performs text extraction and returns mock JSON output without loading the model")
-    parser.add_argument("--output", type=str, help="Path to save the JSON output (prints to stdout if not specified)")
+    parser.add_argument("--output", type=str, help="Path to save the JSON output file (or output directory if --dir is used)")
     return parser.parse_args()
 
 def get_system_prompt():
@@ -185,7 +204,7 @@ def run_mock_extraction(resume_text):
     }
     return json.dumps(mock_data, ensure_ascii=False, indent=2)
 
-def run_local_inference(resume_text, model_name):
+def load_local_model(model_name):
     print(f"Loading local model and tokenizer for: {model_name}...", file=sys.stderr)
     try:
         import torch
@@ -205,7 +224,9 @@ def run_local_inference(resume_text, model_name):
         torch_dtype="auto",
         device_map="auto"
     )
-    
+    return model, tokenizer
+
+def run_local_inference(resume_text, model, tokenizer):
     messages = [
         {"role": "system", "content": get_system_prompt()},
         {"role": "user", "content": f"Dưới đây là văn bản trích xuất từ CV của ứng viên:\n\n{resume_text}"}
@@ -234,8 +255,7 @@ def run_local_inference(resume_text, model_name):
     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
     return response
 
-def run_api_inference(resume_text, model_name, api_base, api_key):
-    print(f"Querying API server ({api_base}) with model {model_name}...", file=sys.stderr)
+def get_api_client(api_base, api_key):
     try:
         from openai import OpenAI
     except ImportError:
@@ -243,8 +263,9 @@ def run_api_inference(resume_text, model_name, api_base, api_key):
         print("Install it with: pip install openai", file=sys.stderr)
         sys.exit(1)
         
-    client = OpenAI(base_url=api_base, api_key=api_key)
-    
+    return OpenAI(base_url=api_base, api_key=api_key)
+
+def run_api_inference(resume_text, client, model_name):
     messages = [
         {"role": "system", "content": get_system_prompt()},
         {"role": "user", "content": f"Dưới đây là văn bản trích xuất từ CV của ứng viên:\n\n{resume_text}"}
@@ -262,46 +283,127 @@ def run_api_inference(resume_text, model_name, api_base, api_key):
 def main():
     args = parse_args()
     
-    # 1. Extract text from PDF
-    print(f"Extracting text from {args.pdf}...", file=sys.stderr)
-    resume_text = extract_text_from_pdf(args.pdf)
-    print(f"Extracted {len(resume_text)} characters.", file=sys.stderr)
+    # Validation of mutually exclusive/required inputs
+    if not args.pdf and not args.dir:
+        print("Error: You must specify either --pdf or --dir.", file=sys.stderr)
+        sys.exit(1)
+    if args.pdf and args.dir:
+        print("Error: You cannot specify both --pdf and --dir. Please choose one.", file=sys.stderr)
+        sys.exit(1)
+        
+    # Initialize shared model/client resources once
+    model = None
+    tokenizer = None
+    client = None
     
-    # 2. Get LLM response
-    if args.mock:
-        result = run_mock_extraction(resume_text)
-    elif args.provider == "local":
-        result = run_local_inference(resume_text, args.model_name)
+    if not args.mock:
+        if args.provider == "local":
+            model, tokenizer = load_local_model(args.model_name)
+        elif args.provider == "api":
+            client = get_api_client(args.api_base, args.api_key)
+            
+    if args.pdf:
+        # Processing a single PDF file
+        try:
+            print(f"Extracting text from {args.pdf}...", file=sys.stderr)
+            resume_text = extract_text_from_pdf(args.pdf)
+            print(f"Extracted {len(resume_text)} characters.", file=sys.stderr)
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        
+        if args.mock:
+            result = run_mock_extraction(resume_text)
+        elif args.provider == "local":
+            result = run_local_inference(resume_text, model, tokenizer)
+        else:
+            result = run_api_inference(resume_text, client, args.model_name)
+            
+        clean_result = result.strip()
+        if clean_result.startswith("```"):
+            lines = clean_result.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines[-1].startswith("```"):
+                lines = lines[:-1]
+            clean_result = "\n".join(lines).strip()
+            
+        try:
+            parsed_json = json.loads(clean_result)
+            formatted_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
+        except json.JSONDecodeError:
+            print("Warning: Model output is not valid JSON.", file=sys.stderr)
+            print("Raw output below:", file=sys.stderr)
+            formatted_json = clean_result
+            
+        if args.output:
+            with open(args.output, "w", encoding="utf-8") as f:
+                f.write(formatted_json)
+            print(f"Successfully saved JSON extraction to {args.output}", file=sys.stderr)
+        else:
+            print(formatted_json)
+            
     else:
-        result = run_api_inference(resume_text, args.model_name, args.api_base, args.api_key)
+        # Processing a directory of PDF files
+        if not args.output:
+            print("Error: --output is required when scanning a directory using --dir.", file=sys.stderr)
+            sys.exit(1)
+            
+        if not os.path.isdir(args.dir):
+            print(f"Error: Input directory {args.dir} does not exist or is not a directory.", file=sys.stderr)
+            sys.exit(1)
+            
+        os.makedirs(args.output, exist_ok=True)
         
-    # Clean up the output in case the model added markdown fences
-    clean_result = result.strip()
-    if clean_result.startswith("```"):
-        # Remove leading fence
-        lines = clean_result.split("\n")
-        if lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines[-1].startswith("```"):
-            lines = lines[:-1]
-        clean_result = "\n".join(lines).strip()
+        pdf_files = [f for f in os.listdir(args.dir) if f.lower().endswith('.pdf')]
+        if not pdf_files:
+            print(f"No PDF files found in {args.dir}.", file=sys.stderr)
+            sys.exit(0)
+            
+        pdf_files.sort()
+        print(f"Found {len(pdf_files)} PDF files in {args.dir}. Starting batch processing...", file=sys.stderr)
         
-    # Validate if it's valid JSON
-    try:
-        parsed_json = json.loads(clean_result)
-        formatted_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
-    except json.JSONDecodeError:
-        print("Warning: Model output is not valid JSON.", file=sys.stderr)
-        print("Raw output below:", file=sys.stderr)
-        formatted_json = clean_result
-        
-    # 3. Output results
-    if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
-            f.write(formatted_json)
-        print(f"Successfully saved JSON extraction to {args.output}", file=sys.stderr)
-    else:
-        print(formatted_json)
+        for idx, filename in enumerate(pdf_files, start=1):
+            pdf_path = os.path.join(args.dir, filename)
+            output_filename = os.path.splitext(filename)[0] + ".json"
+            output_path = os.path.join(args.output, output_filename)
+            
+            print(f"\n[{idx}/{len(pdf_files)}] Processing {filename}...", file=sys.stderr)
+            try:
+                resume_text = extract_text_from_pdf(pdf_path)
+                print(f"  Extracted {len(resume_text)} characters.", file=sys.stderr)
+                
+                if args.mock:
+                    result = run_mock_extraction(resume_text)
+                elif args.provider == "local":
+                    result = run_local_inference(resume_text, model, tokenizer)
+                else:
+                    result = run_api_inference(resume_text, client, args.model_name)
+                    
+                clean_result = result.strip()
+                if clean_result.startswith("```"):
+                    lines = clean_result.split("\n")
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    if lines[-1].startswith("```"):
+                        lines = lines[:-1]
+                    clean_result = "\n".join(lines).strip()
+                    
+                try:
+                    parsed_json = json.loads(clean_result)
+                    formatted_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
+                except json.JSONDecodeError:
+                    print(f"  Warning: Model output for {filename} is not valid JSON.", file=sys.stderr)
+                    formatted_json = clean_result
+                    
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write(formatted_json)
+                print(f"  Successfully saved JSON extraction to {output_path}", file=sys.stderr)
+                
+            except Exception as e:
+                print(f"  Error processing {filename}: {e}", file=sys.stderr)
+                
+        print("\nBatch processing completed.", file=sys.stderr)
 
 if __name__ == "__main__":
     main()
