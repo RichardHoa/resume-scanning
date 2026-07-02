@@ -59,9 +59,10 @@ def run_fallback_ocr(page):
 def extract_text_from_pdf(pdf_path):
     """
     Extracts text from a PDF file using multiple fallbacks:
-    1. fitz (PyMuPDF) - with layout-aware column sorting and OCR fallback
-    2. pdfplumber
-    3. pypdf
+    1. pymupdf4llm  - layout-agnostic markdown extraction (handles 1-col, 2-col, mixed layouts)
+    2. fitz (PyMuPDF) - with layout-aware column sorting and OCR fallback
+    3. pdfplumber
+    4. pypdf
     """
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"File not found at {pdf_path}")
@@ -69,8 +70,21 @@ def extract_text_from_pdf(pdf_path):
     text = ""
     missing_libs = []
     attempted_libs = []
-    
-    # Try PyMuPDF (fitz) with layout-aware sorting first
+
+    # Try pymupdf4llm first — converts PDF to clean Markdown, handles any column layout robustly
+    try:
+        import pymupdf4llm
+        attempted_libs.append("pymupdf4llm")
+        md_text = pymupdf4llm.to_markdown(pdf_path)
+        if md_text.strip():
+            print(f"  [pymupdf4llm] Successfully extracted text as Markdown.", file=sys.stderr)
+            return md_text
+    except ImportError:
+        missing_libs.append("pymupdf4llm")
+    except Exception as e:
+        print(f"Warning: pymupdf4llm failed: {e}. Trying fallback...", file=sys.stderr)
+
+    # Try PyMuPDF (fitz) with layout-aware sorting
     try:
         import fitz
         attempted_libs.append("pymupdf (fitz)")
@@ -240,82 +254,75 @@ def parse_args():
     parser.add_argument("--mock", action="store_true",
                         help="Mock run: performs text extraction and returns mock JSON output without loading the model")
     parser.add_argument("--output", type=str, help="Path to save the JSON output file (or output directory if --dir is used)")
+    parser.add_argument("--no-json-mode", action="store_true",
+                        help="Disable JSON-mode (response_format=json_object) for API inference. Use if your server does not support it.")
     return parser.parse_args()
 
 def get_system_prompt():
-    return """Bạn là một chuyên viên tuyển dụng AI (Hiring Assistant Agent) chịu trách nhiệm trích xuất thông tin có cấu trúc từ sơ yếu lý lịch (CV) tiếng Việt.
-Nhiệm vụ của bạn là đọc kỹ văn bản CV và trích xuất thông tin thành định dạng JSON chuẩn.
+    return """Bạn là một chuyên viên tuyển dụng AI chịu trách nhiệm trích xuất thông tin có cấu trúc từ sơ yếu lý lịch (CV) tiếng Việt.
+Đọc kỹ toàn bộ văn bản CV và trả về đúng định dạng JSON sau (không có bất kỳ văn bản nào ngoài JSON):
 
-Hãy tuân thủ nghiêm ngặt cấu trúc JSON sau đây:
 {
   "position_applied": {
-    "title": "Tên vị trí ứng tuyển hoặc công việc chính (ví dụ: Nhân viên Hành chính Nhân sự, Lập trình viên Python, ...). LƯU Ý: Hãy đọc toàn bộ CV (bao gồm cả tóm tắt mục tiêu, kinh nghiệm gần đây, và các câu đầu tiên của CV) để tìm ra vị trí công việc cụ thể nhất (ví dụ: 'iOS Developer', 'Chuyên viên C&B'). Tránh dùng các từ chung chung như 'Nhân viên' hay 'Chuyên viên' nếu CV có ghi rõ chức danh chuyên môn hoặc vị trí cụ thể.",
-    "level": "Cấp bậc tương ứng. Chỉ chọn một trong các giá trị sau: 'junior', 'mid-level', 'senior', 'leadership', 'unknown'"
+    "title": "Vị trí ứng tuyển hoặc chức danh chuyên môn chính xác nhất rút ra từ CV",
+    "level": "Cấp bậc: 'junior' (<2 năm), 'mid-level' (2–5 năm), 'senior' (>5 năm), 'leadership' (quản lý/trưởng phòng trở lên), hoặc 'unknown'"
   },
-  "self_evaluation": "Tóm tắt định hướng nghề nghiệp hoặc phần tự giới thiệu bản thân của ứng viên. Nếu không có, để trống.",
+  "self_evaluation": "Tóm tắt định hướng nghề nghiệp hoặc phần tự giới thiệu của ứng viên. Để trống nếu không có.",
   "skills_and_specialties": [
-    "Kỹ năng hoặc chuyên môn trích xuất được (ví dụ: Python, Quản lý thời gian, Kế toán tổng hợp, ...). LƯU Ý: Không đưa ngoại ngữ (tiếng Anh, tiếng Nhật, v.v.) vào danh sách này."
+    "Kỹ năng hoặc chuyên môn (không bao gồm ngoại ngữ)"
   ],
   "languages": [
     {
-      "language": "Tên ngoại ngữ (ví dụ: Tiếng Anh, Tiếng Nhật, ...)",
-      "proficiency": "Mức độ thông thạo hoặc mô tả khả năng ngôn ngữ (ví dụ: Thành thạo, Giao tiếp tốt, Bản xứ, ...). Nếu không có, để trống.",
+      "language": "Tên ngoại ngữ",
+      "proficiency": "Mức độ thông thạo. Để trống nếu không có.",
       "certificates": [
         {
-          "name": "Tên chứng chỉ ngoại ngữ (ví dụ: TOEIC, IELTS, TOEFL, ...)",
-          "score": "Điểm số hoặc mức điểm đạt được (ví dụ: 525, 6.5, ...). Nếu không có, để trống.",
-          "issuing_organization": "Tổ chức cấp chứng chỉ (ví dụ: IIG VIET NAM, British Council, ...). Nếu không có, để trống.",
-          "duration": "Thời gian/năm cấp hoặc thời hạn (ví dụ: 08/2017 - 12/2018 hoặc 2017). Nếu không có, để trống."
+          "name": "Tên chứng chỉ ngoại ngữ",
+          "score": "Điểm số. Để trống nếu không có.",
+          "issuing_organization": "Tổ chức cấp. Để trống nếu không có.",
+          "duration": "Thời gian cấp hoặc thời hạn. Để trống nếu không có."
         }
       ]
     }
   ],
   "certifications": [
     {
-      "name": "Tên chứng chỉ chuyên môn hoặc các chứng chỉ khác không phải ngoại ngữ (ví dụ: Chuyên viên kế toán tin học, Quản trị nhân sự chuyên nghiệp, ...)",
-      "issuing_organization": "Tổ chức cấp chứng chỉ (ví dụ: Trường Đại học Kinh tế TP. HCM, ...). Nếu không có, để trống.",
-      "duration": "Thời gian/năm cấp hoặc thời hạn. Nếu không có, để trống."
+      "name": "Tên chứng chỉ chuyên môn (không phải ngoại ngữ, không phải bằng đại học)",
+      "issuing_organization": "Tổ chức cấp. Để trống nếu không có.",
+      "duration": "Thời gian cấp hoặc thời hạn. Để trống nếu không có."
     }
   ],
   "work_experience": [
     {
-      "company_name": "Tên công ty hoạt động",
-      "company_description": "Mô tả ngắn gọn về công ty bao gồm quy mô (scale/scope, ví dụ: quy mô hơn 1600 nhân viên, scope: 500+), lĩnh vực hoạt động, đối tác/loại khách hàng (ví dụ: FMCG client), hoặc bất kỳ thông tin mô tả nào khác về công ty hoặc quy mô dự án được ghi trong CV. Nếu không có, để trống.",
-      "position": "Chức danh đảm nhận tại công ty đó. LƯU Ý: Chỉ điền chức danh công việc chính thức (ví dụ: 'Nhân viên C&B', 'Lập trình viên iOS'). Tuyệt đối KHÔNG gộp thông tin quy mô, phạm vi công việc (ví dụ: 'Scope: 500+', 'Scope: 4000-5000') hay thông tin phân loại khách hàng (ví dụ: 'FMCG CLIENT') vào trường này. Các thông tin này phải được đưa vào trường `company_description`.",
-      "duration": "Thời gian làm việc (ví dụ: 01/2009 - Hiện tại hoặc 2021 - 2023)",
-      "responsibilities": "Mô tả chi tiết nhiệm vụ, trách nhiệm, công việc chính hoặc thành tựu đạt được. Bạn phải thu thập toàn bộ các chi tiết nhiệm vụ và trách nhiệm được ghi trong CV. Định dạng chuỗi này tuân thủ cấu trúc phân cấp danh sách như sau:\n- Mỗi nhiệm vụ chính bắt đầu bằng dấu '- ' và kết thúc bằng xuống dòng '\\n'.\n- Nếu trong nhiệm vụ chính có danh sách các đầu việc con (danh sách cấp 2), mỗi đầu việc con bắt đầu bằng dấu '+ ' và kết thúc bằng xuống dòng '\\n'.\n- Nếu trong đầu việc con tiếp tục có danh sách con nhỏ hơn (danh sách cấp 3), bắt đầu bằng dấu '++ ' và kết thúc bằng xuống dòng '\\n'.\nVí dụ:\n- Quản lý hợp đồng lao động và dữ liệu nhân viên:\\n  + Theo dõi, kiểm tra dữ liệu chấm công và quản lý loại ngày nghỉ trong năm của nhân viên tại hơn 100 siêu thị trên toàn quốc.\\n  + Thực hiện báo cáo..."
+      "company_name": "Tên công ty",
+      "company_description": "Mô tả ngắn về công ty: quy mô, lĩnh vực, loại khách hàng, v.v. Để trống nếu không có.",
+      "position": "Chức danh công việc chính thức tại công ty đó",
+      "duration": "Thời gian làm việc",
+      "responsibilities": "Mô tả đầy đủ nhiệm vụ, trách nhiệm và thành tựu. Sử dụng định dạng danh sách phân cấp với '- ' cho mục chính, '+ ' cho mục con."
     }
   ],
   "basic_information": {
     "email": "Email liên hệ",
-    "phone": "Số điện thoại liên hệ",
-    "location": "Nơi ở hiện tại hoặc quê quán. LƯU Ý: Nếu CV không ghi nơi ở/quê quán/địa chỉ, tuyệt đối để trống (chuỗi rỗng), không được tự ý điền thông tin khác như số điện thoại vào trường này.",
-    "other_info": "Thông tin liên hệ bổ sung như LinkedIn, Website cá nhân, Skype, v.v. Nếu không có, để trống."
+    "phone": "Số điện thoại",
+    "location": "Nơi ở hiện tại hoặc quê quán. Để trống nếu không có.",
+    "other_info": "Thông tin liên hệ bổ sung (LinkedIn, website, Skype, v.v.). Để trống nếu không có."
   },
   "education_background": [
     {
-      "university_name": "Tên trường đại học, cao đẳng hoặc cơ sở đào tạo",
-      "degree": "Bằng cấp đạt được (ví dụ: Cử nhân, Thạc sĩ, Kỹ sư, Bằng nghề, ...). Nếu trong CV ghi bằng tiếng Anh, hãy dịch sang tiếng Việt phù hợp (ví dụ: 'Bachelor's Degree' dịch thành 'Cử nhân').",
-      "field_of_study": "Ngành học hoặc chuyên ngành đào tạo. LƯU Ý: Nếu trong CV ghi bằng tiếng Anh, hãy dịch sang tiếng Việt phù hợp (ví dụ: 'Information Technology' dịch thành 'Công nghệ thông tin'). Nếu CV không có chuyên ngành học cụ thể, hoặc chỉ ghi đề mục chung không rõ ràng (ví dụ: 'Học vấn & Chứng chỉ'), hãy để trống (chuỗi rỗng) chứ không tự ý điền.",
+      "university_name": "Tên trường hoặc cơ sở đào tạo",
+      "degree": "Bằng cấp (dịch sang tiếng Việt nếu ghi bằng tiếng Anh)",
+      "field_of_study": "Ngành học hoặc chuyên ngành (dịch sang tiếng Việt nếu cần). Để trống nếu không rõ.",
       "graduation_year": "Năm tốt nghiệp hoặc trạng thái hoàn thành",
-      "gpa": "Điểm trung bình tích lũy GPA (ví dụ: 2.87/4.0 hoặc 7.5/10). Nếu CV ghi xếp loại bằng chữ bằng tiếng Anh (ví dụ: 'very good grades' hoặc 'Good Standing'), hãy chuyển đổi/dịch sang tiếng Việt tương ứng (ví dụ: 'Giỏi', 'Khá'). Nếu không có trong CV, để trống."
+      "gpa": "Điểm GPA hoặc xếp loại học lực (dịch sang tiếng Việt nếu cần). Để trống nếu không có."
     }
   ]
 }
 
-LƯU Ý QUAN TRỌNG:
-1. Đảm bảo toàn bộ kết quả trả về là một JSON hợp lệ và CHỈ chứa JSON (không có block giải thích ngoài lề, không viết ```json ... ```).
-2. Hãy cố gắng suy luận chính xác cấp bậc (level) dựa trên số năm kinh nghiệm và chức danh:
-   - junior: < 2 năm kinh nghiệm, thực tập sinh, nhân viên mới.
-   - mid-level: 2-5 năm kinh nghiệm, nhân viên có kinh nghiệm.
-   - senior: > 5 năm kinh nghiệm, chuyên viên cao cấp, team lead.
-   - leadership: Trưởng phòng (Manager), Giám đốc (Director), Trưởng bộ phận (Head of), v.v.
-   - unknown: Nếu không thể xác định.
-3. Ngoại ngữ (như Tiếng Anh, Tiếng Nhật, ...) KHÔNG phải là một phần của kỹ năng (skills_and_specialties), hãy đưa toàn bộ thông tin ngoại ngữ và chứng chỉ ngoại ngữ liên quan vào mục 'languages'.
-4. Giữ nguyên ngôn ngữ tiếng Việt của nội dung trích xuất từ CV. Ưu tiên dịch các tên chuyên ngành học vấn, bằng cấp, và xếp loại học lực từ tiếng Anh sang tiếng Việt tương ứng (ví dụ: 'Information Technology' -> 'Công nghệ thông tin', 'Bachelor's Degree' -> 'Cử nhân', 'very good grades' -> 'Giỏi') để đảm bảo tính nhất quán của kết quả bằng tiếng Việt.
-5. Trích xuất đầy đủ và toàn bộ (COMPLETENESS): Bạn phải thu thập toàn bộ các chi tiết nhiệm vụ và trách nhiệm (`responsibilities`) được ghi trong CV. Tuyệt đối không được bỏ sót, bỏ qua, tóm tắt hoặc gộp chung các đầu việc lại làm mất thông tin chi tiết. Đọc kỹ từng cột và từng phần của CV để không bỏ sót các phần văn bản.
-6. Tất cả các vị trí công việc (All Work Experiences): Nếu một ứng viên có nhiều vị trí công việc hoặc dự án khác nhau tại cùng một công ty hoặc tại các công ty khác nhau, hãy trích xuất chúng thành các phần tử riêng biệt trong mảng `work_experience`. Tuyệt đối không được bỏ sót hoặc gộp chúng lại thành một phần tử duy nhất nếu chúng được liệt kê riêng biệt trong CV.
-7. Phân biệt rõ ràng giữa bằng cấp giáo dục (education_background) và chứng chỉ chuyên môn (certifications): Tuyệt đối không được tự ý kết hợp chức danh công việc của ứng viên ở đầu CV (ví dụ: 'Chuyên viên C&B') với tên trường đại học/cao đẳng để tạo thành một chứng chỉ giả định trong mục `certifications`. Chỉ đưa vào mục `certifications` những chứng chỉ đào tạo thực sự (như chứng chỉ nghề, chứng chỉ hoàn thành khóa học ngắn hạn) được ghi rõ ràng trong CV.
+LƯU Ý:
+1. Chỉ trả về JSON hợp lệ, không có giải thích hay markdown.
+2. Trích xuất đầy đủ tất cả kinh nghiệm làm việc — mỗi vị trí/dự án riêng biệt là một phần tử riêng trong mảng `work_experience`.
+3. Không bỏ sót hoặc tóm tắt nội dung `responsibilities`; thu thập toàn bộ chi tiết nhiệm vụ từ CV.
+4. Ngoại ngữ thuộc mục `languages`, không thuộc `skills_and_specialties`.
 """
 
 def run_mock_extraction(resume_text):
@@ -393,7 +400,8 @@ def run_local_inference(resume_text, model, tokenizer):
     text = tokenizer.apply_chat_template(
         messages,
         tokenize=False,
-        add_generation_prompt=True
+        add_generation_prompt=True,
+        enable_thinking=False
     )
     
     model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
@@ -401,9 +409,14 @@ def run_local_inference(resume_text, model, tokenizer):
     print("Generating structured output...", file=sys.stderr)
     generated_ids = model.generate(
         **model_inputs,
-        max_new_tokens=2048,
-        temperature=0.1,
-        top_p=0.9
+        max_new_tokens=100000,
+        do_sample=True,
+        temperature=0.7,
+        top_p=0.8,
+        top_k=20,
+        min_p=0.0,
+        repetition_penalty=1.0,
+        pad_token_id=tokenizer.eos_token_id
     )
     
     generated_ids = [
@@ -423,20 +436,229 @@ def get_api_client(api_base, api_key):
         
     return OpenAI(base_url=api_base, api_key=api_key)
 
-def run_api_inference(resume_text, client, model_name):
+def run_api_inference(resume_text, client, model_name, json_mode=True):
     messages = [
         {"role": "system", "content": get_system_prompt()},
         {"role": "user", "content": f"Dưới đây là văn bản trích xuất từ CV của ứng viên:\n\n{resume_text}"}
     ]
-    
-    response = client.chat.completions.create(
+
+    kwargs = dict(
         model=model_name,
         messages=messages,
-        temperature=0.1,
-        max_tokens=2048
+        temperature=0.7,
+        top_p=0.8,
+        presence_penalty=1.5,
+        max_tokens=100000,
     )
-    
+
+    # JSON mode constrains the model to only emit valid JSON tokens,
+    # eliminating stray text, markdown fences, or incomplete structures.
+    if json_mode:
+        try:
+            kwargs["response_format"] = {"type": "json_object"}
+            response = client.chat.completions.create(**kwargs)
+            print("  [API] JSON mode active.", file=sys.stderr)
+        except Exception as e:
+            # Server may not support response_format; fall back to plain completion
+            print(f"  Warning: JSON mode not supported ({e}), retrying without it.", file=sys.stderr)
+            del kwargs["response_format"]
+            response = client.chat.completions.create(**kwargs)
+    else:
+        response = client.chat.completions.create(**kwargs)
+
     return response.choices[0].message.content
+
+def extract_json_substring(text):
+    """
+    Strips out thinking blocks (e.g. <think>...</think>), markdown code blocks,
+    and isolates the actual JSON string by finding the first '{' and last '}'.
+    """
+    cleaned = text.strip()
+    
+    # Remove thinking tags if present
+    import re
+    cleaned = re.sub(r'<think>.*?</think>', '', cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r'^Thinking Process:.*?(?=\n\s*\{)', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Find the start of the JSON object
+    start_idx = cleaned.find('{')
+    if start_idx == -1:
+        return cleaned
+        
+    # Find the end of the JSON object
+    end_idx = cleaned.rfind('}')
+    if end_idx == -1:
+        return cleaned[start_idx:]
+        
+    return cleaned[start_idx:end_idx + 1]
+
+
+def repair_truncated_json(text):
+    """
+    Best-effort repair of a JSON string truncated mid-stream (e.g. due to token limits).
+
+    Strategy:
+    1. Single forward pass tracking in-string state, bracket nesting stack, and
+       the last position where the JSON was in a structurally 'safe' state
+       (i.e., after a complete value, closing bracket, or comma — not mid-key or mid-value).
+    2. Truncate to that safe position, then close all open brackets in LIFO order.
+    3. Pad any missing top-level required keys with empty defaults so downstream
+       code always receives a structurally complete object.
+    """
+    if not text or not text.strip():
+        return text
+
+    in_string = False
+    escape_next = False
+    stack = []       # 'o' = object, 'a' = array
+    # Track the last position that is safe to cut at:
+    # after a closed string VALUE (not a key), after ']' or '}', or after ','
+    # We use a small state machine inside objects to distinguish key vs value strings.
+    # States inside an object: 'expect_key', 'expect_colon', 'expect_value', 'after_value'
+    # Inside arrays: always 'value' context.
+    ctx_stack = []   # mirrors stack, holds ('o','expect_key') or ('a','value') etc.
+    last_safe_end = 0  # byte index just past the last safe cut point
+
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+
+        if escape_next:
+            escape_next = False
+            i += 1
+            continue
+
+        if ch == '\\' and in_string:
+            escape_next = True
+            i += 1
+            continue
+
+        if ch == '"':
+            if in_string:
+                # String just closed
+                in_string = False
+                # Determine if this closed string was a VALUE (safe cut) or a KEY (not safe)
+                ctx = ctx_stack[-1] if ctx_stack else None
+                if ctx and ctx[0] == 'o':
+                    if ctx[1] == 'expect_value':
+                        # Closed a value string — safe cut
+                        last_safe_end = i + 1
+                        ctx_stack[-1] = ('o', 'after_value')
+                    elif ctx[1] == 'expect_key':
+                        # Closed a key string — NOT a safe cut yet
+                        ctx_stack[-1] = ('o', 'expect_colon')
+                elif ctx and ctx[0] == 'a':
+                    # Array element value closed — safe cut
+                    last_safe_end = i + 1
+            else:
+                # String opening
+                in_string = True
+                # Determine expected role
+                ctx = ctx_stack[-1] if ctx_stack else None
+                if ctx and ctx[0] == 'o' and ctx[1] == 'after_value':
+                    # After comma was consumed, now starting next key
+                    ctx_stack[-1] = ('o', 'expect_key')
+            i += 1
+            continue
+
+        if in_string:
+            i += 1
+            continue
+
+        # Outside string
+        if ch == '{':
+            stack.append('o')
+            ctx_stack.append(('o', 'expect_key'))
+        elif ch == '[':
+            stack.append('a')
+            ctx_stack.append(('a', 'value'))
+        elif ch == '}':
+            if stack:
+                stack.pop()
+                ctx_stack.pop()
+            last_safe_end = i + 1
+            # After closing an object, parent context advances
+            if ctx_stack:
+                parent = ctx_stack[-1]
+                if parent[0] == 'o' and parent[1] == 'expect_value':
+                    ctx_stack[-1] = ('o', 'after_value')
+        elif ch == ']':
+            if stack:
+                stack.pop()
+                ctx_stack.pop()
+            last_safe_end = i + 1
+            if ctx_stack:
+                parent = ctx_stack[-1]
+                if parent[0] == 'o' and parent[1] == 'expect_value':
+                    ctx_stack[-1] = ('o', 'after_value')
+        elif ch == ':':
+            if ctx_stack and ctx_stack[-1] == ('o', 'expect_colon'):
+                ctx_stack[-1] = ('o', 'expect_value')
+        elif ch == ',':
+            last_safe_end = i + 1
+            if ctx_stack:
+                parent = ctx_stack[-1]
+                if parent[0] == 'o':
+                    ctx_stack[-1] = ('o', 'expect_key')
+                # array stays in 'value' context
+        # primitives (digits, true/false/null) advance state when we hit next delimiter,
+        # so we handle them implicitly via the comma/bracket/brace paths above.
+
+        i += 1
+
+    # Truncate to last safe position (drops any dangling key, partial value, or mid-string)
+    safe_text = text[:last_safe_end]
+
+    # Recompute the bracket stack for the truncated text
+    stack2 = []
+    in_str2 = False
+    esc2 = False
+    for ch in safe_text:
+        if esc2:
+            esc2 = False
+            continue
+        if ch == '\\' and in_str2:
+            esc2 = True
+            continue
+        if ch == '"':
+            in_str2 = not in_str2
+            continue
+        if in_str2:
+            continue
+        if ch == '{':
+            stack2.append('o')
+        elif ch == '[':
+            stack2.append('a')
+        elif ch in ('}', ']'):
+            if stack2:
+                stack2.pop()
+
+    # Close all open structures
+    closing = ''.join('}' if s == 'o' else ']' for s in reversed(stack2))
+    repaired = safe_text.rstrip().rstrip(',') + closing
+
+    # Pad missing top-level required keys with empty defaults
+    REQUIRED_KEYS = {
+        "position_applied":       '{"title": "", "level": "unknown"}',
+        "self_evaluation":        '""',
+        "skills_and_specialties": '[]',
+        "languages":              '[]',
+        "certifications":         '[]',
+        "work_experience":        '[]',
+        "basic_information":      '{"email": "", "phone": "", "location": "", "other_info": ""}',
+        "education_background":   '[]',
+    }
+    try:
+        obj = json.loads(repaired)
+        for key, default_str in REQUIRED_KEYS.items():
+            if key not in obj:
+                obj[key] = json.loads(default_str)
+        return json.dumps(obj, ensure_ascii=False)
+    except json.JSONDecodeError:
+        # Repair failed — return what we have and let the caller handle it
+        return repaired
+
 
 def main():
     args = parse_args()
@@ -475,24 +697,35 @@ def main():
         elif args.provider == "local":
             result = run_local_inference(resume_text, model, tokenizer)
         else:
-            result = run_api_inference(resume_text, client, args.model_name)
+            result = run_api_inference(resume_text, client, args.model_name,
+                                       json_mode=not args.no_json_mode)
             
-        clean_result = result.strip()
-        if clean_result.startswith("```"):
-            lines = clean_result.split("\n")
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines[-1].startswith("```"):
-                lines = lines[:-1]
-            clean_result = "\n".join(lines).strip()
+        clean_result = extract_json_substring(result)
             
         try:
             parsed_json = json.loads(clean_result)
             formatted_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
         except json.JSONDecodeError:
-            print("Warning: Model output is not valid JSON.", file=sys.stderr)
-            print("Raw output below:", file=sys.stderr)
-            formatted_json = clean_result
+            print("Warning: Model output is not valid JSON. Attempting auto-repair...", file=sys.stderr)
+            repaired = repair_truncated_json(clean_result)
+            try:
+                parsed_json = json.loads(repaired)
+                formatted_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
+                print("  Auto-repair succeeded.", file=sys.stderr)
+            except json.JSONDecodeError:
+                print("  Auto-repair failed. Saving raw output.", file=sys.stderr)
+                formatted_json = clean_result
+                if args.output:
+                    if args.output.lower().endswith(".json"):
+                        txt_path = args.output[:-5] + ".txt"
+                    else:
+                        txt_path = args.output + ".txt"
+                    try:
+                        with open(txt_path, "w", encoding="utf-8") as f:
+                            f.write(result)
+                        print(f"Saved raw model output to {txt_path}", file=sys.stderr)
+                    except Exception as save_err:
+                        print(f"Warning: Failed to save raw model output to {txt_path}: {save_err}", file=sys.stderr)
             
         if args.output:
             with open(args.output, "w", encoding="utf-8") as f:
@@ -536,23 +769,34 @@ def main():
                 elif args.provider == "local":
                     result = run_local_inference(resume_text, model, tokenizer)
                 else:
-                    result = run_api_inference(resume_text, client, args.model_name)
+                    result = run_api_inference(resume_text, client, args.model_name,
+                                               json_mode=not args.no_json_mode)
                     
-                clean_result = result.strip()
-                if clean_result.startswith("```"):
-                    lines = clean_result.split("\n")
-                    if lines[0].startswith("```"):
-                        lines = lines[1:]
-                    if lines[-1].startswith("```"):
-                        lines = lines[:-1]
-                    clean_result = "\n".join(lines).strip()
+                clean_result = extract_json_substring(result)
                     
                 try:
                     parsed_json = json.loads(clean_result)
                     formatted_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
                 except json.JSONDecodeError:
-                    print(f"  Warning: Model output for {filename} is not valid JSON.", file=sys.stderr)
-                    formatted_json = clean_result
+                    print(f"  Warning: Model output for {filename} is not valid JSON. Attempting auto-repair...", file=sys.stderr)
+                    repaired = repair_truncated_json(clean_result)
+                    try:
+                        parsed_json = json.loads(repaired)
+                        formatted_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
+                        print(f"  Auto-repair succeeded for {filename}.", file=sys.stderr)
+                    except json.JSONDecodeError:
+                        print(f"  Auto-repair failed for {filename}. Saving raw output.", file=sys.stderr)
+                        formatted_json = clean_result
+                        if output_path.lower().endswith(".json"):
+                            txt_path = output_path[:-5] + ".txt"
+                        else:
+                            txt_path = output_path + ".txt"
+                        try:
+                            with open(txt_path, "w", encoding="utf-8") as f:
+                                f.write(result)
+                            print(f"  Saved raw model output to {txt_path}", file=sys.stderr)
+                        except Exception as save_err:
+                            print(f"  Warning: Failed to save raw model output to {txt_path}: {save_err}", file=sys.stderr)
                     
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write(formatted_json)
