@@ -240,24 +240,19 @@ def extract_text_from_pdf(pdf_path):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Vietnamese Resume Extractor using Qwen2.5 7B-Instruct")
+    parser = argparse.ArgumentParser(description="Vietnamese Resume Extractor (Local Inference)")
     parser.add_argument("--pdf", type=str, help="Path to a single PDF resume file")
     parser.add_argument("--dir", type=str, help="Path to a directory containing PDF resumes to scan")
-    parser.add_argument("--provider", type=str, choices=["local", "api"], default="local",
-                        help="Model inference provider: 'local' (Hugging Face transformers) or 'api' (OpenAI-compatible server)")
     parser.add_argument("--model-name", type=str, default="Qwen/Qwen2.5-7B-Instruct",
-                        help="Model repository name or path (for local) or model identifier (for api)")
-    parser.add_argument("--api-base", type=str, default="http://localhost:8000/v1",
-                        help="API base URL (only used if provider is 'api')")
-    parser.add_argument("--api-key", type=str, default="token-none",
-                        help="API key (only used if provider is 'api')")
+                        help="Model repository name or local path")
     parser.add_argument("--mock", action="store_true",
                         help="Mock run: performs text extraction and returns mock JSON output without loading the model")
     parser.add_argument("--output", type=str, help="Path to save the JSON output file (or output directory if --dir is used)")
-    parser.add_argument("--no-json-mode", action="store_true",
-                        help="Disable JSON-mode (response_format=json_object) for API inference. Use if your server does not support it.")
     parser.add_argument("--arr", type=str,
                         help="Comma-separated list of resume numbers to process (e.g., --arr=6,7,8,10)")
+    parser.add_argument("--image", action="store_true",
+                        help="Vision-only mode: send only PDF page images to the model, skip extracted text entirely. "
+                             "Use for resumes with complex multi-column or sidebar layouts where text extraction scrambles content.")
     return parser.parse_args()
 
 def get_system_prompt():
@@ -386,11 +381,11 @@ def run_mock_extraction(resume_text):
     }
     return json.dumps(mock_data, ensure_ascii=False, indent=2)
 
-def load_local_model(model_name):
-    print(f"Loading local model and tokenizer for: {model_name}...", file=sys.stderr)
+def load_local_model(model_name, image_mode=False):
+    print(f"Loading local model for: {model_name}...", file=sys.stderr)
     try:
         import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        from transformers import AutoModelForCausalLM, AutoTokenizer, AutoProcessor
     except ImportError:
         print("Error: PyTorch and Transformers libraries are required for local inference.", file=sys.stderr)
         print("Install them with: pip install torch transformers accelerate", file=sys.stderr)
@@ -399,13 +394,72 @@ def load_local_model(model_name):
     # Check GPU availability
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}", file=sys.stderr)
-    
+
+    if image_mode:
+        # VLMs require AutoModelForVision2Seq or AutoModelForImageTextToText — 
+        # AutoModelForCausalLM silently drops vision tensors (pixel_values, image_grid_thw, etc.) causing empty output.
+        model = None
+        # 1. Try AutoModelForImageTextToText
+        try:
+            from transformers import AutoModelForImageTextToText
+            model = AutoModelForImageTextToText.from_pretrained(
+                model_name,
+                torch_dtype="auto",
+                device_map="auto"
+            )
+            print(f"  [Vision] Loaded model with AutoModelForImageTextToText.", file=sys.stderr)
+        except Exception as e:
+            print(f"  Warning: AutoModelForImageTextToText failed ({e}). Trying AutoModelForVision2Seq...", file=sys.stderr)
+            
+        # 2. Try AutoModelForVision2Seq
+        if model is None:
+            try:
+                from transformers import AutoModelForVision2Seq
+                model = AutoModelForVision2Seq.from_pretrained(
+                    model_name,
+                    torch_dtype="auto",
+                    device_map="auto"
+                )
+                print(f"  [Vision] Loaded model with AutoModelForVision2Seq.", file=sys.stderr)
+            except Exception as e:
+                print(f"  Warning: AutoModelForVision2Seq failed ({e}). Trying Qwen2VLForConditionalGeneration...", file=sys.stderr)
+                
+        # 3. Try Qwen2VLForConditionalGeneration
+        if model is None:
+            try:
+                from transformers import Qwen2VLForConditionalGeneration
+                model = Qwen2VLForConditionalGeneration.from_pretrained(
+                    model_name,
+                    torch_dtype="auto",
+                    device_map="auto"
+                )
+                print(f"  [Vision] Loaded model with Qwen2VLForConditionalGeneration.", file=sys.stderr)
+            except Exception as e:
+                print(f"  Warning: Qwen2VLForConditionalGeneration failed ({e}). Falling back to AutoModelForCausalLM...", file=sys.stderr)
+                
+        # 4. Fallback to AutoModelForCausalLM
+        if model is None:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype="auto",
+                device_map="auto"
+            )
+            print(f"  [Vision] Loaded model with AutoModelForCausalLM.", file=sys.stderr)
+            
+        try:
+            processor = AutoProcessor.from_pretrained(model_name)
+            print(f"  [Vision] Loaded AutoProcessor.", file=sys.stderr)
+            return model, processor
+        except Exception as e:
+            print(f"  Warning: Could not load AutoProcessor ({e}). Falling back to AutoTokenizer.", file=sys.stderr)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype="auto",
+            device_map="auto"
+        )
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype="auto",
-        device_map="auto"
-    )
     return model, tokenizer
 
 def run_local_inference(resume_text, model, tokenizer):
@@ -423,9 +477,30 @@ def run_local_inference(resume_text, model, tokenizer):
     
     model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
     
+    # Filter inputs to only keep keys accepted by model.forward or model.generate
+    import inspect
+    sig_forward = inspect.signature(model.forward).parameters
+    sig_generate = inspect.signature(model.generate).parameters
+    standard_generate_keys = {
+        "max_length", "max_new_tokens", "min_length", "min_new_tokens", 
+        "early_stopping", "max_time", "do_sample", "num_beams", "num_beam_groups", 
+        "penalty_alpha", "use_cache", "temperature", "top_k", "top_p", "min_p", 
+        "typical_p", "epsilon_cutoff", "eta_cutoff", "diversity_penalty", 
+        "repetition_penalty", "encoder_repetition_penalty", "length_penalty", 
+        "no_repeat_ngram_size", "bad_words_ids", "force_words_ids", 
+        "renormalize_logits", "constraints", "forced_bos_token_id", 
+        "forced_eos_token_id", "remove_invalid_values", "exponential_decay_length_penalty", 
+        "suppress_tokens", "begin_suppress_tokens", "forced_decoder_ids", 
+        "sequence_bias", "guidance_scale", "low_memory", "num_return_sequences", 
+        "output_attentions", "output_hidden_states", "output_scores", 
+        "return_dict_in_generate", "pad_token_id", "bos_token_id", "eos_token_id"
+    }
+    valid_keys = set(sig_forward.keys()) | set(sig_generate.keys()) | standard_generate_keys
+    filtered_inputs = {k: v for k, v in model_inputs.items() if k in valid_keys}
+    
     print("Generating structured output...", file=sys.stderr)
     generated_ids = model.generate(
-        **model_inputs,
+        **filtered_inputs,
         max_new_tokens=100000,
         do_sample=True,
         temperature=0.7,
@@ -443,90 +518,144 @@ def run_local_inference(resume_text, model, tokenizer):
     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
     return response
 
-def get_api_client(api_base, api_key):
+def run_local_inference_vision(pdf_path, model, processor):
+    """Vision-only local inference: renders PDF pages as images and passes them to the model."""
     try:
-        from openai import OpenAI
+        import fitz
     except ImportError:
-        print("Error: openai library is required for API inference.", file=sys.stderr)
-        print("Install it with: pip install openai", file=sys.stderr)
-        sys.exit(1)
+        raise ImportError("PyMuPDF (fitz) is required for --image mode. Install with: pip install pymupdf")
+    try:
+        from PIL import Image
+        import io
+    except ImportError:
+        raise ImportError("Pillow is required for --image mode. Install with: pip install Pillow")
+
+    import base64
+    # Render each PDF page to a PIL image
+    doc = fitz.open(pdf_path)
+    pil_images = []
+    content = []
+    content.append({"type": "text", "text": "Dưới đây là hình ảnh gốc của CV. Hãy đọc trực tiếp từ hình ảnh để trích xuất thông tin:"})
+    for page_idx, page in enumerate(doc, start=1):
+        pix = page.get_pixmap(dpi=150)
+        img_bytes = pix.tobytes("png")
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        pil_images.append(img)
         
-    return OpenAI(base_url=api_base, api_key=api_key)
-
-def run_api_inference(resume_text, pdf_path, client, model_name, json_mode=True):
-    content_list = []
-
-    # Images come FIRST — they are the primary, layout-accurate source.
-    # The extracted text follows as a supplementary hint only.
-    images_attached = 0
-    if pdf_path and os.path.exists(pdf_path):
-        try:
-            import fitz
-            import base64
-            doc = fitz.open(pdf_path)
-            content_list.append({
-                "type": "text",
-                "text": "Dưới đây là hình ảnh gốc của CV. Hãy đọc trực tiếp từ hình ảnh để trích xuất thông tin, đặc biệt là bố cục, vị trí và mốc thời gian của từng công việc:"
-            })
-            for page_idx, page in enumerate(doc, start=1):
-                pix = page.get_pixmap(dpi=150)
-                img_bytes = pix.tobytes("png")
-                base64_image = base64.b64encode(img_bytes).decode("utf-8")
-                content_list.append({
-                    "type": "text",
-                    "text": f"[Trang {page_idx}]"
-                })
-                content_list.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/png;base64,{base64_image}"
-                    }
-                })
-            images_attached = len(doc)
-            print(f"  [API] Successfully attached {images_attached} PDF pages as vision input.", file=sys.stderr)
-        except Exception as e:
-            print(f"  Warning: Failed to render PDF pages for vision input: {e}", file=sys.stderr)
-
-    # Extracted text comes after images, as a supplementary reference.
-    hint_label = (
-        "Văn bản dưới đây được trích xuất tự động từ PDF. "
-        "Dùng làm tham khảo bổ sung — có thể bị sai thứ tự do bố cục nhiều cột. "
-        "Ưu tiên hình ảnh phía trên khi có xung đột, đặc biệt với mốc thời gian:"
-        if images_attached > 0 else
-        "Dưới đây là văn bản trích xuất từ CV của ứng viên:"
-    )
-    content_list.append({"type": "text", "text": f"{hint_label}\n\n{resume_text}"})
+        base64_img = base64.b64encode(img_bytes).decode("utf-8")
+        image_url = f"data:image/png;base64,{base64_img}"
+        
+        content.append({
+            "type": "image_url",
+            "image_url": {
+                "url": image_url
+            }
+        })
+        content.append({"type": "text", "text": f"[Trang {page_idx}]"})
+    print(f"  [Local Vision] Rendered {len(pil_images)} pages from {pdf_path}.", file=sys.stderr)
 
     messages = [
         {"role": "system", "content": get_system_prompt()},
-        {"role": "user", "content": content_list}
+        {"role": "user", "content": content}
     ]
 
-    kwargs = dict(
-        model=model_name,
-        messages=messages,
-        temperature=0.7,
-        top_p=0.8,
-        presence_penalty=1.5,
-        max_tokens=100000,
+    # Map standard messages to local format (replacing image_url with image format) for processor compatibility
+    local_messages = []
+    for msg in messages:
+        new_msg = {"role": msg["role"]}
+        if isinstance(msg["content"], list):
+            new_content = []
+            for item in msg["content"]:
+                if item.get("type") == "image_url":
+                    new_content.append({
+                        "type": "image",
+                        "image": item["image_url"]["url"]
+                    })
+                else:
+                    new_content.append(item)
+            new_msg["content"] = new_content
+        else:
+            new_msg["content"] = msg["content"]
+        local_messages.append(new_msg)
+
+    # Apply chat template
+    try:
+        text = processor.apply_chat_template(
+            local_messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
+        )
+    except TypeError:
+        # Some processors don't support enable_thinking
+        text = processor.apply_chat_template(
+            local_messages, tokenize=False, add_generation_prompt=True
+        )
+
+    # Process inputs: try qwen_vl_utils first (Qwen VL family), fall back to direct PIL
+    try:
+        from qwen_vl_utils import process_vision_info
+        image_inputs, video_inputs = process_vision_info(local_messages)
+        inputs = processor(
+            text=[text],
+            images=image_inputs or None,
+            videos=video_inputs or None,
+            padding=True,
+            return_tensors="pt"
+        ).to(model.device)
+        print("  [Local Vision] Using qwen_vl_utils for image processing.", file=sys.stderr)
+    except ImportError:
+        inputs = processor(
+            text=[text],
+            images=pil_images,
+            padding=True,
+            return_tensors="pt"
+        ).to(model.device)
+        print("  [Local Vision] Using direct PIL image processing.", file=sys.stderr)
+
+    eos_id = (
+        processor.tokenizer.eos_token_id
+        if hasattr(processor, "tokenizer")
+        else processor.eos_token_id
     )
 
-    # JSON mode constrains the model to only emit valid JSON tokens,
-    # eliminating stray text, markdown fences, or incomplete structures.
-    if json_mode:
-        try:
-            kwargs["response_format"] = {"type": "json_object"}
-            response = client.chat.completions.create(**kwargs)
-            print("  [API] JSON mode active.", file=sys.stderr)
-        except Exception as e:
-            # Server may not support response_format; fall back to plain completion
-            print(f"  Warning: JSON mode not supported ({e}), retrying without it.", file=sys.stderr)
-            del kwargs["response_format"]
-            response = client.chat.completions.create(**kwargs)
-    else:
-        response = client.chat.completions.create(**kwargs)
+    # Filter inputs to only keep keys accepted by model.forward or model.generate
+    import inspect
+    sig_forward = inspect.signature(model.forward).parameters
+    sig_generate = inspect.signature(model.generate).parameters
+    standard_generate_keys = {
+        "max_length", "max_new_tokens", "min_length", "min_new_tokens", 
+        "early_stopping", "max_time", "do_sample", "num_beams", "num_beam_groups", 
+        "penalty_alpha", "use_cache", "temperature", "top_k", "top_p", "min_p", 
+        "typical_p", "epsilon_cutoff", "eta_cutoff", "diversity_penalty", 
+        "repetition_penalty", "encoder_repetition_penalty", "length_penalty", 
+        "no_repeat_ngram_size", "bad_words_ids", "force_words_ids", 
+        "renormalize_logits", "constraints", "forced_bos_token_id", 
+        "forced_eos_token_id", "remove_invalid_values", "exponential_decay_length_penalty", 
+        "suppress_tokens", "begin_suppress_tokens", "forced_decoder_ids", 
+        "sequence_bias", "guidance_scale", "low_memory", "num_return_sequences", 
+        "output_attentions", "output_hidden_states", "output_scores", 
+        "return_dict_in_generate", "pad_token_id", "bos_token_id", "eos_token_id"
+    }
+    valid_keys = set(sig_forward.keys()) | set(sig_generate.keys()) | standard_generate_keys
+    filtered_inputs = {k: v for k, v in inputs.items() if k in valid_keys}
 
-    return response.choices[0].message.content
+    print("Generating structured output (vision mode)...", file=sys.stderr)
+    generated_ids = model.generate(
+        **filtered_inputs,
+        max_new_tokens=100000,
+        do_sample=True,
+        temperature=0.7,
+        top_p=0.8,
+        top_k=20,
+        min_p=0.0,
+        repetition_penalty=1.0,
+        pad_token_id=eos_id
+    )
+
+    # Trim the prompt tokens from the output
+    input_len = inputs["input_ids"].shape[1]
+    trimmed = generated_ids[:, input_len:]
+    response = processor.batch_decode(trimmed, skip_special_tokens=True)[0]
+    return response
+
 
 def extract_json_substring(text):
     """
@@ -732,16 +861,12 @@ def main():
         print("Error: You cannot specify both --pdf and --dir. Please choose one.", file=sys.stderr)
         sys.exit(1)
         
-    # Initialize shared model/client resources once
+    # Initialize model once; reused across all files in --dir mode
     model = None
     tokenizer = None
-    client = None
-    
+
     if not args.mock:
-        if args.provider == "local":
-            model, tokenizer = load_local_model(args.model_name)
-        elif args.provider == "api":
-            client = get_api_client(args.api_base, args.api_key)
+        model, tokenizer = load_local_model(args.model_name, image_mode=args.image)
             
     if args.pdf:
         # Processing a single PDF file
@@ -757,21 +882,24 @@ def main():
             if not match or int(match.group(1)) not in arr_indices:
                 print(f"Error: {args.pdf} does not match the filter in --arr ({args.arr}).", file=sys.stderr)
                 sys.exit(1)
-        try:
-            print(f"Extracting text from {args.pdf}...", file=sys.stderr)
-            resume_text = extract_text_from_pdf(args.pdf)
-            print(f"Extracted {len(resume_text)} characters.", file=sys.stderr)
-        except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
+        if args.image and not args.mock:
+            print(f"[--image] Vision-only mode: skipping text extraction for {args.pdf}.", file=sys.stderr)
+            resume_text = ""
+        else:
+            try:
+                print(f"Extracting text from {args.pdf}...", file=sys.stderr)
+                resume_text = extract_text_from_pdf(args.pdf)
+                print(f"Extracted {len(resume_text)} characters.", file=sys.stderr)
+            except Exception as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
         
         if args.mock:
             result = run_mock_extraction(resume_text)
-        elif args.provider == "local":
-            result = run_local_inference(resume_text, model, tokenizer)
+        elif args.image:
+            result = run_local_inference_vision(args.pdf, model, tokenizer)
         else:
-            result = run_api_inference(resume_text, args.pdf, client, args.model_name,
-                                       json_mode=not args.no_json_mode)
+            result = run_local_inference(resume_text, model, tokenizer)
             
         clean_result = extract_json_substring(result)
             
@@ -848,16 +976,19 @@ def main():
             
             print(f"\n[{idx}/{len(pdf_files)}] Processing {filename}...", file=sys.stderr)
             try:
-                resume_text = extract_text_from_pdf(pdf_path)
-                print(f"  Extracted {len(resume_text)} characters.", file=sys.stderr)
-                
+                if args.image and not args.mock:
+                    print(f"  [--image] Vision-only mode: skipping text extraction.", file=sys.stderr)
+                    resume_text = ""
+                else:
+                    resume_text = extract_text_from_pdf(pdf_path)
+                    print(f"  Extracted {len(resume_text)} characters.", file=sys.stderr)
+
                 if args.mock:
                     result = run_mock_extraction(resume_text)
-                elif args.provider == "local":
-                    result = run_local_inference(resume_text, model, tokenizer)
+                elif args.image:
+                    result = run_local_inference_vision(pdf_path, model, tokenizer)
                 else:
-                    result = run_api_inference(resume_text, pdf_path, client, args.model_name,
-                                               json_mode=not args.no_json_mode)
+                    result = run_local_inference(resume_text, model, tokenizer)
                     
                 clean_result = extract_json_substring(result)
                     
