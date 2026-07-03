@@ -256,73 +256,83 @@ def parse_args():
     parser.add_argument("--output", type=str, help="Path to save the JSON output file (or output directory if --dir is used)")
     parser.add_argument("--no-json-mode", action="store_true",
                         help="Disable JSON-mode (response_format=json_object) for API inference. Use if your server does not support it.")
+    parser.add_argument("--arr", type=str,
+                        help="Comma-separated list of resume numbers to process (e.g., --arr=6,7,8,10)")
     return parser.parse_args()
 
 def get_system_prompt():
-    return """Bạn là một chuyên viên tuyển dụng AI chịu trách nhiệm trích xuất thông tin có cấu trúc từ sơ yếu lý lịch (CV) tiếng Việt.
-Đọc kỹ toàn bộ văn bản CV và trả về đúng định dạng JSON sau (không có bất kỳ văn bản nào ngoài JSON):
+    return """Bạn là chuyên viên tuyển dụng AI, trích xuất thông tin có cấu trúc từ CV tiếng Việt.
+Chỉ trả về JSON hợp lệ theo schema dưới đây, không kèm bất kỳ văn bản hay markdown nào.
 
+QUY TẮC XỬ LÝ:
+1. NGUỒN DỮ LIỆU: Nếu có hình ảnh CV, hãy đọc trực tiếp từ hình ảnh — đây là nguồn chính xác nhất. Văn bản trích xuất tự động chỉ là gợi ý bổ sung, có thể bị sai thứ tự do bố cục nhiều cột.
+2. MỐC THỜI GIAN: Xác định ngày bắt đầu/kết thúc của từng công việc dựa trên vị trí trực quan trong hình ảnh (không dựa vào thứ tự xuất hiện trong văn bản). CV nhiều cột thường có ngày tháng nằm ở cột bên cạnh tên công ty — hãy đối chiếu hình ảnh để ghép đúng.
+3. LEVEL: Tính từ ngày bắt đầu công việc cũ nhất đến ngày của công việc gần nhất. Phân loại: <2 năm = 'junior', 2–5 năm = 'mid-level', >5 năm = 'senior', quản lý/trưởng phòng trở lên = 'leadership', không đủ dữ liệu = 'unknown'.
+4. TIÊU ĐỀ VỊ TRÍ: Sao chép chính xác từng ký tự như trên CV. Không thêm, không bớt từ nào. Chỉ tự suy luận khi CV không ghi rõ.
+5. RESPONSIBILITIES: Trích xuất đầy đủ — không tóm tắt, không bỏ sót. Bao gồm cả nội dung viết dạng đoạn văn. Với CV bố cục lạ, hãy đối chiếu logic để ghép đúng nhiệm vụ với từng công việc.
+6. NGÔN NGỮ: Khi CV có song ngữ (Anh + Việt), chỉ lấy tiếng Việt. Ngoại ngữ vào `languages`, không vào `skills_and_specialties`.
+
+JSON SCHEMA:
 {
   "position_applied": {
-    "title": "Vị trí ứng tuyển hoặc chức danh chuyên môn chính xác nhất rút ra từ CV",
-    "level": "Cấp bậc: 'junior' (<2 năm), 'mid-level' (2–5 năm), 'senior' (>5 năm), 'leadership' (quản lý/trưởng phòng trở lên), hoặc 'unknown'"
+    "title": "Vị trí ứng tuyển ghi trên CV, hoặc chức danh tự suy luận nếu CV không ghi.",
+    "level": "junior | mid-level | senior | leadership | unknown"
   },
-  "self_evaluation": "Tóm tắt định hướng nghề nghiệp hoặc phần tự giới thiệu của ứng viên. Để trống nếu không có.",
-  "skills_and_specialties": [
-    "Kỹ năng hoặc chuyên môn (không bao gồm ngoại ngữ)"
-  ],
+  "self_evaluation": "Phần tự giới thiệu hoặc định hướng nghề nghiệp. Để trống nếu không có.",
+  "skills_and_specialties": ["Kỹ năng hoặc chuyên môn (không bao gồm ngoại ngữ)"],
   "languages": [
     {
       "language": "Tên ngoại ngữ",
-      "proficiency": "Mức độ thông thạo. Để trống nếu không có.",
+      "proficiency": "Mức độ. Để trống nếu không có.",
       "certificates": [
         {
-          "name": "Tên chứng chỉ ngoại ngữ",
+          "name": "Tên chứng chỉ",
           "score": "Điểm số. Để trống nếu không có.",
           "issuing_organization": "Tổ chức cấp. Để trống nếu không có.",
-          "duration": "Thời gian cấp hoặc thời hạn. Để trống nếu không có."
+          "duration": "Thời hạn. Để trống nếu không có."
         }
       ]
     }
   ],
   "certifications": [
     {
-      "name": "Tên chứng chỉ chuyên môn (không phải ngoại ngữ, không phải bằng đại học)",
+      "name": "Chứng chỉ chuyên môn (không phải ngoại ngữ, không phải bằng đại học)",
       "issuing_organization": "Tổ chức cấp. Để trống nếu không có.",
-      "duration": "Thời gian cấp hoặc thời hạn. Để trống nếu không có."
+      "duration": "Thời hạn. Để trống nếu không có."
     }
   ],
   "work_experience": [
     {
       "company_name": "Tên công ty",
-      "company_description": "Mô tả ngắn về công ty: quy mô, lĩnh vực, loại khách hàng, v.v. Để trống nếu không có.",
-      "position": "Chức danh công việc chính thức tại công ty đó",
-      "duration": "Thời gian làm việc",
-      "responsibilities": "Mô tả đầy đủ nhiệm vụ, trách nhiệm và thành tựu. Sử dụng định dạng danh sách phân cấp với '- ' cho mục chính, '+ ' cho mục con."
+      "company_description": "Quy mô, lĩnh vực, loại khách hàng, v.v. Để trống nếu không có.",
+      "position": "Chức danh tại công ty",
+      "duration": "Thời gian làm việc (tháng/năm bắt đầu – tháng/năm kết thúc)",
+      "responsibilities": "Toàn bộ nhiệm vụ, trách nhiệm, thành tựu. Dùng '- ' cho mục chính, '+ ' cho mục con."
     }
   ],
   "basic_information": {
-    "email": "Email liên hệ",
+    "email": "Email",
     "phone": "Số điện thoại",
-    "location": "Nơi ở hiện tại hoặc quê quán. Để trống nếu không có.",
-    "other_info": "Thông tin liên hệ bổ sung (LinkedIn, website, Skype, v.v.). Để trống nếu không có."
+    "location": "Nơi ở hoặc quê quán. Để trống nếu không có.",
+    "other_info": "LinkedIn, website, Skype, v.v. Để trống nếu không có."
   },
   "education_background": [
     {
-      "university_name": "Tên trường hoặc cơ sở đào tạo",
-      "degree": "Bằng cấp (dịch sang tiếng Việt nếu ghi bằng tiếng Anh)",
-      "field_of_study": "Ngành học hoặc chuyên ngành (dịch sang tiếng Việt nếu cần). Để trống nếu không rõ.",
-      "graduation_year": "Năm tốt nghiệp hoặc trạng thái hoàn thành",
-      "gpa": "Điểm GPA hoặc xếp loại học lực (dịch sang tiếng Việt nếu cần). Để trống nếu không có."
+      "university_name": "Tên trường",
+      "degree": "Bằng cấp (tiếng Việt)",
+      "field_of_study": "Ngành học (tiếng Việt). Để trống nếu không rõ.",
+      "graduation_year": "Năm tốt nghiệp hoặc trạng thái",
+      "gpa": "GPA hoặc xếp loại (tiếng Việt). Để trống nếu không có."
+    }
+  ],
+  "projects": [
+    {
+      "project_name": "Tên dự án",
+      "description": "Mô tả, công nghệ, kết quả, vai trò. Để trống nếu không có.",
+      "duration": "Thời gian (tháng/năm bắt đầu – tháng/năm kết thúc). Để trống nếu không có."
     }
   ]
 }
-
-LƯU Ý:
-1. Chỉ trả về JSON hợp lệ, không có giải thích hay markdown.
-2. Trích xuất đầy đủ tất cả kinh nghiệm làm việc — mỗi vị trí/dự án riêng biệt là một phần tử riêng trong mảng `work_experience`.
-3. Không bỏ sót hoặc tóm tắt nội dung `responsibilities`; thu thập toàn bộ chi tiết nhiệm vụ từ CV.
-4. Ngoại ngữ thuộc mục `languages`, không thuộc `skills_and_specialties`.
 """
 
 def run_mock_extraction(resume_text):
@@ -364,6 +374,13 @@ def run_mock_extraction(resume_text):
                 "degree": "Kỹ sư",
                 "field_of_study": "Khoa học Máy tính",
                 "graduation_year": "2022"
+            }
+        ],
+        "projects": [
+            {
+                "project_name": "Hệ thống Quản lý Nhân sự HRMS",
+                "description": "Xây dựng hệ thống quản lý thông tin nhân viên, chấm công và tính lương sử dụng Django và React.",
+                "duration": "09/2023 - 12/2023"
             }
         ]
     }
@@ -436,10 +453,53 @@ def get_api_client(api_base, api_key):
         
     return OpenAI(base_url=api_base, api_key=api_key)
 
-def run_api_inference(resume_text, client, model_name, json_mode=True):
+def run_api_inference(resume_text, pdf_path, client, model_name, json_mode=True):
+    content_list = []
+
+    # Images come FIRST — they are the primary, layout-accurate source.
+    # The extracted text follows as a supplementary hint only.
+    images_attached = 0
+    if pdf_path and os.path.exists(pdf_path):
+        try:
+            import fitz
+            import base64
+            doc = fitz.open(pdf_path)
+            content_list.append({
+                "type": "text",
+                "text": "Dưới đây là hình ảnh gốc của CV. Hãy đọc trực tiếp từ hình ảnh để trích xuất thông tin, đặc biệt là bố cục, vị trí và mốc thời gian của từng công việc:"
+            })
+            for page_idx, page in enumerate(doc, start=1):
+                pix = page.get_pixmap(dpi=150)
+                img_bytes = pix.tobytes("png")
+                base64_image = base64.b64encode(img_bytes).decode("utf-8")
+                content_list.append({
+                    "type": "text",
+                    "text": f"[Trang {page_idx}]"
+                })
+                content_list.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{base64_image}"
+                    }
+                })
+            images_attached = len(doc)
+            print(f"  [API] Successfully attached {images_attached} PDF pages as vision input.", file=sys.stderr)
+        except Exception as e:
+            print(f"  Warning: Failed to render PDF pages for vision input: {e}", file=sys.stderr)
+
+    # Extracted text comes after images, as a supplementary reference.
+    hint_label = (
+        "Văn bản dưới đây được trích xuất tự động từ PDF. "
+        "Dùng làm tham khảo bổ sung — có thể bị sai thứ tự do bố cục nhiều cột. "
+        "Ưu tiên hình ảnh phía trên khi có xung đột, đặc biệt với mốc thời gian:"
+        if images_attached > 0 else
+        "Dưới đây là văn bản trích xuất từ CV của ứng viên:"
+    )
+    content_list.append({"type": "text", "text": f"{hint_label}\n\n{resume_text}"})
+
     messages = [
         {"role": "system", "content": get_system_prompt()},
-        {"role": "user", "content": f"Dưới đây là văn bản trích xuất từ CV của ứng viên:\n\n{resume_text}"}
+        {"role": "user", "content": content_list}
     ]
 
     kwargs = dict(
@@ -648,6 +708,7 @@ def repair_truncated_json(text):
         "work_experience":        '[]',
         "basic_information":      '{"email": "", "phone": "", "location": "", "other_info": ""}',
         "education_background":   '[]',
+        "projects":               '[]',
     }
     try:
         obj = json.loads(repaired)
@@ -684,6 +745,18 @@ def main():
             
     if args.pdf:
         # Processing a single PDF file
+        if args.arr:
+            import re
+            try:
+                arr_indices = {int(x.strip()) for x in args.arr.split(",") if x.strip()}
+            except ValueError:
+                print("Error: --arr must be a comma-separated list of integers.", file=sys.stderr)
+                sys.exit(1)
+            pdf_basename = os.path.splitext(os.path.basename(args.pdf))[0]
+            match = re.search(r'vietnamese_resume_(\d+)', pdf_basename, re.IGNORECASE)
+            if not match or int(match.group(1)) not in arr_indices:
+                print(f"Error: {args.pdf} does not match the filter in --arr ({args.arr}).", file=sys.stderr)
+                sys.exit(1)
         try:
             print(f"Extracting text from {args.pdf}...", file=sys.stderr)
             resume_text = extract_text_from_pdf(args.pdf)
@@ -697,7 +770,7 @@ def main():
         elif args.provider == "local":
             result = run_local_inference(resume_text, model, tokenizer)
         else:
-            result = run_api_inference(resume_text, client, args.model_name,
+            result = run_api_inference(resume_text, args.pdf, client, args.model_name,
                                        json_mode=not args.no_json_mode)
             
         clean_result = extract_json_substring(result)
@@ -747,6 +820,20 @@ def main():
         os.makedirs(args.output, exist_ok=True)
         
         pdf_files = [f for f in os.listdir(args.dir) if f.lower().endswith('.pdf')]
+        if args.arr:
+            import re
+            try:
+                arr_indices = {int(x.strip()) for x in args.arr.split(",") if x.strip()}
+            except ValueError:
+                print("Error: --arr must be a comma-separated list of integers.", file=sys.stderr)
+                sys.exit(1)
+            
+            def is_approved_resume(fn):
+                m = re.search(r'vietnamese_resume_(\d+)', fn, re.IGNORECASE)
+                return m and int(m.group(1)) in arr_indices
+                
+            pdf_files = [f for f in pdf_files if is_approved_resume(f)]
+
         if not pdf_files:
             print(f"No PDF files found in {args.dir}.", file=sys.stderr)
             sys.exit(0)
@@ -769,7 +856,7 @@ def main():
                 elif args.provider == "local":
                     result = run_local_inference(resume_text, model, tokenizer)
                 else:
-                    result = run_api_inference(resume_text, client, args.model_name,
+                    result = run_api_inference(resume_text, pdf_path, client, args.model_name,
                                                json_mode=not args.no_json_mode)
                     
                 clean_result = extract_json_substring(result)
