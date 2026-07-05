@@ -3,6 +3,7 @@ import os
 import sys
 import json
 import argparse
+import time
 
 # Fallback OCR Helper
 def run_fallback_ocr(page):
@@ -253,78 +254,76 @@ def parse_args():
     parser.add_argument("--image", action="store_true",
                         help="Vision-only mode: send only PDF page images to the model, skip extracted text entirely. "
                              "Use for resumes with complex multi-column or sidebar layouts where text extraction scrambles content.")
+    parser.add_argument("--approved", action="store_true",
+                        help="Only process PDFs that have a corresponding ground truth JSON in approved_jsons")
     return parser.parse_args()
 
 def get_system_prompt():
-    return """Bạn là chuyên viên tuyển dụng AI, trích xuất thông tin có cấu trúc từ CV tiếng Việt.
-Chỉ trả về JSON hợp lệ theo schema dưới đây, không kèm bất kỳ văn bản hay markdown nào.
+    return """You are an AI resume extraction specialist. Your only job is to extract structured information from a resume and return it as valid JSON matching the schema below. Output nothing else — no markdown, no prose, no code fences.
 
-QUY TẮC XỬ LÝ:
-1. NGUỒN DỮ LIỆU: Nếu có hình ảnh CV, hãy đọc trực tiếp từ hình ảnh — đây là nguồn chính xác nhất. Văn bản trích xuất tự động chỉ là gợi ý bổ sung, có thể bị sai thứ tự do bố cục nhiều cột.
-2. MỐC THỜI GIAN: Xác định ngày bắt đầu/kết thúc của từng công việc dựa trên vị trí trực quan trong hình ảnh (không dựa vào thứ tự xuất hiện trong văn bản). CV nhiều cột thường có ngày tháng nằm ở cột bên cạnh tên công ty — hãy đối chiếu hình ảnh để ghép đúng.
-3. LEVEL: Tính từ ngày bắt đầu công việc cũ nhất đến ngày của công việc gần nhất. Phân loại: <2 năm = 'junior', 2–5 năm = 'mid-level', >5 năm = 'senior', quản lý/trưởng phòng trở lên = 'leadership', không đủ dữ liệu = 'unknown'.
-4. TIÊU ĐỀ VỊ TRÍ: Sao chép chính xác từng ký tự như trên CV. Không thêm, không bớt từ nào. Chỉ tự suy luận khi CV không ghi rõ.
-5. RESPONSIBILITIES: Trích xuất đầy đủ — không tóm tắt, không bỏ sót. Bao gồm cả nội dung viết dạng đoạn văn. Với CV bố cục lạ, hãy đối chiếu logic để ghép đúng nhiệm vụ với từng công việc.
-6. NGÔN NGỮ: Khi CV có song ngữ (Anh + Việt), chỉ lấy tiếng Việt. Ngoại ngữ vào `languages`, không vào `skills_and_specialties`.
+EXTRACTION RULES:
+1. EXTRACT ONLY — never modify, rephrase, translate, or infer beyond what is explicitly written. Copy text character-for-character as it appears on the resume. Only use inference when the resume genuinely omits a required field (e.g. position title not stated).
+2. LANGUAGE SELECTION — if the resume contains two languages (e.g. Vietnamese + English), first determine the dominant language: if the resume is primarily Vietnamese, favor Vietnamese text throughout; if primarily English, favor English text. Apply this consistently to all fields.
+3. IMAGE SOURCE — when resume page images are provided, read directly from the images (the authoritative source). Extracted text is a supplementary hint only and may be out of order due to multi-column layouts; cross-reference the image to correctly pair dates, positions, and responsibilities.
 
 JSON SCHEMA:
 {
   "position_applied": {
-    "title": "Vị trí ứng tuyển ghi trên CV, hoặc chức danh tự suy luận nếu CV không ghi.",
-    "level": "junior | mid-level | senior | leadership | unknown"
+    "title": "Job title as written on the resume, or inferred from context if not stated explicitly.",
+    "level": "Classify based on total years of experience (earliest job start to most recent job): <2 years = 'junior', 2-5 years = 'mid-level', >5 years = 'senior', manager/team-lead or above = 'leadership', insufficient data = 'unknown'. Values: junior | mid-level | senior | leadership | unknown"
   },
-  "self_evaluation": "Phần tự giới thiệu hoặc định hướng nghề nghiệp. Để trống nếu không có.",
-  "skills_and_specialties": ["Kỹ năng hoặc chuyên môn (không bao gồm ngoại ngữ)"],
+  "self_evaluation": "Personal summary or career objective section verbatim. Empty string if not present.",
+  "skills_and_specialties": ["Skills, tools, technologies, and competencies extracted from the entire resume — including skills sections, work experience, projects, and education. Do not include languages. Extract all, omit none."],
   "languages": [
     {
-      "language": "Tên ngoại ngữ",
-      "proficiency": "Mức độ. Để trống nếu không có.",
+      "language": "Language name",
+      "proficiency": "Proficiency level as written. Empty string if not stated.",
       "certificates": [
         {
-          "name": "Tên chứng chỉ",
-          "score": "Điểm số. Để trống nếu không có.",
-          "issuing_organization": "Tổ chức cấp. Để trống nếu không có.",
-          "duration": "Thời hạn. Để trống nếu không có."
+          "name": "Certificate name",
+          "score": "Score as written. Empty string if not stated.",
+          "issuing_organization": "Issuing organization as written. Empty string if not stated.",
+          "duration": "Validity period as written. Empty string if not stated."
         }
       ]
     }
   ],
   "certifications": [
     {
-      "name": "Chứng chỉ chuyên môn (không phải ngoại ngữ, không phải bằng đại học)",
-      "issuing_organization": "Tổ chức cấp. Để trống nếu không có.",
-      "duration": "Thời hạn. Để trống nếu không có."
+      "name": "Professional certification name (exclude language certificates and academic degrees)",
+      "issuing_organization": "Issuing organization as written. Empty string if not stated.",
+      "duration": "Validity period as written. Empty string if not stated."
     }
   ],
   "work_experience": [
     {
-      "company_name": "Tên công ty",
-      "company_description": "Quy mô, lĩnh vực, loại khách hàng, v.v. Để trống nếu không có.",
-      "position": "Chức danh tại công ty",
-      "duration": "Thời gian làm việc (tháng/năm bắt đầu – tháng/năm kết thúc)",
-      "responsibilities": "Toàn bộ nhiệm vụ, trách nhiệm, thành tựu. Dùng '- ' cho mục chính, '+ ' cho mục con."
+      "company_name": "Company name as written",
+      "company_description": "Company size, industry, client type, etc. as written. Empty string if not stated.",
+      "position": "Job title at this company as written",
+      "duration": "Employment period (start month/year - end month/year) as written. Use the image to correctly match dates to each job in multi-column layouts.",
+      "responsibilities": "All duties, responsibilities, and achievements verbatim. Extract completely — do not summarize or omit. Use '- ' for main items, '+ ' for sub-items."
     }
   ],
   "basic_information": {
-    "email": "Email",
-    "phone": "Số điện thoại",
-    "location": "Nơi ở hoặc quê quán. Để trống nếu không có.",
-    "other_info": "LinkedIn, website, Skype, v.v. Để trống nếu không có."
+    "email": "Email address as written",
+    "phone": "Phone number as written",
+    "location": "Residence or hometown as written. Empty string if not stated.",
+    "other_info": "LinkedIn, website, Skype, GitHub, etc. as written. Empty string if not stated."
   },
   "education_background": [
     {
-      "university_name": "Tên trường",
-      "degree": "Bằng cấp (tiếng Việt)",
-      "field_of_study": "Ngành học (tiếng Việt). Để trống nếu không rõ.",
-      "graduation_year": "Năm tốt nghiệp hoặc trạng thái",
-      "gpa": "GPA hoặc xếp loại (tiếng Việt). Để trống nếu không có."
+      "university_name": "Institution name as written",
+      "degree": "Degree as written",
+      "field_of_study": "Field of study as written. Empty string if not stated.",
+      "graduation_year": "Graduation year or status as written",
+      "gpa": "GPA or classification as written. Empty string if not stated."
     }
   ],
   "projects": [
     {
-      "project_name": "Tên dự án",
-      "description": "Mô tả, công nghệ, kết quả, vai trò. Để trống nếu không có.",
-      "duration": "Thời gian (tháng/năm bắt đầu – tháng/năm kết thúc). Để trống nếu không có."
+      "project_name": "Project name as written",
+      "description": "Description, technologies, results, and role as written. Empty string if not stated.",
+      "duration": "Project period (start month/year - end month/year) as written. Empty string if not stated."
     }
   ]
 }
@@ -465,7 +464,7 @@ def load_local_model(model_name, image_mode=False):
 def run_local_inference(resume_text, model, tokenizer):
     messages = [
         {"role": "system", "content": get_system_prompt()},
-        {"role": "user", "content": f"Dưới đây là văn bản trích xuất từ CV của ứng viên:\n\n{resume_text}"}
+        {"role": "user", "content": f"Below is the extracted text from the candidate's resume:\n\n{resume_text}"}
     ]
     
     text = tokenizer.apply_chat_template(
@@ -535,7 +534,7 @@ def run_local_inference_vision(pdf_path, model, processor):
     doc = fitz.open(pdf_path)
     pil_images = []
     content = []
-    content.append({"type": "text", "text": "Dưới đây là hình ảnh gốc của CV. Hãy đọc trực tiếp từ hình ảnh để trích xuất thông tin:"})
+    content.append({"type": "text", "text": "Below are the original resume page images. Read directly from the images to extract information:"})
     for page_idx, page in enumerate(doc, start=1):
         pix = page.get_pixmap(dpi=150)
         img_bytes = pix.tobytes("png")
@@ -551,7 +550,7 @@ def run_local_inference_vision(pdf_path, model, processor):
                 "url": image_url
             }
         })
-        content.append({"type": "text", "text": f"[Trang {page_idx}]"})
+        content.append({"type": "text", "text": f"[Page {page_idx}]"})
     print(f"  [Local Vision] Rendered {len(pil_images)} pages from {pdf_path}.", file=sys.stderr)
 
     messages = [
@@ -870,6 +869,14 @@ def main():
             
     if args.pdf:
         # Processing a single PDF file
+        if args.approved:
+            pdf_basename = os.path.splitext(os.path.basename(args.pdf))[0]
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            approved_path = os.path.join(script_dir, "approved_jsons", pdf_basename + ".json")
+            if not os.path.exists(approved_path):
+                print(f"Skipping {args.pdf} because corresponding approved JSON {approved_path} does not exist.", file=sys.stderr)
+                sys.exit(0)
+
         if args.arr:
             import re
             try:
@@ -882,6 +889,7 @@ def main():
             if not match or int(match.group(1)) not in arr_indices:
                 print(f"Error: {args.pdf} does not match the filter in --arr ({args.arr}).", file=sys.stderr)
                 sys.exit(1)
+        start_time = time.time()
         if args.image and not args.mock:
             print(f"[--image] Vision-only mode: skipping text extraction for {args.pdf}.", file=sys.stderr)
             resume_text = ""
@@ -931,9 +939,12 @@ def main():
         if args.output:
             with open(args.output, "w", encoding="utf-8") as f:
                 f.write(formatted_json)
-            print(f"Successfully saved JSON extraction to {args.output}", file=sys.stderr)
+            elapsed = time.time() - start_time
+            print(f"Successfully saved JSON extraction to {args.output} (took {elapsed:.2f} seconds)", file=sys.stderr)
         else:
             print(formatted_json)
+            elapsed = time.time() - start_time
+            print(f"Processed in {elapsed:.2f} seconds", file=sys.stderr)
             
     else:
         # Processing a directory of PDF files
@@ -948,6 +959,15 @@ def main():
         os.makedirs(args.output, exist_ok=True)
         
         pdf_files = [f for f in os.listdir(args.dir) if f.lower().endswith('.pdf')]
+        
+        if args.approved:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            approved_dir = os.path.join(script_dir, "approved_jsons")
+            pdf_files = [
+                f for f in pdf_files
+                if os.path.exists(os.path.join(approved_dir, os.path.splitext(f)[0] + ".json"))
+            ]
+
         if args.arr:
             import re
             try:
@@ -975,6 +995,7 @@ def main():
             output_path = os.path.join(args.output, output_filename)
             
             print(f"\n[{idx}/{len(pdf_files)}] Processing {filename}...", file=sys.stderr)
+            start_time = time.time()
             try:
                 if args.image and not args.mock:
                     print(f"  [--image] Vision-only mode: skipping text extraction.", file=sys.stderr)
@@ -1018,10 +1039,12 @@ def main():
                     
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write(formatted_json)
-                print(f"  Successfully saved JSON extraction to {output_path}", file=sys.stderr)
+                elapsed = time.time() - start_time
+                print(f"  Successfully saved JSON extraction to {output_path} (took {elapsed:.2f} seconds)", file=sys.stderr)
                 
             except Exception as e:
-                print(f"  Error processing {filename}: {e}", file=sys.stderr)
+                elapsed = time.time() - start_time
+                print(f"  Error processing {filename} (failed after {elapsed:.2f} seconds): {e}", file=sys.stderr)
                 
         print("\nBatch processing completed.", file=sys.stderr)
 
