@@ -10,3 +10,6 @@ huggingface_hub
 easyocr
 pytesseract
 pillow
+fastapi
+uvicorn
+python-multipart

@@ -1,3 +1,4 @@
 # Project Rules
 
-- **Execution Constraint**: Never run `extractor.py` without the `--mock` option. The current local machine is used only for coding/development, and model inference is handled on a separate compute machine.
+- **Execution Constraint**: Never run the code directly as the coding machine is not the compute machine.
+- **Environment Constraint**: Never check for libraries or dependencies on this machine for the same reasons.

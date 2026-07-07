@@ -1,9 +1,45 @@
 #!/usr/bin/env python3
+"""
+Vietnamese Resume Extractor — Step 1: Structured Information Extraction
+
+Extracts structured JSON from Vietnamese PDF resumes using a large language model.
+Supports two inference backends:
+
+  1. HuggingFace Transformers (default, --backend transformers)
+     Loads the model directly in-process. Simplest setup, best for sequential
+     CLI batch processing where you process resumes one at a time.
+
+  2. vLLM Server (--backend vllm)
+     Sends requests to a running vLLM OpenAI-compatible server. Best when
+     serving concurrent requests via the web server (server.py), since vLLM's
+     continuous batching can handle multiple requests efficiently. Requires
+     starting the vLLM server first (see scripts/start_vllm.sh).
+
+Usage examples:
+    # Default HF backend — single PDF
+    python src/step_1_extractor.py --pdf pdfs/resume.pdf --output out.json
+
+    # Default HF backend — batch directory
+    python src/step_1_extractor.py --dir pdfs/ --output output_jsons/
+
+    # vLLM backend (requires running vLLM server)
+    python src/step_1_extractor.py --pdf pdfs/resume.pdf --output out.json \\
+        --backend vllm --vllm-url http://localhost:8100/v1
+"""
 import os
 import sys
 import json
 import argparse
 import time
+
+# ---------------------------------------------------------------------------
+# Global inference configuration
+# ---------------------------------------------------------------------------
+# Maximum number of NEW tokens the model may generate for a single resume.
+# This value is shared across all backends (HuggingFace and vLLM) to ensure
+# consistent behaviour.  It is intentionally aligned with the vLLM server's
+# --max-model-len (20 000 in scripts/start_vllm.sh).
+MAX_NEW_TOKENS = 20000
 
 # Fallback OCR Helper
 def run_fallback_ocr(page):
@@ -256,15 +292,25 @@ def parse_args():
                              "Use for resumes with complex multi-column or sidebar layouts where text extraction scrambles content.")
     parser.add_argument("--approved", action="store_true",
                         help="Only process PDFs that have a corresponding ground truth JSON in approved_jsons")
+    parser.add_argument("--backend", type=str, default="transformers", choices=["transformers", "vllm"],
+                        help="Inference backend: 'transformers' (load model locally) or 'vllm' (call a running vLLM server)")
+    parser.add_argument("--vllm-url", type=str, default="http://localhost:8100/v1",
+                        help="Base URL of the vLLM OpenAI-compatible server (only used with --backend vllm)")
     return parser.parse_args()
 
 def get_system_prompt():
-    return """You are an AI resume extraction specialist. Your only job is to extract structured information from a resume and return it as valid JSON matching the schema below. Output nothing else — no markdown, no prose, no code fences.
+    return """You are an AI resume extraction specialist. Your only job is to extract structured information from a resume and return it as valid JSON matching the schema below.
+
+REASONING & FORMATTING RULES:
+1. THINKING PROCESS — You may reason step-by-step inside `<think>...</think>` tags, but the final output outside of the thinking block must be strictly valid JSON matching the schema below.
+2. NO MARKDOWN BLOCK — Do not wrap the final JSON in markdown code fences (e.g. do not use ```json ... ```). Output raw JSON only.
 
 EXTRACTION RULES:
-1. EXTRACT ONLY — never modify, rephrase, translate, or infer beyond what is explicitly written. Copy text character-for-character as it appears on the resume. Only use inference when the resume genuinely omits a required field (e.g. position title not stated).
-2. LANGUAGE SELECTION — if the resume contains two languages (e.g. Vietnamese + English), first determine the dominant language: if the resume is primarily Vietnamese, favor Vietnamese text throughout; if primarily English, favor English text. Apply this consistently to all fields.
-3. IMAGE SOURCE — when resume page images are provided, read directly from the images (the authoritative source). Extracted text is a supplementary hint only and may be out of order due to multi-column layouts; cross-reference the image to correctly pair dates, positions, and responsibilities.
+1. EXHAUSTIVE EXTRACTION — Record ALL details. Do not summarize, skip, omit, or truncate any information (especially responsibilities, achievements, projects, skills, education details, and dates). Extract every single item completely and verbatim from the CV.
+2. EXTRACT ONLY — Never modify, rephrase, translate, or infer beyond what is explicitly written. Copy text character-for-character as it appears on the resume. Only use inference when the resume genuinely omits a required field (e.g. position title not stated).
+3. EMPTY VALUES — If a field is not present in the resume, represent it as an empty string "" or an empty array [] as defined in the schema. Never omit keys from the JSON object. Do not invent placeholder values like "N/A" or "Not specified".
+4. LANGUAGE SELECTION — If the resume contains two languages (e.g. Vietnamese + English), first determine the dominant language: if the resume is primarily Vietnamese, favor Vietnamese text throughout; if primarily English, favor English text. Apply this consistently to all fields.
+5. IMAGE SOURCE — When resume page images are provided, read directly from the images (the authoritative source). Extracted text is a supplementary hint only and may be out of order due to multi-column layouts; cross-reference the image to correctly pair dates, positions, and responsibilities.
 
 JSON SCHEMA:
 {
@@ -462,6 +508,12 @@ def load_local_model(model_name, image_mode=False):
     return model, tokenizer
 
 def run_local_inference(resume_text, model, tokenizer):
+    """Run text-based extraction using a locally-loaded HuggingFace model.
+
+    This is the default inference path (--backend transformers). The model is
+    loaded in-process via ``load_local_model`` and generation runs directly on
+    GPU tensors with no network overhead.
+    """
     messages = [
         {"role": "system", "content": get_system_prompt()},
         {"role": "user", "content": f"Below is the extracted text from the candidate's resume:\n\n{resume_text}"}
@@ -500,7 +552,7 @@ def run_local_inference(resume_text, model, tokenizer):
     print("Generating structured output...", file=sys.stderr)
     generated_ids = model.generate(
         **filtered_inputs,
-        max_new_tokens=100000,
+        max_new_tokens=MAX_NEW_TOKENS,
         do_sample=True,
         temperature=0.7,
         top_p=0.8,
@@ -518,7 +570,12 @@ def run_local_inference(resume_text, model, tokenizer):
     return response
 
 def run_local_inference_vision(pdf_path, model, processor):
-    """Vision-only local inference: renders PDF pages as images and passes them to the model."""
+    """Run vision-only extraction using a locally-loaded HuggingFace VLM.
+
+    Renders each PDF page to a 150-DPI PNG image and passes them directly to
+    the model (--image flag). Use this for resumes with complex multi-column
+    or sidebar layouts where text extraction scrambles the content order.
+    """
     try:
         import fitz
     except ImportError:
@@ -592,21 +649,41 @@ def run_local_inference_vision(pdf_path, model, processor):
     try:
         from qwen_vl_utils import process_vision_info
         image_inputs, video_inputs = process_vision_info(local_messages)
-        inputs = processor(
-            text=[text],
-            images=image_inputs or None,
-            videos=video_inputs or None,
-            padding=True,
-            return_tensors="pt"
-        ).to(model.device)
+        
+        import inspect
+        sig = inspect.signature(processor.__call__)
+        if "processor_kwargs" in sig.parameters:
+            inputs = processor(
+                text=[text],
+                images=image_inputs or None,
+                videos=video_inputs or None,
+                processor_kwargs={"padding": True, "return_tensors": "pt"}
+            ).to(model.device)
+        else:
+            inputs = processor(
+                text=[text],
+                images=image_inputs or None,
+                videos=video_inputs or None,
+                padding=True,
+                return_tensors="pt"
+            ).to(model.device)
         print("  [Local Vision] Using qwen_vl_utils for image processing.", file=sys.stderr)
     except ImportError:
-        inputs = processor(
-            text=[text],
-            images=pil_images,
-            padding=True,
-            return_tensors="pt"
-        ).to(model.device)
+        import inspect
+        sig = inspect.signature(processor.__call__)
+        if "processor_kwargs" in sig.parameters:
+            inputs = processor(
+                text=[text],
+                images=pil_images,
+                processor_kwargs={"padding": True, "return_tensors": "pt"}
+            ).to(model.device)
+        else:
+            inputs = processor(
+                text=[text],
+                images=pil_images,
+                padding=True,
+                return_tensors="pt"
+            ).to(model.device)
         print("  [Local Vision] Using direct PIL image processing.", file=sys.stderr)
 
     eos_id = (
@@ -639,7 +716,7 @@ def run_local_inference_vision(pdf_path, model, processor):
     print("Generating structured output (vision mode)...", file=sys.stderr)
     generated_ids = model.generate(
         **filtered_inputs,
-        max_new_tokens=100000,
+        max_new_tokens=MAX_NEW_TOKENS,
         do_sample=True,
         temperature=0.7,
         top_p=0.8,
@@ -654,6 +731,122 @@ def run_local_inference_vision(pdf_path, model, processor):
     trimmed = generated_ids[:, input_len:]
     response = processor.batch_decode(trimmed, skip_special_tokens=True)[0]
     return response
+
+
+def _vllm_discover_model(vllm_url):
+    """Query the vLLM server's ``/v1/models`` endpoint and return the first model ID.
+
+    Called automatically when ``--backend vllm`` is used without ``--model-name``
+    so the user doesn't have to specify the model twice.
+    """
+    import urllib.request
+
+    url = vllm_url.rstrip("/") + "/models"
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        body = json.loads(resp.read().decode("utf-8"))
+    models = body.get("data", [])
+    if not models:
+        raise RuntimeError(f"No models found on vLLM server at {vllm_url}")
+    model_id = models[0]["id"]
+    print(f"  [vLLM] Auto-discovered model: {model_id}", file=sys.stderr)
+    return model_id
+
+
+def _vllm_chat_request(vllm_url, model_name, messages):
+    """Send a chat completion request to a vLLM OpenAI-compatible server.
+
+    Uses only Python stdlib (``urllib``) so there is no ``requests`` / ``httpx``
+    dependency.  The request mirrors the OpenAI Chat Completions API format.
+    """
+    import urllib.request
+    import urllib.error
+
+    if not model_name:
+        model_name = _vllm_discover_model(vllm_url)
+
+    url = vllm_url.rstrip("/") + "/chat/completions"
+    payload = json.dumps({
+        "model": model_name,
+        "messages": messages,
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "max_tokens": MAX_NEW_TOKENS,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        url, data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=600) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        return body["choices"][0]["message"]["content"]
+    except urllib.error.HTTPError as e:
+        error_body = ""
+        try:
+            error_body = e.read().decode("utf-8")
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"vLLM request failed (HTTP {e.code}): {error_body}"
+        ) from e
+
+
+def run_vllm_inference(resume_text, model_name, vllm_url):
+    """Run text-based extraction via a running vLLM server (--backend vllm).
+
+    Prefer this path when serving concurrent requests through server.py,
+    since vLLM's continuous batching handles parallelism efficiently.
+    For sequential CLI batch processing, the HuggingFace backend is simpler
+    and avoids the HTTP overhead.
+    """
+    messages = [
+        {"role": "system", "content": get_system_prompt()},
+        {"role": "user", "content": f"Below is the extracted text from the candidate's resume:\n\n{resume_text}"}
+    ]
+
+    print("Generating structured output (vLLM)...", file=sys.stderr)
+    return _vllm_chat_request(vllm_url, model_name, messages)
+
+
+def run_vllm_inference_vision(pdf_path, model_name, vllm_url):
+    """Run vision-only extraction via a running vLLM server (--backend vllm --image).
+
+    Renders PDF pages as base64-encoded PNGs and sends them in the OpenAI
+    vision message format.  Same concurrency trade-offs as ``run_vllm_inference``.
+    """
+    try:
+        import fitz
+    except ImportError:
+        raise ImportError("PyMuPDF (fitz) is required for --image mode. Install with: pip install pymupdf")
+
+    import base64
+
+    # Render PDF pages to base64 images
+    doc = fitz.open(pdf_path)
+    content = []
+    content.append({"type": "text", "text": "Below are the original resume page images. Read directly from the images to extract information:"})
+    for page_idx, page in enumerate(doc, start=1):
+        pix = page.get_pixmap(dpi=150)
+        img_bytes = pix.tobytes("png")
+        base64_img = base64.b64encode(img_bytes).decode("utf-8")
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{base64_img}"}
+        })
+        content.append({"type": "text", "text": f"[Page {page_idx}]"})
+    print(f"  [vLLM Vision] Rendered {len(doc)} pages from {pdf_path}.", file=sys.stderr)
+
+    messages = [
+        {"role": "system", "content": get_system_prompt()},
+        {"role": "user", "content": content}
+    ]
+
+    print("Generating structured output (vLLM vision)...", file=sys.stderr)
+    return _vllm_chat_request(vllm_url, model_name, messages)
 
 
 def extract_json_substring(text):
@@ -849,6 +1042,83 @@ def repair_truncated_json(text):
         return repaired
 
 
+class ResumeExtractor:
+    """Unified interface for resume extraction across both inference backends.
+
+    Wraps the HuggingFace Transformers and vLLM inference paths behind a
+    single ``extract(pdf_path)`` method.  Used by both the CLI (``main()``)
+    and the web server (``server.py``).
+
+    Args:
+        model_name:  HuggingFace model repo ID or local path.
+        image_mode:  If True, render PDF pages as images instead of extracting text.
+        mock:        If True, return pre-defined mock JSON (for testing).
+        backend:     ``"transformers"`` (default, in-process) or ``"vllm"`` (HTTP to server).
+        vllm_url:    Base URL of the vLLM server (only used when backend="vllm").
+    """
+
+    def __init__(self, model_name: str, image_mode: bool = False, mock: bool = False,
+                 backend: str = "transformers", vllm_url: str = "http://localhost:8100/v1"):
+        self.model_name = model_name
+        self.image_mode = image_mode
+        self.mock = mock
+        self.backend = backend
+        self.vllm_url = vllm_url
+        self.model = None
+        self.tokenizer_or_processor = None
+
+    def load_model(self):
+        if not self.mock and self.backend == "transformers":
+            self.model, self.tokenizer_or_processor = load_local_model(
+                self.model_name, image_mode=self.image_mode
+            )
+        elif self.backend == "vllm" and not self.model_name:
+            self.model_name = _vllm_discover_model(self.vllm_url)
+
+    def extract(self, pdf_path: str) -> str:
+        if self.image_mode and not self.mock:
+            print(f"[--image] Vision-only mode: skipping text extraction for {pdf_path}.", file=sys.stderr)
+            resume_text = ""
+        else:
+            try:
+                print(f"Extracting text from {pdf_path}...", file=sys.stderr)
+                resume_text = extract_text_from_pdf(pdf_path)
+                print(f"Extracted {len(resume_text)} characters.", file=sys.stderr)
+            except Exception as e:
+                print(f"Error extracting text: {e}", file=sys.stderr)
+                raise e
+
+        if self.mock:
+            result = run_mock_extraction(resume_text)
+        elif self.backend == "vllm":
+            if self.image_mode:
+                result = run_vllm_inference_vision(pdf_path, self.model_name, self.vllm_url)
+            else:
+                result = run_vllm_inference(resume_text, self.model_name, self.vllm_url)
+        elif self.image_mode:
+            result = run_local_inference_vision(pdf_path, self.model, self.tokenizer_or_processor)
+        else:
+            result = run_local_inference(resume_text, self.model, self.tokenizer_or_processor)
+
+        clean_result = extract_json_substring(result)
+
+        try:
+            parsed_json = json.loads(clean_result)
+            formatted_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
+        except json.JSONDecodeError:
+            print("Warning: Model output is not valid JSON. Attempting auto-repair...", file=sys.stderr)
+            repaired = repair_truncated_json(clean_result)
+            try:
+                parsed_json = json.loads(repaired)
+                formatted_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
+                print("  Auto-repair succeeded.", file=sys.stderr)
+            except json.JSONDecodeError:
+                print("  Auto-repair failed. Returning raw substring.", file=sys.stderr)
+                formatted_json = clean_result
+
+        return formatted_json
+
+
 def main():
     args = parse_args()
     
@@ -860,19 +1130,21 @@ def main():
         print("Error: You cannot specify both --pdf and --dir. Please choose one.", file=sys.stderr)
         sys.exit(1)
         
-    # Initialize model once; reused across all files in --dir mode
-    model = None
-    tokenizer = None
-
-    if not args.mock:
-        model, tokenizer = load_local_model(args.model_name, image_mode=args.image)
+    # Initialize the extractor class
+    extractor = ResumeExtractor(
+        model_name=args.model_name, image_mode=args.image, mock=args.mock,
+        backend=args.backend, vllm_url=args.vllm_url
+    )
+    if not args.mock and args.backend == "transformers":
+        extractor.load_model()
             
     if args.pdf:
         # Processing a single PDF file
         if args.approved:
             pdf_basename = os.path.splitext(os.path.basename(args.pdf))[0]
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            approved_path = os.path.join(script_dir, "approved_jsons", pdf_basename + ".json")
+            # approved_path should resolve relative to script parent (workspace root)
+            approved_path = os.path.abspath(os.path.join(script_dir, "..", "approved_jsons", pdf_basename + ".json"))
             if not os.path.exists(approved_path):
                 print(f"Skipping {args.pdf} because corresponding approved JSON {approved_path} does not exist.", file=sys.stderr)
                 sys.exit(0)
@@ -889,52 +1161,13 @@ def main():
             if not match or int(match.group(1)) not in arr_indices:
                 print(f"Error: {args.pdf} does not match the filter in --arr ({args.arr}).", file=sys.stderr)
                 sys.exit(1)
+                
         start_time = time.time()
-        if args.image and not args.mock:
-            print(f"[--image] Vision-only mode: skipping text extraction for {args.pdf}.", file=sys.stderr)
-            resume_text = ""
-        else:
-            try:
-                print(f"Extracting text from {args.pdf}...", file=sys.stderr)
-                resume_text = extract_text_from_pdf(args.pdf)
-                print(f"Extracted {len(resume_text)} characters.", file=sys.stderr)
-            except Exception as e:
-                print(f"Error: {e}", file=sys.stderr)
-                sys.exit(1)
-        
-        if args.mock:
-            result = run_mock_extraction(resume_text)
-        elif args.image:
-            result = run_local_inference_vision(args.pdf, model, tokenizer)
-        else:
-            result = run_local_inference(resume_text, model, tokenizer)
-            
-        clean_result = extract_json_substring(result)
-            
         try:
-            parsed_json = json.loads(clean_result)
-            formatted_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
-        except json.JSONDecodeError:
-            print("Warning: Model output is not valid JSON. Attempting auto-repair...", file=sys.stderr)
-            repaired = repair_truncated_json(clean_result)
-            try:
-                parsed_json = json.loads(repaired)
-                formatted_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
-                print("  Auto-repair succeeded.", file=sys.stderr)
-            except json.JSONDecodeError:
-                print("  Auto-repair failed. Saving raw output.", file=sys.stderr)
-                formatted_json = clean_result
-                if args.output:
-                    if args.output.lower().endswith(".json"):
-                        txt_path = args.output[:-5] + ".txt"
-                    else:
-                        txt_path = args.output + ".txt"
-                    try:
-                        with open(txt_path, "w", encoding="utf-8") as f:
-                            f.write(result)
-                        print(f"Saved raw model output to {txt_path}", file=sys.stderr)
-                    except Exception as save_err:
-                        print(f"Warning: Failed to save raw model output to {txt_path}: {save_err}", file=sys.stderr)
+            formatted_json = extractor.extract(args.pdf)
+        except Exception as e:
+            print(f"Error during extraction: {e}", file=sys.stderr)
+            sys.exit(1)
             
         if args.output:
             with open(args.output, "w", encoding="utf-8") as f:
@@ -962,7 +1195,7 @@ def main():
         
         if args.approved:
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            approved_dir = os.path.join(script_dir, "approved_jsons")
+            approved_dir = os.path.abspath(os.path.join(script_dir, "..", "approved_jsons"))
             pdf_files = [
                 f for f in pdf_files
                 if os.path.exists(os.path.join(approved_dir, os.path.splitext(f)[0] + ".json"))
@@ -997,46 +1230,7 @@ def main():
             print(f"\n[{idx}/{len(pdf_files)}] Processing {filename}...", file=sys.stderr)
             start_time = time.time()
             try:
-                if args.image and not args.mock:
-                    print(f"  [--image] Vision-only mode: skipping text extraction.", file=sys.stderr)
-                    resume_text = ""
-                else:
-                    resume_text = extract_text_from_pdf(pdf_path)
-                    print(f"  Extracted {len(resume_text)} characters.", file=sys.stderr)
-
-                if args.mock:
-                    result = run_mock_extraction(resume_text)
-                elif args.image:
-                    result = run_local_inference_vision(pdf_path, model, tokenizer)
-                else:
-                    result = run_local_inference(resume_text, model, tokenizer)
-                    
-                clean_result = extract_json_substring(result)
-                    
-                try:
-                    parsed_json = json.loads(clean_result)
-                    formatted_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
-                except json.JSONDecodeError:
-                    print(f"  Warning: Model output for {filename} is not valid JSON. Attempting auto-repair...", file=sys.stderr)
-                    repaired = repair_truncated_json(clean_result)
-                    try:
-                        parsed_json = json.loads(repaired)
-                        formatted_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
-                        print(f"  Auto-repair succeeded for {filename}.", file=sys.stderr)
-                    except json.JSONDecodeError:
-                        print(f"  Auto-repair failed for {filename}. Saving raw output.", file=sys.stderr)
-                        formatted_json = clean_result
-                        if output_path.lower().endswith(".json"):
-                            txt_path = output_path[:-5] + ".txt"
-                        else:
-                            txt_path = output_path + ".txt"
-                        try:
-                            with open(txt_path, "w", encoding="utf-8") as f:
-                                f.write(result)
-                            print(f"  Saved raw model output to {txt_path}", file=sys.stderr)
-                        except Exception as save_err:
-                            print(f"  Warning: Failed to save raw model output to {txt_path}: {save_err}", file=sys.stderr)
-                    
+                formatted_json = extractor.extract(pdf_path)
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write(formatted_json)
                 elapsed = time.time() - start_time
@@ -1047,6 +1241,7 @@ def main():
                 print(f"  Error processing {filename} (failed after {elapsed:.2f} seconds): {e}", file=sys.stderr)
                 
         print("\nBatch processing completed.", file=sys.stderr)
+
 
 if __name__ == "__main__":
     main()

@@ -7,8 +7,9 @@ import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 PORT = 8000
-WORKSPACE_DIR = os.path.abspath(os.getcwd())
-PDF_DIR = os.path.join(WORKSPACE_DIR, "Vietnamese-dataset", "CV")
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+WORKSPACE_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
+PDF_DIR = os.path.join(WORKSPACE_DIR, "pdfs")
 JSON_DIR = os.path.join(WORKSPACE_DIR, "output_jsons")
 APPROVED_DIR = os.path.join(WORKSPACE_DIR, "approved_jsons")
 
