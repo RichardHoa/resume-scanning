@@ -1,5 +1,6 @@
 torch>=2.0.0
 transformers>=4.37.0
+kernels<0.15.0
 accelerate>=0.26.0
 pdfplumber>=0.10.0
 pymupdf>=1.23.0

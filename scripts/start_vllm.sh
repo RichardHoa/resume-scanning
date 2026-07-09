@@ -20,7 +20,7 @@
 #   kill $(cat logs/vllm.pid)
 # ---------------------------------------------------------------------------
 
-MODEL="${1:-Qwen/Qwen3.6-27B-FP8}"
+MODEL="${1:-numind/NuExtract3}"
 PORT=8100
 export VLLM_USE_DEEP_GEMM=0
 

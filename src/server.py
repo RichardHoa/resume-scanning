@@ -29,6 +29,7 @@ import sys
 import json
 import argparse
 import uvicorn
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -63,17 +64,14 @@ parser.add_argument("--port", type=int, default=8005,
 # Use parse_known_args so that uvicorn flags like --reload do not crash our parser
 args, unknown_args = parser.parse_known_args()
 
-# 2. Create the FastAPI Application
-app = FastAPI(title="Resume Extraction Server")
-
 # Initialize the global extractor instance
 extractor = ResumeExtractor(
     model_name=args.model, image_mode=args.image, mock=args.mock,
     backend=args.backend, vllm_url=args.vllm_url
 )
 
-@app.on_event("startup")
-def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """Load model once at startup to optimize processing times."""
     print("----------------------------------------------------------------", file=sys.stderr)
     print(f"Initializing Resume Extraction Server", file=sys.stderr)
@@ -92,6 +90,10 @@ def startup_event():
         print(f"Using model: {extractor.model_name}", file=sys.stderr)
     else:
         print("Mock mode is enabled. Model will not be loaded into memory.", file=sys.stderr)
+    yield
+
+# 2. Create the FastAPI Application
+app = FastAPI(title="Resume Extraction Server", lifespan=lifespan)
 
 # Ensure temporary upload directory exists
 TEMP_DIR = os.path.join(SCRIPT_DIR, "temp_uploads")

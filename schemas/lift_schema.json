@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "position_applied": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "level": {
+          "type": "string",
+          "enum": ["junior", "mid-level", "senior", "leadership", "unknown"]
+        }
+      },
+      "required": ["title", "level"]
+    },
+    "self_evaluation": { "type": "string" },
+    "skills_and_specialties": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "languages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "language": { "type": "string" },
+          "proficiency": { "type": "string" },
+          "certificates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "score": { "type": "string" },
+                "issuing_organization": { "type": "string" },
+                "duration": { "type": "string" }
+              },
+              "required": ["name", "score"]
+            }
+          }
+        },
+        "required": ["language"]
+      }
+    },
+    "certifications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "issuing_organization": { "type": "string" },
+          "duration": { "type": "string" }
+        },
+        "required": ["name"]
+      }
+    },
+    "work_experience": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "company_name": { "type": "string" },
+          "company_description": { "type": "string" },
+          "position": { "type": "string" },
+          "duration": { "type": "string" },
+          "responsibilities": { "type": "string" }
+        },
+        "required": ["company_name", "position"]
+      }
+    },
+    "basic_information": {
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "location": { "type": "string" },
+        "other_info": { "type": "string" }
+      },
+      "required": ["email", "phone"]
+    },
+    "education_background": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "university_name": { "type": "string" },
+          "degree": { "type": "string" },
+          "field_of_study": { "type": "string" },
+          "graduation_year": { "type": "string" },
+          "gpa": { "type": "string" }
+        },
+        "required": ["university_name", "degree"]
+      }
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "project_name": { "type": "string" },
+          "description": { "type": "string" },
+          "duration": { "type": "string" }
+        },
+        "required": ["project_name"]
+      }
+    }
+  },
+  "required": [
+    "position_applied",
+    "self_evaluation",
+    "skills_and_specialties",
+    "languages",
+    "certifications",
+    "work_experience",
+    "basic_information",
+    "education_background",
+    "projects"
+  ]
+}

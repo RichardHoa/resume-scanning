@@ -280,7 +280,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Vietnamese Resume Extractor (Local Inference)")
     parser.add_argument("--pdf", type=str, help="Path to a single PDF resume file")
     parser.add_argument("--dir", type=str, help="Path to a directory containing PDF resumes to scan")
-    parser.add_argument("--model-name", type=str, default="Qwen/Qwen2.5-7B-Instruct",
+    parser.add_argument("--model-name", type=str, default="numind/NuExtract3",
                         help="Model repository name or local path")
     parser.add_argument("--mock", action="store_true",
                         help="Mock run: performs text extraction and returns mock JSON output without loading the model")
@@ -298,8 +298,39 @@ def parse_args():
                         help="Base URL of the vLLM OpenAI-compatible server (only used with --backend vllm)")
     return parser.parse_args()
 
+def load_schema_from_file(model_name: str) -> dict:
+    """Loads the appropriate schema dictionary from the schemas/ directory based on active model name."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    workspace_dir = os.path.dirname(script_dir)
+    
+    if not model_name:
+        model_name = ""
+        
+    model_name_lower = model_name.lower()
+    
+    if "lift" in model_name_lower:
+        schema_file = "lift_schema.json"
+    elif "nuextract" in model_name_lower:
+        schema_file = "nuextract_schema.json"
+    else:
+        schema_file = "qwen_schema.json"
+        
+    schema_path = os.path.join(workspace_dir, "schemas", schema_file)
+    try:
+        with open(schema_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Warning: Failed to load schema from {schema_path} ({e}). Falling back to empty object.", file=sys.stderr)
+        return {}
+
+def get_nuextract_schema_template():
+    """Returns the JSON schema template specifically formatted with NuExtract3 data types."""
+    return load_schema_from_file("nuextract")
+
 def get_system_prompt():
-    return """You are an AI resume extraction specialist. Your only job is to extract structured information from a resume and return it as valid JSON matching the schema below.
+    qwen_schema = load_schema_from_file("qwen")
+    schema_str = json.dumps(qwen_schema, ensure_ascii=False, indent=2)
+    return f"""You are an AI resume extraction specialist. Your only job is to extract structured information from a resume and return it as valid JSON matching the schema below.
 
 REASONING & FORMATTING RULES:
 1. THINKING PROCESS — You may reason step-by-step inside `<think>...</think>` tags, but the final output outside of the thinking block must be strictly valid JSON matching the schema below.
@@ -313,66 +344,7 @@ EXTRACTION RULES:
 5. IMAGE SOURCE — When resume page images are provided, read directly from the images (the authoritative source). Extracted text is a supplementary hint only and may be out of order due to multi-column layouts; cross-reference the image to correctly pair dates, positions, and responsibilities.
 
 JSON SCHEMA:
-{
-  "position_applied": {
-    "title": "Job title as written on the resume, or inferred from context if not stated explicitly.",
-    "level": "Classify based on total years of experience (earliest job start to most recent job): <2 years = 'junior', 2-5 years = 'mid-level', >5 years = 'senior', manager/team-lead or above = 'leadership', insufficient data = 'unknown'. Values: junior | mid-level | senior | leadership | unknown"
-  },
-  "self_evaluation": "Personal summary or career objective section verbatim. Empty string if not present.",
-  "skills_and_specialties": ["Skills, tools, technologies, and competencies extracted from the entire resume — including skills sections, work experience, projects, and education. Do not include languages. Extract all, omit none."],
-  "languages": [
-    {
-      "language": "Language name",
-      "proficiency": "Proficiency level as written. Empty string if not stated.",
-      "certificates": [
-        {
-          "name": "Certificate name",
-          "score": "Score as written. Empty string if not stated.",
-          "issuing_organization": "Issuing organization as written. Empty string if not stated.",
-          "duration": "Validity period as written. Empty string if not stated."
-        }
-      ]
-    }
-  ],
-  "certifications": [
-    {
-      "name": "Professional certification name (exclude language certificates and academic degrees)",
-      "issuing_organization": "Issuing organization as written. Empty string if not stated.",
-      "duration": "Validity period as written. Empty string if not stated."
-    }
-  ],
-  "work_experience": [
-    {
-      "company_name": "Company name as written",
-      "company_description": "Company size, industry, client type, etc. as written. Empty string if not stated.",
-      "position": "Job title at this company as written",
-      "duration": "Employment period (start month/year - end month/year) as written. Use the image to correctly match dates to each job in multi-column layouts.",
-      "responsibilities": "All duties, responsibilities, and achievements verbatim. Extract completely — do not summarize or omit. Use '- ' for main items, '+ ' for sub-items."
-    }
-  ],
-  "basic_information": {
-    "email": "Email address as written",
-    "phone": "Phone number as written",
-    "location": "Residence or hometown as written. Empty string if not stated.",
-    "other_info": "LinkedIn, website, Skype, GitHub, etc. as written. Empty string if not stated."
-  },
-  "education_background": [
-    {
-      "university_name": "Institution name as written",
-      "degree": "Degree as written",
-      "field_of_study": "Field of study as written. Empty string if not stated.",
-      "graduation_year": "Graduation year or status as written",
-      "gpa": "GPA or classification as written. Empty string if not stated."
-    }
-  ],
-  "projects": [
-    {
-      "project_name": "Project name as written",
-      "description": "Description, technologies, results, and role as written. Empty string if not stated.",
-      "duration": "Project period (start month/year - end month/year) as written. Empty string if not stated."
-    }
-  ]
-}
+{schema_str}
 """
 
 def run_mock_extraction(resume_text):
@@ -439,6 +411,36 @@ def load_local_model(model_name, image_mode=False):
     # Check GPU availability
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}", file=sys.stderr)
+
+    if "nuextract" in model_name.lower():
+        from transformers import AutoModelForImageTextToText, AutoProcessor
+        print(f"  [NuExtract] Loading as AutoModelForImageTextToText with trust_remote_code=True...", file=sys.stderr)
+        model = AutoModelForImageTextToText.from_pretrained(
+            model_name,
+            torch_dtype="auto",
+            device_map="auto",
+            trust_remote_code=True
+        )
+        processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+        return model, processor
+
+    if "lift" in model_name.lower():
+        try:
+            from lift.model import InferenceManager
+            print(f"  [Lift] Loading via lift InferenceManager...", file=sys.stderr)
+            model = InferenceManager(method="hf")
+            return model, None
+        except ImportError:
+            print("Warning: lift-pdf is not installed. Falling back to default transformers loading...", file=sys.stderr)
+            from transformers import AutoModelForImageTextToText, AutoProcessor
+            model = AutoModelForImageTextToText.from_pretrained(
+                model_name,
+                torch_dtype="auto",
+                device_map="auto",
+                trust_remote_code=True
+            )
+            processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+            return model, processor
 
     if image_mode:
         # VLMs require AutoModelForVision2Seq or AutoModelForImageTextToText — 
@@ -567,6 +569,163 @@ def run_local_inference(resume_text, model, tokenizer):
     ]
     
     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+    return response
+
+def run_local_inference_nuextract(resume_text, model, processor):
+    """Run text-based extraction using a locally-loaded NuExtract model."""
+    import torch
+    messages = [
+        {"role": "user", "content": f"Below is the extracted text from the candidate's resume:\n\n{resume_text}"}
+    ]
+    template_str = json.dumps(get_nuextract_schema_template(), indent=4)
+    
+    inputs = processor.apply_chat_template(
+        messages,
+        template=template_str,
+        enable_thinking=False,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt"
+    ).to(model.device)
+    
+    print("Generating structured output (NuExtract)...", file=sys.stderr)
+    with torch.no_grad():
+        generated_ids = model.generate(
+            **inputs,
+            max_new_tokens=MAX_NEW_TOKENS,
+            do_sample=False
+        )
+        
+    input_len = inputs["input_ids"].shape[1]
+    trimmed_ids = generated_ids[:, input_len:]
+    response = processor.batch_decode(
+        trimmed_ids,
+        skip_special_tokens=True,
+        clean_up_tokenization_spaces=False
+    )[0].strip()
+    
+    return response
+
+def run_local_inference_vision_nuextract(pdf_path, model, processor):
+    """Run vision-only extraction using a locally-loaded NuExtract VLM."""
+    import torch
+    try:
+        import fitz
+    except ImportError:
+        raise ImportError("PyMuPDF (fitz) is required for --image mode. Install with: pip install pymupdf")
+    try:
+        from PIL import Image
+        import io
+    except ImportError:
+        raise ImportError("Pillow is required for --image mode. Install with: pip install Pillow")
+
+    doc = fitz.open(pdf_path)
+    content = []
+    content.append({"type": "text", "text": "Below are the original resume page images. Read directly from the images to extract information:"})
+    for page_idx, page in enumerate(doc, start=1):
+        pix = page.get_pixmap(dpi=150)
+        img_bytes = pix.tobytes("png")
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        content.append({
+            "type": "image",
+            "image": img
+        })
+        content.append({"type": "text", "text": f"[Page {page_idx}]"})
+        
+    messages = [
+        {"role": "user", "content": content}
+    ]
+    template_str = json.dumps(get_nuextract_schema_template(), indent=4)
+    
+    inputs = processor.apply_chat_template(
+        messages,
+        template=template_str,
+        enable_thinking=False,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt"
+    ).to(model.device)
+    
+    print("Generating structured output (NuExtract vision)...", file=sys.stderr)
+    with torch.no_grad():
+        generated_ids = model.generate(
+            **inputs,
+            max_new_tokens=MAX_NEW_TOKENS,
+            do_sample=False
+        )
+        
+    input_len = inputs["input_ids"].shape[1]
+    trimmed_ids = generated_ids[:, input_len:]
+    response = processor.batch_decode(
+        trimmed_ids,
+        skip_special_tokens=True,
+        clean_up_tokenization_spaces=False
+    )[0].strip()
+    
+    return response
+
+def run_local_inference_lift_fallback(pdf_path, model, processor, schema_path):
+    """Run local inference for datalab-to/lift model using raw transformers fallback."""
+    import torch
+    try:
+        import fitz
+    except ImportError:
+        raise ImportError("PyMuPDF (fitz) is required for --image mode. Install with: pip install pymupdf")
+    try:
+        from PIL import Image
+        import io
+    except ImportError:
+        raise ImportError("Pillow is required for --image mode. Install with: pip install Pillow")
+
+    with open(schema_path, "r", encoding="utf-8") as f:
+        schema_content = f.read()
+
+    doc = fitz.open(pdf_path)
+    content = []
+    content.append({"type": "text", "text": "Below are the original resume page images. Read directly from the images to extract information:"})
+    for page_idx, page in enumerate(doc, start=1):
+        pix = page.get_pixmap(dpi=150)
+        img_bytes = pix.tobytes("png")
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        content.append({
+            "type": "image",
+            "image": img
+        })
+        content.append({"type": "text", "text": f"[Page {page_idx}]"})
+        
+    messages = [
+        {
+            "role": "user",
+            "content": content + [{"type": "text", "text": f"Extract structured information matching this JSON Schema:\n\n{schema_content}"}]
+        }
+    ]
+    
+    inputs = processor.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt"
+    ).to(model.device)
+    
+    print("Generating structured output (Lift fallback)...", file=sys.stderr)
+    with torch.no_grad():
+        generated_ids = model.generate(
+            **inputs,
+            max_new_tokens=MAX_NEW_TOKENS,
+            do_sample=False
+        )
+        
+    input_len = inputs["input_ids"].shape[1]
+    trimmed_ids = generated_ids[:, input_len:]
+    response = processor.batch_decode(
+        trimmed_ids,
+        skip_special_tokens=True,
+        clean_up_tokenization_spaces=False
+    )[0].strip()
+    
     return response
 
 def run_local_inference_vision(pdf_path, model, processor):
@@ -849,6 +1008,146 @@ def run_vllm_inference_vision(pdf_path, model_name, vllm_url):
     return _vllm_chat_request(vllm_url, model_name, messages)
 
 
+def _vllm_nuextract_chat_request(vllm_url, model_name, messages, template_str):
+    import urllib.request
+    import urllib.error
+
+    if not model_name:
+        model_name = _vllm_discover_model(vllm_url)
+
+    url = vllm_url.rstrip("/") + "/chat/completions"
+    payload = json.dumps({
+        "model": model_name,
+        "messages": messages,
+        "temperature": 0.0,
+        "max_tokens": MAX_NEW_TOKENS,
+        "chat_template_kwargs": {
+            "template": template_str,
+            "enable_thinking": False
+        }
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        url, data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=600) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        return body["choices"][0]["message"]["content"]
+    except urllib.error.HTTPError as e:
+        error_body = ""
+        try:
+            error_body = e.read().decode("utf-8")
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"vLLM request failed (HTTP {e.code}): {error_body}"
+        ) from e
+
+
+def run_vllm_inference_nuextract(resume_text, model_name, vllm_url):
+    """Run text-based NuExtract extraction via a running vLLM server."""
+    messages = [
+        {"role": "user", "content": f"Below is the extracted text from the candidate's resume:\n\n{resume_text}"}
+    ]
+    template_str = json.dumps(get_nuextract_schema_template(), indent=4)
+    print("Generating structured output (vLLM NuExtract)...", file=sys.stderr)
+    return _vllm_nuextract_chat_request(vllm_url, model_name, messages, template_str)
+
+
+def run_vllm_inference_vision_nuextract(pdf_path, model_name, vllm_url):
+    """Run vision-only NuExtract extraction via a running vLLM server."""
+    try:
+        import fitz
+    except ImportError:
+        raise ImportError("PyMuPDF (fitz) is required for --image mode. Install with: pip install pymupdf")
+
+    import base64
+
+    # Render PDF pages to base64 images
+    doc = fitz.open(pdf_path)
+    content = []
+    content.append({"type": "text", "text": "Below are the original resume page images. Read directly from the images to extract information:"})
+    for page_idx, page in enumerate(doc, start=1):
+        pix = page.get_pixmap(dpi=150)
+        img_bytes = pix.tobytes("png")
+        base64_img = base64.b64encode(img_bytes).decode("utf-8")
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{base64_img}"}
+        })
+        content.append({"type": "text", "text": f"[Page {page_idx}]"})
+    print(f"  [vLLM Vision NuExtract] Rendered {len(doc)} pages from {pdf_path}.", file=sys.stderr)
+
+    messages = [
+        {"role": "user", "content": content}
+    ]
+    template_str = json.dumps(get_nuextract_schema_template(), indent=4)
+
+    print("Generating structured output (vLLM vision NuExtract)...", file=sys.stderr)
+    return _vllm_nuextract_chat_request(vllm_url, model_name, messages, template_str)
+
+
+def run_vllm_inference_lift_fallback(pdf_path, model_name, vllm_url, schema_path):
+    """Run remote inference for datalab-to/lift model using raw vLLM server fallback."""
+    try:
+        import fitz
+    except ImportError:
+        raise ImportError("PyMuPDF (fitz) is required. Install with: pip install pymupdf")
+
+    import base64
+    with open(schema_path, "r", encoding="utf-8") as f:
+        schema_content = f.read()
+
+    # Render PDF pages to base64 images
+    doc = fitz.open(pdf_path)
+    content = []
+    content.append({"type": "text", "text": "Below are the original resume page images. Read directly from the images to extract information:"})
+    for page_idx, page in enumerate(doc, start=1):
+        pix = page.get_pixmap(dpi=150)
+        img_bytes = pix.tobytes("png")
+        base64_img = base64.b64encode(img_bytes).decode("utf-8")
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{base64_img}"}
+        })
+        content.append({"type": "text", "text": f"[Page {page_idx}]"})
+    print(f"  [vLLM Vision Lift Fallback] Rendered {len(doc)} pages from {pdf_path}.", file=sys.stderr)
+
+    messages = [
+        {
+            "role": "user",
+            "content": content + [{"type": "text", "text": f"Extract structured information matching this JSON Schema:\n\n{schema_content}"}]
+        }
+    ]
+    
+    import urllib.request
+    
+    if not model_name:
+        model_name = _vllm_discover_model(vllm_url)
+
+    url = vllm_url.rstrip("/") + "/chat/completions"
+    payload = json.dumps({
+        "model": model_name,
+        "messages": messages,
+        "temperature": 0.0,
+        "max_tokens": MAX_NEW_TOKENS,
+    }).encode("utf-8")
+    
+    req = urllib.request.Request(
+        url, data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    
+    with urllib.request.urlopen(req, timeout=600) as resp:
+        body = json.loads(resp.read().decode("utf-8"))
+    return body["choices"][0]["message"]["content"]
+
+
 def extract_json_substring(text):
     """
     Strips out thinking blocks (e.g. <think>...</think>), markdown code blocks,
@@ -1069,36 +1368,89 @@ class ResumeExtractor:
 
     def load_model(self):
         if not self.mock and self.backend == "transformers":
-            self.model, self.tokenizer_or_processor = load_local_model(
-                self.model_name, image_mode=self.image_mode
-            )
+            if self.model_name and "lift" in self.model_name.lower():
+                try:
+                    from lift.model import InferenceManager
+                    print(f"  [Lift] Loading via lift InferenceManager...", file=sys.stderr)
+                    self.model = InferenceManager(method="hf")
+                except ImportError:
+                    self.model, self.tokenizer_or_processor = load_local_model(
+                        self.model_name, image_mode=self.image_mode
+                    )
+            else:
+                self.model, self.tokenizer_or_processor = load_local_model(
+                    self.model_name, image_mode=self.image_mode
+                )
         elif self.backend == "vllm" and not self.model_name:
             self.model_name = _vllm_discover_model(self.vllm_url)
 
     def extract(self, pdf_path: str) -> str:
-        if self.image_mode and not self.mock:
-            print(f"[--image] Vision-only mode: skipping text extraction for {pdf_path}.", file=sys.stderr)
-            resume_text = ""
-        else:
-            try:
-                print(f"Extracting text from {pdf_path}...", file=sys.stderr)
-                resume_text = extract_text_from_pdf(pdf_path)
-                print(f"Extracted {len(resume_text)} characters.", file=sys.stderr)
-            except Exception as e:
-                print(f"Error extracting text: {e}", file=sys.stderr)
-                raise e
-
-        if self.mock:
-            result = run_mock_extraction(resume_text)
-        elif self.backend == "vllm":
-            if self.image_mode:
-                result = run_vllm_inference_vision(pdf_path, self.model_name, self.vllm_url)
+        is_lift = self.model_name and "lift" in self.model_name.lower()
+        
+        if is_lift and not self.mock:
+            # For Lift, if the lift library is installed we use it. Otherwise, we run the fallbacks.
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            workspace_dir = os.path.dirname(script_dir)
+            schema_path = os.path.join(workspace_dir, "schemas", "lift_schema.json")
+            
+            if self.backend == "vllm":
+                os.environ["VLLM_API_BASE"] = self.vllm_url
+                try:
+                    from lift import extract as lift_extract
+                    from lift.model import InferenceManager
+                    print(f"  [Lift vLLM] Running remote extraction via lift library...", file=sys.stderr)
+                    vllm_model = InferenceManager(method="vllm")
+                    result_obj = lift_extract(pdf_path, schema_path, model=vllm_model)
+                    result = json.dumps(result_obj.extraction, ensure_ascii=False)
+                except ImportError:
+                    print("Warning: lift-pdf is not installed. Running vLLM inference using standard chat endpoints...", file=sys.stderr)
+                    result = run_vllm_inference_lift_fallback(pdf_path, self.model_name, self.vllm_url, schema_path)
             else:
-                result = run_vllm_inference(resume_text, self.model_name, self.vllm_url)
-        elif self.image_mode:
-            result = run_local_inference_vision(pdf_path, self.model, self.tokenizer_or_processor)
+                try:
+                    from lift import extract as lift_extract
+                    print(f"  [Lift Local] Running in-process extraction via lift library...", file=sys.stderr)
+                    result_obj = lift_extract(pdf_path, schema_path, model=self.model)
+                    result = json.dumps(result_obj.extraction, ensure_ascii=False)
+                except ImportError:
+                    print("Warning: lift-pdf is not installed. Running local inference using transformers fallback...", file=sys.stderr)
+                    result = run_local_inference_lift_fallback(pdf_path, self.model, self.tokenizer_or_processor, schema_path)
         else:
-            result = run_local_inference(resume_text, self.model, self.tokenizer_or_processor)
+            if self.image_mode and not self.mock:
+                print(f"[--image] Vision-only mode: skipping text extraction for {pdf_path}.", file=sys.stderr)
+                resume_text = ""
+            else:
+                try:
+                    print(f"Extracting text from {pdf_path}...", file=sys.stderr)
+                    resume_text = extract_text_from_pdf(pdf_path)
+                    print(f"Extracted {len(resume_text)} characters.", file=sys.stderr)
+                except Exception as e:
+                    print(f"Error extracting text: {e}", file=sys.stderr)
+                    raise e
+
+            is_nuextract = self.model_name and "nuextract" in self.model_name.lower()
+            if self.mock:
+                result = run_mock_extraction(resume_text)
+            elif self.backend == "vllm":
+                if self.image_mode:
+                    if is_nuextract:
+                        result = run_vllm_inference_vision_nuextract(pdf_path, self.model_name, self.vllm_url)
+                    else:
+                        result = run_vllm_inference_vision(pdf_path, self.model_name, self.vllm_url)
+                else:
+                    if is_nuextract:
+                        result = run_vllm_inference_nuextract(resume_text, self.model_name, self.vllm_url)
+                    else:
+                        result = run_vllm_inference(resume_text, self.model_name, self.vllm_url)
+            elif self.image_mode:
+                if is_nuextract:
+                    result = run_local_inference_vision_nuextract(pdf_path, self.model, self.tokenizer_or_processor)
+                else:
+                    result = run_local_inference_vision(pdf_path, self.model, self.tokenizer_or_processor)
+            else:
+                if is_nuextract:
+                    result = run_local_inference_nuextract(resume_text, self.model, self.tokenizer_or_processor)
+                else:
+                    result = run_local_inference(resume_text, self.model, self.tokenizer_or_processor)
 
         clean_result = extract_json_substring(result)
 

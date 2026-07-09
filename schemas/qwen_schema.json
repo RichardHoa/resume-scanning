@@ -1,0 +1,60 @@
+{
+  "position_applied": {
+    "title": "Job title as written on the resume, or inferred from context if not stated explicitly.",
+    "level": "Classify based on total years of experience (earliest job start to most recent job): <2 years = 'junior', 2-5 years = 'mid-level', >5 years = 'senior', manager/team-lead or above = 'leadership', insufficient data = 'unknown'. Values: junior | mid-level | senior | leadership | unknown"
+  },
+  "self_evaluation": "Personal summary or career objective section verbatim. Empty string if not present.",
+  "skills_and_specialties": ["Skills, tools, technologies, and competencies extracted from the entire resume — including skills sections, work experience, projects, and education. Do not include languages. Extract all, omit none."],
+  "languages": [
+    {
+      "language": "Language name",
+      "proficiency": "Proficiency level as written. Empty string if not stated.",
+      "certificates": [
+        {
+          "name": "Certificate name",
+          "score": "Score as written. Empty string if not stated.",
+          "issuing_organization": "Issuing organization as written. Empty string if not stated.",
+          "duration": "Validity period as written. Empty string if not stated."
+        }
+      ]
+    }
+  ],
+  "certifications": [
+    {
+      "name": "Professional certification name (exclude language certificates and academic degrees)",
+      "issuing_organization": "Issuing organization as written. Empty string if not stated.",
+      "duration": "Validity period as written. Empty string if not stated."
+    }
+  ],
+  "work_experience": [
+    {
+      "company_name": "Company name as written",
+      "company_description": "Company size, industry, client type, etc. as written. Empty string if not stated.",
+      "position": "Job title at this company as written",
+      "duration": "Employment period (start month/year - end month/year) as written. Use the image to correctly match dates to each job in multi-column layouts.",
+      "responsibilities": "All duties, responsibilities, and achievements verbatim. Extract completely — do not summarize or omit. Use '- ' for main items, '+ ' for sub-items."
+    }
+  ],
+  "basic_information": {
+    "email": "Email address as written",
+    "phone": "Phone number as written",
+    "location": "Residence or hometown as written. Empty string if not stated.",
+    "other_info": "LinkedIn, website, Skype, GitHub, etc. as written. Empty string if not stated."
+  },
+  "education_background": [
+    {
+      "university_name": "Institution name as written",
+      "degree": "Degree as written",
+      "field_of_study": "Field of study as written. Empty string if not stated.",
+      "graduation_year": "Graduation year or status as written",
+      "gpa": "GPA or classification as written. Empty string if not stated."
+    }
+  ],
+  "projects": [
+    {
+      "project_name": "Project name as written",
+      "description": "Description, technologies, results, and role as written. Empty string if not stated.",
+      "duration": "Project period (start month/year - end month/year) as written. Empty string if not stated."
+    }
+  ]
+}
