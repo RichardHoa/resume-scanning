@@ -48,8 +48,6 @@ from step_1_extractor import ResumeExtractor
 parser = argparse.ArgumentParser(description="Resume Extractor FastAPI Server")
 parser.add_argument("--model", type=str, default=None,
                     help="Model name (auto-detected from vLLM server if not provided)")
-parser.add_argument("--image", action="store_true",
-                    help="Vision-only mode: render PDF pages as images, do not extract text")
 parser.add_argument("--mock", action="store_true",
                     help="Mock mode: use pre-defined mock extraction without loading the model")
 parser.add_argument("--backend", type=str, default="vllm", choices=["transformers", "vllm"],
@@ -66,7 +64,7 @@ args, unknown_args = parser.parse_known_args()
 
 # Initialize the global extractor instance
 extractor = ResumeExtractor(
-    model_name=args.model, image_mode=args.image, mock=args.mock,
+    model_name=args.model, mock=args.mock,
     backend=args.backend, vllm_url=args.vllm_url
 )
 
@@ -76,7 +74,6 @@ async def lifespan(app: FastAPI):
     print("----------------------------------------------------------------", file=sys.stderr)
     print(f"Initializing Resume Extraction Server", file=sys.stderr)
     print(f"Backend: {args.backend}", file=sys.stderr)
-    print(f"Vision Mode: {args.image}", file=sys.stderr)
     print(f"Mock Mode: {args.mock}", file=sys.stderr)
     print("----------------------------------------------------------------", file=sys.stderr)
     
@@ -122,7 +119,7 @@ def get_config():
     return {
         "model": extractor.model_name,
         "backend": args.backend,
-        "image_mode": args.image,
+        "image_mode": False,
         "mock": args.mock
     }
 

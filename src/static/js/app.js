@@ -226,7 +226,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 let respHtml = '';
                 if (job.responsibilities) {
-                    respHtml = `<div class="job-responsibilities">${job.responsibilities}</div>`;
+                    if (Array.isArray(job.responsibilities)) {
+                        respHtml = `<div class="job-responsibilities"><ul>${job.responsibilities.map(r => `<li>${r}</li>`).join('')}</ul></div>`;
+                    } else {
+                        respHtml = `<div class="job-responsibilities">${job.responsibilities}</div>`;
+                    }
                 }
                 
                 card.innerHTML = `

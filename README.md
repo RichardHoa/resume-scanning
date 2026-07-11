@@ -177,3 +177,10 @@ source activate resume_env
 # Default HF backend
 python src/step_1_extractor.py --dir pdfs/ --output output_jsons/
 ```
+
+## Best extraction pipeline so far
+
+use Document Layout Analysis model to extract the pdf into markdown, then use
+
+1. Qwen/Qwen3.5-35B-A3B if mem is available for best accuracy
+2. Qwen/Qwen3.5-9B if mem is less more available

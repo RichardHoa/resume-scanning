@@ -5,32 +5,49 @@
     "position_applied": {
       "type": "object",
       "properties": {
-        "title": { "type": "string" },
+        "title": { 
+          "type": "string",
+          "description": "Job title applied for as written on the resume. Extract verbatim in Vietnamese if the resume is in Vietnamese."
+        },
         "level": {
           "type": "string",
-          "enum": ["junior", "mid-level", "senior", "leadership", "unknown"]
+          "enum": ["junior", "mid-level", "senior", "leadership", "unknown"],
+          "description": "Classify level based on experience: junior (<2 years), mid-level (2-5 years), senior (>5 years), leadership (manager/team-lead/director), or unknown."
         }
       },
       "required": ["title", "level"]
     },
-    "self_evaluation": { "type": "string" },
+    "self_evaluation": { 
+      "type": "string",
+      "description": "Personal summary or career objective section verbatim. Extract verbatim in Vietnamese, preserving all Vietnamese diacritics and tone marks."
+    },
     "skills_and_specialties": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": { "type": "string" },
+      "description": "Skills, tools, technologies, and competencies extracted verbatim from the entire resume. Keep in Vietnamese or English exactly as written."
     },
     "languages": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "language": { "type": "string" },
-          "proficiency": { "type": "string" },
+          "language": { 
+            "type": "string",
+            "description": "Language name verbatim (e.g., Tiếng Anh, Tiếng Việt, English, Vietnamese)."
+          },
+          "proficiency": { 
+            "type": "string",
+            "description": "Proficiency level verbatim as written (e.g., Thành thạo, Trung cấp, Native)."
+          },
           "certificates": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "name": { "type": "string" },
+                "name": { 
+                  "type": "string",
+                  "description": "Certificate name verbatim (e.g., IELTS, TOEIC, HSK)."
+                },
                 "score": { "type": "string" },
                 "issuing_organization": { "type": "string" },
                 "duration": { "type": "string" }
@@ -47,7 +64,10 @@
       "items": {
         "type": "object",
         "properties": {
-          "name": { "type": "string" },
+          "name": { 
+            "type": "string",
+            "description": "Professional certification name verbatim in Vietnamese or English (e.g., PMP, AWS Certified Solutions Architect)."
+          },
           "issuing_organization": { "type": "string" },
           "duration": { "type": "string" }
         },
@@ -59,11 +79,27 @@
       "items": {
         "type": "object",
         "properties": {
-          "company_name": { "type": "string" },
-          "company_description": { "type": "string" },
-          "position": { "type": "string" },
-          "duration": { "type": "string" },
-          "responsibilities": { "type": "string" }
+          "company_name": { 
+            "type": "string",
+            "description": "Company name verbatim as written on the resume."
+          },
+          "company_description": { 
+            "type": "string",
+            "description": "Description of the company verbatim in Vietnamese if written in Vietnamese."
+          },
+          "position": { 
+            "type": "string",
+            "description": "Job title or position verbatim. Extract in Vietnamese if written in Vietnamese."
+          },
+          "duration": { 
+            "type": "string",
+            "description": "Employment period (start date - end date) as written."
+          },
+          "responsibilities": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "A comprehensive list of every single duty, responsibility, and achievement verbatim. Extract ALL responsibilities in Vietnamese, preserving all accents/diacritics. Do not summarize or omit any. Create a separate string element for each task/duty."
+          }
         },
         "required": ["company_name", "position"]
       }
@@ -73,7 +109,10 @@
       "properties": {
         "email": { "type": "string" },
         "phone": { "type": "string" },
-        "location": { "type": "string" },
+        "location": { 
+          "type": "string",
+          "description": "Residence or location verbatim (e.g., Hà Nội, TP. Hồ Chí Minh, Da Nang)."
+        },
         "other_info": { "type": "string" }
       },
       "required": ["email", "phone"]
@@ -83,9 +122,18 @@
       "items": {
         "type": "object",
         "properties": {
-          "university_name": { "type": "string" },
-          "degree": { "type": "string" },
-          "field_of_study": { "type": "string" },
+          "university_name": { 
+            "type": "string",
+            "description": "Institution or university name verbatim (e.g., Đại học Bách khoa Hà Nội, Hanoi University)."
+          },
+          "degree": { 
+            "type": "string",
+            "description": "Degree verbatim (e.g., Kỹ sư, Cử nhân, Thạc sĩ, Bachelor, Engineer)."
+          },
+          "field_of_study": { 
+            "type": "string",
+            "description": "Field of study verbatim in Vietnamese if written in Vietnamese."
+          },
           "graduation_year": { "type": "string" },
           "gpa": { "type": "string" }
         },
@@ -97,8 +145,14 @@
       "items": {
         "type": "object",
         "properties": {
-          "project_name": { "type": "string" },
-          "description": { "type": "string" },
+          "project_name": { 
+            "type": "string",
+            "description": "Project name verbatim."
+          },
+          "description": { 
+            "type": "string",
+            "description": "Project description and results verbatim in Vietnamese if written in Vietnamese."
+          },
           "duration": { "type": "string" }
         },
         "required": ["project_name"]

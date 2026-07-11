@@ -698,6 +698,20 @@ code {
     white-space: pre-line;
 }
 
+.job-responsibilities ul {
+    margin: 0.5rem 0 0 0;
+    padding-left: 1.25rem;
+    list-style-type: disc;
+}
+
+.job-responsibilities li {
+    margin-bottom: 0.35rem;
+}
+
+.job-responsibilities li:last-child {
+    margin-bottom: 0;
+}
+
 /* Education and Certs styling */
 .education-item {
     background-color: rgba(255,255,255,0.02);
