@@ -1,129 +1,64 @@
 # Vietnamese Resume Extractor Agent
 
-This project implements the first component (the **Resume Extractor Agent**) of the multi-agent resume screening framework outlined in the research paper. It extracts structured information (position, level, self-evaluation, skills, work experience, basic info, and education) from Vietnamese PDF resumes using a large language model.
-
-The system is designed to run efficiently on a SLURM-managed High-Performance Computing (HPC) GPU cluster (e.g., equipped with NVIDIA Blackwell GPUs).
+An automated system to extract structured information (personal details, skills, work experience, education, etc.) from Vietnamese PDF resumes into clean JSON data using Large Language Models (LLMs).
 
 ---
 
-## 🔧 Choosing an Inference Backend
+## 💡 Our Approach
 
-The extractor supports two inference backends. **Pick the one that matches your use-case:**
+1. **Layout Extraction**: We use **Docling** to parse the PDF resume into a layout-aware Markdown format.
+2. **Structured JSON Extraction**: We pass the Markdown representation to an LLM (such as `Qwen/Qwen3.5-9B` or `Qwen/Qwen3.5-35B-A3B`) which parses and formats the information according to predefined JSON schemas.
 
-| | HuggingFace Transformers (default) | vLLM Server |
-|---|---|---|
-| **When to use** | CLI batch processing — one resume at a time | Web server (`server.py`) serving concurrent browser requests |
-| **Setup** | Zero extra setup — model loads in-process | Must start vLLM server first (`scripts/start_vllm.sh`) |
-| **Performance** | Fastest for sequential (batch-size = 1) workloads | Fastest when handling multiple simultaneous requests via continuous batching |
-| **VRAM** | Uses only what the model needs (~14–20 GB) | Pre-allocates a configurable % of VRAM for KV-cache at startup |
-| **Flag** | `--backend transformers` (default, can be omitted) | `--backend vllm --vllm-url http://localhost:8100/v1` |
-
-> **Rule of thumb:** If you're running `step_1_extractor.py` from the command line, use the default. If you're deploying `server.py` for users to upload resumes through a web browser, use vLLM.
+*Recommended models for best extraction performance:*
+- **Qwen/Qwen3.5-35B-A3B**: Best accuracy when GPU memory is available.
+- **Qwen/Qwen3.5-9B**: Great balance of performance and lower memory usage.
 
 ---
 
-## 🚀 Quick Start
+## 📁 Project Structure
 
-### Option A: HuggingFace Transformers (Default — Recommended for CLI)
+Here is an overview of what each key file and folder does in this repository:
 
-No extra server needed. Just run the extractor directly:
-
-```bash
-# Single PDF
-python src/step_1_extractor.py \
-    --pdf pdfs/vietnamese_resume_1.pdf \
-    --output output_jsons/vietnamese_resume_1.json
-
-# Batch — all PDFs in a directory
-python src/step_1_extractor.py \
-    --dir pdfs/ \
-    --output output_jsons/
-
-# With a specific model
-python src/step_1_extractor.py \
-    --dir pdfs/ \
-    --output output_jsons/ \
-    --model-name Qwen/Qwen3.6-27B-FP8
-
-# Vision mode (send page images instead of extracted text)
-python src/step_1_extractor.py \
-    --pdf pdfs/complex_layout_resume.pdf \
-    --output out.json \
-    --image
-```
-
-### Option B: vLLM Server (For the Web Server / Concurrent Requests)
-
-**Step 1 — Start the vLLM server:**
-
-```bash
-bash scripts/start_vllm.sh                           # default model
-bash scripts/start_vllm.sh Qwen/Qwen2.5-7B-Instruct  # or specify a model
-```
-
-Wait for it to load (watch with `tail -f logs/vllm.log` until you see `Started server process`).
-
-**Step 2 — Start the web server:**
-
-```bash
-python src/server.py --backend vllm --vllm-url http://localhost:8100/v1
-```
-
-Open `http://localhost:8005` in your browser to upload resumes through the UI.
-
-**Or use the CLI with vLLM directly:**
-
-```bash
-python src/step_1_extractor.py \
-    --dir pdfs/ \
-    --output output_jsons/ \
-    --backend vllm \
-    --vllm-url http://localhost:8100/v1
-```
-
-**Stop the vLLM server when done:**
-
-```bash
-kill $(cat logs/vllm.pid)
-```
+- `src/step_1_extractor.py`: The main extraction script. Converts PDF resumes to Markdown using Docling and uses an LLM to generate structured JSON output.
+- `src/server.py`: A web server (FastAPI) that provides a user-friendly browser interface for uploading resumes and viewing extracted JSON results.
+- `src/evaluate.py`: Evaluates the accuracy of extracted JSON output by comparing it against ground-truth data using semantic similarity scoring.
+- `src/ground_truth.py`: A web-based tool for reviewing and validating ground-truth resume extractions.
+- `schemas/`: Contains JSON schema definitions (`qwen_schema.json`, `nuextract_schema.json`) that define the required extraction output format.
+- `pdfs/`: Directory for input PDF resume files.
+- `approved_jsons/`: Directory for verified ground-truth JSON files used for testing and evaluation.
 
 ---
 
-## 📋 CLI Reference
+## 🚀 How to Run the Code
 
-### `step_1_extractor.py` — Resume Extraction
+### 1. Run Extraction via Command Line
 
-| Flag | Default | Description |
-|---|---|---|
-| `--pdf PATH` | — | Path to a single PDF resume |
-| `--dir PATH` | — | Path to a directory of PDF resumes (batch mode) |
-| `--output PATH` | — | Output JSON file (single mode) or directory (batch mode). **Required** for `--dir` |
-| `--model-name NAME` | `Qwen/Qwen2.5-7B-Instruct` | HuggingFace model repo ID or local path |
-| `--backend` | `transformers` | `transformers` (in-process HF) or `vllm` (HTTP to vLLM server) |
-| `--vllm-url URL` | `http://localhost:8100/v1` | vLLM server URL (only used with `--backend vllm`) |
-| `--image` | off | Vision-only mode: send PDF page images to the model instead of extracted text |
-| `--mock` | off | Return mock JSON without loading the model (for testing) |
-| `--arr NUMS` | — | Comma-separated resume numbers to process, e.g. `--arr=6,7,8,10` |
-| `--approved` | off | Only process PDFs with a corresponding ground truth JSON in `approved_jsons/` |
+**Process a single PDF resume:**
+```bash
+python3 src/step_1_extractor.py --pdf pdfs/sample_resume.pdf --output output.json
+```
 
-### `server.py` — Web Server
+**Process a whole folder of PDF resumes:**
+```bash
+python3 src/step_1_extractor.py --dir pdfs/ --output output_jsons/
+```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--backend` | `vllm` | `transformers` or `vllm` |
-| `--vllm-url URL` | `http://localhost:8100/v1` | vLLM server URL |
-| `--model NAME` | auto-detected | Model name (auto-discovered from vLLM if not set) |
-| `--image` | off | Vision-only mode |
-| `--mock` | off | Mock mode for testing |
-| `--host` | `0.0.0.0` | Server bind address |
-| `--port` | `8005` | Server bind port |
+### 2. Run the Web Application
 
-### `evaluate.py` — Evaluation
-
-Compares extracted JSON outputs against approved ground truth JSONs using embedding-based similarity scoring.
+If you prefer using a browser user interface:
 
 ```bash
-python src/evaluate.py --extracted output_jsons/ --ground-truth approved_jsons/
+python3 src/server.py
+```
+
+Then open your browser and navigate to `http://localhost:8005`.
+
+### 3. Evaluate Results
+
+To score your extracted JSON files against ground truth files:
+
+```bash
+python3 src/evaluate.py --extracted output_jsons/ --ground-truth approved_jsons/
 ```
 
 ---
@@ -149,7 +84,7 @@ module load miniconda3
 # Create a Python 3.11 environment
 conda create -n resume_env python=3.11 -y
 
-# Activate the environment (using source activate for SLURM compatibility)
+# Activate the environment
 source activate resume_env
 
 # Install the required Python packages
@@ -174,13 +109,6 @@ Inside the interactive session on the compute node:
 module load miniconda3
 source activate resume_env
 
-# Default HF backend
-python src/step_1_extractor.py --dir pdfs/ --output output_jsons/
+# Process a directory of resumes
+python3 src/step_1_extractor.py --dir pdfs/ --output output_jsons/
 ```
-
-## Best extraction pipeline so far
-
-use Document Layout Analysis model to extract the pdf into markdown, then use
-
-1. Qwen/Qwen3.5-35B-A3B if mem is available for best accuracy
-2. Qwen/Qwen3.5-9B if mem is less more available
