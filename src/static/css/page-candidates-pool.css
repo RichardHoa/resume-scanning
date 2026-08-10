@@ -1,0 +1,214 @@
+/* ==========================================================================
+   Page Styles - Candidate Evaluation Pool (Overview & Cards)
+   Line Count: ~170 lines (Strict Limit: < 200 lines)
+   ========================================================================== */
+
+/* Statistics Overview Summary Grid */
+.cand-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+}
+
+.stat-box {
+    background: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.stat-label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.stat-number {
+    font-size: 1.6rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    color: var(--text-main);
+}
+
+.stat-strong .stat-number { color: #34d399; }
+.stat-potential .stat-number { color: #a5b4fc; }
+.stat-low .stat-number { color: #fcd34d; }
+.stat-reject .stat-number { color: #fca5a5; }
+
+/* Toolbar: Search input & filter dropdowns */
+.cand-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    background: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.search-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-grow: 1;
+    max-width: 480px;
+}
+
+.toolbar-select-group {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.select-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+/* Candidate Card Grid */
+.cand-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 1.25rem;
+}
+
+.cand-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+}
+
+.cand-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+}
+
+.cand-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.cand-info-group h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.cand-role {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.cand-score-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.cand-score-val {
+    font-size: 1.5rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+}
+
+.cand-score-lbl {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.cand-dimensions-mini {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    background: var(--bg-main);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+}
+
+.dim-mini-item {
+    display: flex;
+    justify-content: space-between;
+}
+
+.dim-mini-name { color: var(--text-muted); }
+.dim-mini-score { color: var(--text-main); font-weight: 600; }
+
+.cand-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid var(--border);
+    padding-top: 0.75rem;
+    font-size: 0.8rem;
+}
+
+.badge-strength-cnt { color: var(--success-light); font-weight: 600; }
+.badge-gap-cnt { color: var(--warning-light); font-weight: 600; }
+.cand-inspect-btn { color: var(--accent-bright); font-weight: 600; }
+
+/* Separate Tier Block Containers */
+.cand-tier-block {
+    background: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.cand-tier-block.tier-1-block {
+    border-left: 5px solid #f59e0b;
+    background: linear-gradient(180deg, rgba(245, 158, 11, 0.04) 0%, var(--bg-main) 100%);
+}
+
+.cand-tier-block.tier-2-block {
+    border-left: 5px solid #3b82f6;
+    background: linear-gradient(180deg, rgba(59, 130, 246, 0.04) 0%, var(--bg-main) 100%);
+}
+
+.cand-tier-block.tier-3-block {
+    border-left: 5px solid #64748b;
+    background: linear-gradient(180deg, rgba(100, 116, 139, 0.04) 0%, var(--bg-main) 100%);
+}
+
+.cand-tier-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.cand-tier-title-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.cand-tier-title-group h3 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 0;
+}
+

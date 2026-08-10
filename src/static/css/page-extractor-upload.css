@@ -1,0 +1,126 @@
+/* ==========================================================================
+   Page Styles - Step 1: CV Extractor (Upload Dropzone)
+   Line Count: ~125 lines (Strict Limit: < 200 lines)
+   ========================================================================== */
+
+.page-view {
+    display: block;
+    opacity: 1;
+}
+
+/* Upload Dropzone Container */
+.upload-dropzone {
+    border: 2px dashed var(--border-bright);
+    border-radius: 16px;
+    padding: 4rem 2rem;
+    text-align: center;
+    background-color: rgba(4, 7, 14, 0.4);
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.upload-dropzone:hover, .upload-dropzone.dragover {
+    border-color: var(--accent);
+    background-color: rgba(99, 102, 241, 0.05);
+    box-shadow: var(--shadow-glow);
+}
+
+.dropzone-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.upload-icon {
+    width: 64px;
+    height: 64px;
+    background-color: rgba(99, 102, 241, 0.1);
+    border-radius: 50%;
+    position: relative;
+    transition: transform var(--transition-normal);
+}
+
+.upload-dropzone:hover .upload-icon {
+    transform: translateY(-4px);
+    background-color: rgba(99, 102, 241, 0.2);
+}
+
+.upload-icon::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    left: 24px;
+    width: 16px;
+    height: 16px;
+    border: 3px solid var(--accent-bright);
+    border-bottom: none;
+    border-left: none;
+    transform: rotate(-45deg);
+}
+
+.upload-icon::after {
+    content: '';
+    position: absolute;
+    top: 28px;
+    left: 31px;
+    width: 3px;
+    height: 16px;
+    background-color: var(--accent-bright);
+}
+
+.file-preview-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background-color: var(--bg-main);
+    border: 1px solid var(--border-bright);
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+}
+
+.file-icon-pdf {
+    width: 40px;
+    height: 40px;
+    background: rgba(239, 68, 68, 0.15);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--danger-light);
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+
+.file-icon-pdf::after { content: 'PDF'; }
+
+.file-details {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.file-name {
+    font-weight: 600;
+    color: var(--text-main);
+    font-size: 0.95rem;
+}
+
+.file-size {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.btn-remove {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.4rem;
+    cursor: pointer;
+    padding: 4px;
+}
+
+.btn-remove:hover { color: var(--danger-light); }

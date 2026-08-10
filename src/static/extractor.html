@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <!--
   ==============================================================================
-  AI Resume Extractor & Evaluation Dashboard - Index / Default Home Entry
+  AI Resume Extractor & Evaluation Dashboard - Step 1: CV Extractor Page
   ==============================================================================
-  Description: Default home page redirecting or rendering Step 1: CV Extractor view.
+  Description: Dedicated HTML page for uploading candidate PDF resumes,
+               triggering layout-aware AI extraction, and visualizing JSON output.
 -->
 <html lang="en">
 <head>
@@ -19,7 +20,9 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- Top Sticky Header Navigation -->
+        <!-- ==================================================================== -->
+        <!-- TOP NAVIGATION BAR                                                   -->
+        <!-- ==================================================================== -->
         <header class="main-header">
             <div class="header-brand">
                 <div class="brand-logo-icon">⚡</div>
@@ -29,6 +32,7 @@
                 </div>
             </div>
 
+            <!-- Page Navigation Links -->
             <nav class="app-nav-bar">
                 <a href="/extractor" class="nav-link active">
                     <span class="nav-icon">⚡</span> Step 1: CV Extractor
@@ -44,6 +48,7 @@
                 </a>
             </nav>
 
+            <!-- Server Status & Model Info Badges -->
             <div class="header-config">
                 <div class="config-badge" id="badge-model">
                     <span class="badge-label">Model:</span>
@@ -56,9 +61,12 @@
             </div>
         </header>
 
-        <!-- Main Extractor Area -->
+        <!-- ==================================================================== -->
+        <!-- MAIN CONTENT AREA - CV EXTRACTOR                                    -->
+        <!-- ==================================================================== -->
         <main class="main-content">
             <div class="page-view active" id="page-extractor">
+                <!-- PDF Upload Dropzone Panel -->
                 <section class="panel upload-panel" id="upload-section">
                     <div class="panel-header">
                         <h2>Upload Candidate CV</h2>
@@ -85,6 +93,7 @@
                     </button>
                 </section>
 
+                <!-- Extraction Results Dashboard Panel -->
                 <section class="panel results-panel" id="results-section" style="display: none;">
                     <div class="results-header">
                         <div class="results-title-group">
@@ -102,7 +111,9 @@
                         </div>
                     </div>
 
+                    <!-- Split View: Raw Code vs Formatted Visual Profile -->
                     <div class="dashboard-split">
+                        <!-- Left Pane: Pretty Printed JSON -->
                         <div class="split-pane code-pane">
                             <h3>Raw Extracted JSON</h3>
                             <div class="code-container">
@@ -110,6 +121,7 @@
                             </div>
                         </div>
 
+                        <!-- Right Pane: Tabbed Profile Cards -->
                         <div class="split-pane visual-pane">
                             <div class="tabs-nav">
                                 <button class="tab-btn active" data-tab="tab-profile">Profile</button>
@@ -118,6 +130,7 @@
                                 <button class="tab-btn" data-tab="tab-projects">Skills & Projects</button>
                             </div>
 
+                            <!-- Tab 1: Profile Summary -->
                             <div class="tab-content active" id="tab-profile">
                                 <div class="profile-card">
                                     <div class="profile-header">
@@ -154,10 +167,12 @@
                                 </div>
                             </div>
 
+                            <!-- Tab 2: Work Experience Timeline -->
                             <div class="tab-content" id="tab-experience">
                                 <div class="timeline" id="experience-timeline"></div>
                             </div>
 
+                            <!-- Tab 3: Education & Certifications -->
                             <div class="tab-content" id="tab-education">
                                 <h5 style="margin-bottom: 10px;">Education</h5>
                                 <div id="education-list"></div>
@@ -165,6 +180,7 @@
                                 <div id="certifications-list"></div>
                             </div>
 
+                            <!-- Tab 4: Skills & Projects -->
                             <div class="tab-content" id="tab-projects">
                                 <h5 style="margin-bottom: 10px;">Skills & Specialties</h5>
                                 <div class="skills-container" id="skills-list"></div>
@@ -178,6 +194,9 @@
         </main>
     </div>
 
+    <!-- ==================================================================== -->
+    <!-- GLOBAL UI OVERLAYS (Loader & Dialogs)                                -->
+    <!-- ==================================================================== -->
     <div class="loader-overlay" id="loader-overlay" style="display: none;">
         <div class="loader-card">
             <div class="spinner-ring">
@@ -191,6 +210,7 @@
         </div>
     </div>
 
+    <!-- Main Module Application Bootstrapper -->
     <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

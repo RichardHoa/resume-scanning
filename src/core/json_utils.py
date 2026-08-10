@@ -1,0 +1,242 @@
+"""
+JSON Utilities: Schema loading, JSON extraction, cleanup, and auto-repair.
+"""
+import os
+import sys
+
+# Ensure repository root is in sys.path for 'src' package imports
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+import json
+import re
+from typing import Dict, Any, Optional
+from src.core.config import SCHEMAS_DIR
+
+
+def load_schema_from_file(model_name: str) -> dict:
+    """Loads the appropriate schema dictionary from the schemas/ directory based on active model name."""
+    if not model_name:
+        model_name = ""
+
+    model_name_lower = model_name.lower()
+    if "nuextract" in model_name_lower:
+        schema_file = "nuextract_schema.json"
+    else:
+        schema_file = "qwen_schema.json"
+
+    schema_path = os.path.join(SCHEMAS_DIR, schema_file)
+    try:
+        with open(schema_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Warning: Failed to load schema from {schema_path} ({e}). Falling back to empty object.", file=sys.stderr)
+        return {}
+
+
+def extract_json_substring(text: str) -> str:
+    """
+    Strips out thinking blocks (e.g. <think>...</think>), markdown code blocks,
+    and isolates the actual JSON string by finding the first '{' and last '}'.
+    """
+    if not text:
+        return ""
+    cleaned = text.strip()
+
+    cleaned = re.sub(r'<think>.*?</think>', '', cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r'^Thinking Process:.*?(?=\n\s*\{)', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+
+    start_idx = cleaned.find('{')
+    if start_idx == -1:
+        return cleaned
+
+    end_idx = cleaned.rfind('}')
+    if end_idx == -1:
+        return cleaned[start_idx:]
+
+    return cleaned[start_idx:end_idx + 1]
+
+
+def repair_truncated_json(text: str) -> str:
+    """
+    Best-effort repair of a JSON string truncated mid-stream (e.g. due to token limits).
+    """
+    if not text or not text.strip():
+        return text
+
+    in_string = False
+    escape_next = False
+    stack = []
+    ctx_stack = []
+    last_safe_end = 0
+
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+
+        if escape_next:
+            escape_next = False
+            i += 1
+            continue
+
+        if ch == '\\' and in_string:
+            escape_next = True
+            i += 1
+            continue
+
+        if ch == '"':
+            if in_string:
+                in_string = False
+                ctx = ctx_stack[-1] if ctx_stack else None
+                if ctx and ctx[0] == 'o':
+                    if ctx[1] == 'expect_value':
+                        last_safe_end = i + 1
+                        ctx_stack[-1] = ('o', 'after_value')
+                    elif ctx[1] == 'expect_key':
+                        ctx_stack[-1] = ('o', 'expect_colon')
+                elif ctx and ctx[0] == 'a':
+                    last_safe_end = i + 1
+            else:
+                in_string = True
+                ctx = ctx_stack[-1] if ctx_stack else None
+                if ctx and ctx[0] == 'o' and ctx[1] == 'after_value':
+                    ctx_stack[-1] = ('o', 'expect_key')
+            i += 1
+            continue
+
+        if in_string:
+            i += 1
+            continue
+
+        if ch == '{':
+            stack.append('o')
+            ctx_stack.append(('o', 'expect_key'))
+        elif ch == '[':
+            stack.append('a')
+            ctx_stack.append(('a', 'value'))
+        elif ch == '}':
+            if stack:
+                stack.pop()
+                ctx_stack.pop()
+            last_safe_end = i + 1
+            if ctx_stack:
+                parent = ctx_stack[-1]
+                if parent[0] == 'o' and parent[1] == 'expect_value':
+                    ctx_stack[-1] = ('o', 'after_value')
+        elif ch == ']':
+            if stack:
+                stack.pop()
+                ctx_stack.pop()
+            last_safe_end = i + 1
+            if ctx_stack:
+                parent = ctx_stack[-1]
+                if parent[0] == 'o' and parent[1] == 'expect_value':
+                    ctx_stack[-1] = ('o', 'after_value')
+        elif ch == ':':
+            if ctx_stack and ctx_stack[-1] == ('o', 'expect_colon'):
+                ctx_stack[-1] = ('o', 'expect_value')
+        elif ch == ',':
+            last_safe_end = i + 1
+            if ctx_stack:
+                parent = ctx_stack[-1]
+                if parent[0] == 'o':
+                    ctx_stack[-1] = ('o', 'expect_key')
+
+        i += 1
+
+    safe_text = text[:last_safe_end]
+
+    stack2 = []
+    in_str2 = False
+    esc2 = False
+    for ch in safe_text:
+        if esc2:
+            esc2 = False
+            continue
+        if ch == '\\' and in_str2:
+            esc2 = True
+            continue
+        if ch == '"':
+            in_str2 = not in_str2
+            continue
+        if in_str2:
+            continue
+        if ch == '{':
+            stack2.append('o')
+        elif ch == '[':
+            stack2.append('a')
+        elif ch in ('}', ']'):
+            if stack2:
+                stack2.pop()
+
+    closing = ''.join('}' if s == 'o' else ']' for s in reversed(stack2))
+    repaired = safe_text.rstrip().rstrip(',') + closing
+
+    REQUIRED_KEYS = {
+        "position_applied":       '{"title": "", "level": "unknown"}',
+        "self_evaluation":        '""',
+        "skills_and_specialties": '[]',
+        "languages":              '[]',
+        "certifications":         '[]',
+        "work_experience":        '[]',
+        "basic_information":      '{"email": "", "phone": "", "location": "", "other_info": ""}',
+        "education_background":   '[]',
+        "projects":               '[]',
+    }
+    try:
+        obj = json.loads(repaired)
+        for key, default_str in REQUIRED_KEYS.items():
+            if key not in obj:
+                obj[key] = json.loads(default_str)
+        return json.dumps(obj, ensure_ascii=False)
+    except json.JSONDecodeError:
+        return repaired
+
+
+def clean_and_parse_json(text: str) -> Optional[Dict[str, Any]]:
+    """
+    Safely extracts and parses JSON dict from LLM string output.
+    Strips thinking tags (<think>...</think>), markdown code blocks, and fixes common syntax issues.
+    """
+    if not text or not text.strip():
+        return None
+
+    cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    cleaned = re.sub(r'<think>.*?(?=\{|```)', '', cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r'^Thinking Process:.*?(?=\n\s*[\{`])', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+
+    cleaned = re.sub(r'```(?:json)?\s*', '', cleaned)
+    cleaned = cleaned.replace('```', '').strip()
+
+    cleaned_no_trailing = re.sub(r',\s*([}\]])', r'\1', cleaned)
+
+    try:
+        parsed = json.loads(cleaned_no_trailing)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    start_idx = cleaned.find('{')
+    end_idx = cleaned.rfind('}')
+    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+        candidate = cleaned[start_idx:end_idx + 1]
+        candidate = re.sub(r',\s*([}\]])', r'\1', candidate)
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+
+    try:
+        repaired = repair_truncated_json(extract_json_substring(text))
+        parsed = json.loads(repaired)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    return None

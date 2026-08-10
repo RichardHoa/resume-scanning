@@ -1,0 +1,52 @@
+========================================================================================
+HR JOB REQUIREMENT CATEGORY MAPPING REFERENCE
+========================================================================================
+
+This reference file defines how HR Job Descriptions (Standard Requirements) and 
+HR Hidden Requirements are categorized into the 5 core evaluation dimensions for candidate screening.
+
+----------------------------------------------------------------------------------------
+1. seniority_title (Position & Seniority Match — Weight: 15%)
+----------------------------------------------------------------------------------------
+- Target Job Title & Position applied (e.g., "Nhân viên C&B", "Senior Backend Engineer", "Trưởng phòng HR").
+- Career Level (e.g., Junior, Mid-level, Senior, Lead, Manager, Director).
+- Total Years of Overall Work Experience required (e.g., "Tối thiểu 3 năm kinh nghiệm làm việc").
+- Field/Domain-Specific Years of Experience required (e.g., "Ưu tiên có kinh nghiệm C&B từ 1-2 năm trở lên", "Có 2+ năm làm việc trong ngành Fintech").
+- Management, Team Leadership, or Operational scope expectations.
+
+----------------------------------------------------------------------------------------
+2. technical_skills (Technical Skills & Competencies — Weight: 30%)
+----------------------------------------------------------------------------------------
+- Core Technical Skills, Hard Skills, and domain expertise.
+- Programming Languages, Frameworks, Libraries (e.g., Python, Java, React, FastAPI).
+- Databases, Cloud Platforms, Infrastructure Tools (e.g., PostgreSQL, Docker, AWS).
+- Specialized Software, HRMS systems, ERPs, Excel proficiency, Technical methodologies.
+- Core technical competencies required for daily job execution.
+
+----------------------------------------------------------------------------------------
+3. work_experience (Work Experience & Project Relevance — Weight: 30%)
+----------------------------------------------------------------------------------------
+- Specific Role Responsibilities, Work Scope, and daily duties.
+- Industry exposure and domain background (e.g., retail, e-commerce, banking).
+- Project scale, traffic handling, team size, budget management.
+- Key Achievements, quantifiable outcomes, problem-solving history.
+- Practical working background framing daily tasks and responsibilities.
+
+----------------------------------------------------------------------------------------
+4. education_certifications (Education & Certifications — Weight: 10%)
+----------------------------------------------------------------------------------------
+- Academic Degree requirements (e.g., Bachelor, Master, Engineering Degree).
+- Major / Field of Study (e.g., Computer Science, HR Management, Business Administration).
+- GPA or Academic honors/classification (e.g., GPA >= 3.2, Bằng Khá/Giỏi).
+- Professional Certifications (e.g., PMP, AWS Certified, SHRM, ACCA).
+- Foreign Language Certificates & Scores (e.g., TOEIC >= 650, IELTS >= 6.5, JLPT N2, HSK 5).
+
+----------------------------------------------------------------------------------------
+5. hidden_culture (HR Hidden Requirements & Culture Fit — Weight: 15%)
+----------------------------------------------------------------------------------------
+- Workplace Attitude, Mindset, and Personal Values.
+- Soft Skills (e.g., Communication, Teamwork, Problem-solving, Time Management).
+- Stress Tolerance, Adaptability, Work Pressure management, Agility.
+- Work Arrangement / Employment conditions (e.g., Willingness to OT, On-site vs Hybrid, Travel requirement).
+- Corporate Culture alignment, Proactiveness, Long-term commitment expectation.
+========================================================================================

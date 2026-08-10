@@ -13,6 +13,14 @@
           "type": "string",
           "enum": ["junior", "mid-level", "senior", "leadership", "unknown"],
           "description": "Classify level based on experience: junior (<2 years), mid-level (2-5 years), senior (>5 years), leadership (manager/team-lead/director), or unknown."
+        },
+        "total_years_experience": {
+          "type": "string",
+          "description": "Calculated total years of working experience across all jobs (from earliest to latest job end date)."
+        },
+        "seniority_summary": {
+          "type": "string",
+          "description": "Detailed sentence summarizing total years worked and breakdown of experience by field/role (e.g., '4 years total experience: 2.5 years in C&B, 1.5 years in Recruitment')."
         }
       },
       "required": ["title", "level"]
@@ -24,7 +32,7 @@
     "skills_and_specialties": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Skills, tools, technologies, and competencies extracted verbatim from the entire resume. Keep in Vietnamese or English exactly as written."
+      "description": "Extract maximum 20 key technical skills and competencies. DO NOT extract more than 20 skills. Format each skill with a descriptive sentence detailing experience level and context."
     },
     "languages": {
       "type": "array",

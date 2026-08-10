@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<!--
+  ==============================================================================
+  AI Resume Extractor & Evaluation Dashboard - RAG Knowledge Base Page
+  ==============================================================================
+  Description: Dedicated HTML page for viewing persistent ChromaDB RAG vector
+               database status, inspecting decomposed HR criteria items across 5
+               dimensions, and clearing vector store cache.
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Knowledge Base | AI Resume Scanner</title>
+    <!-- Modern Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Main Combined Stylesheet -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- ==================================================================== -->
+        <!-- TOP NAVIGATION BAR                                                   -->
+        <!-- ==================================================================== -->
+        <header class="main-header">
+            <div class="header-brand">
+                <div class="brand-logo-icon">⚡</div>
+                <div class="brand-title-group">
+                    <h1>Antigravity Extractor</h1>
+                    <span class="subtitle">Vietnamese Resume Parsing & RAG Engine</span>
+                </div>
+            </div>
+
+            <!-- Page Navigation Links -->
+            <nav class="app-nav-bar">
+                <a href="/extractor" class="nav-link">
+                    <span class="nav-icon">⚡</span> Step 1: CV Extractor
+                </a>
+                <a href="/evaluator" class="nav-link">
+                    <span class="nav-icon">🎯</span> Step 2: HR Evaluator
+                </a>
+                <a href="/rag" class="nav-link active">
+                    <span class="nav-icon">🧠</span> RAG Knowledge Base
+                </a>
+                <a href="/candidates" class="nav-link">
+                    <span class="nav-icon">📊</span> Candidate Pool
+                </a>
+            </nav>
+
+            <!-- Server Status & Model Info Badges -->
+            <div class="header-config">
+                <div class="config-badge" id="badge-model">
+                    <span class="badge-label">Model:</span>
+                    <span class="badge-value" id="val-model">Loading...</span>
+                </div>
+                <div class="config-badge" id="badge-mode">
+                    <span class="badge-label">Mode:</span>
+                    <span class="badge-value" id="val-mode">Loading...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ==================================================================== -->
+        <!-- MAIN CONTENT AREA - RAG KNOWLEDGE BASE                               -->
+        <!-- ==================================================================== -->
+        <main class="main-content">
+            <div class="page-view active" id="page-rag">
+                <div class="panel">
+                    <div class="panel-header-split">
+                        <div>
+                            <h2>🧠 RAG Criteria Knowledge Base</h2>
+                            <p>Persistent Local Vector Database (<code id="rag-db-path">rag/chroma_db</code>). Stores decomposed HR criteria vector embeddings across 5 dimensions.</p>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-secondary" id="btn-refresh-rag">↻ Refresh RAG</button>
+                            <button class="btn btn-danger" id="btn-clear-rag">🗑️ Clear RAG DB</button>
+                        </div>
+                    </div>
+
+                    <!-- Vector Store Summary Status Banner -->
+                    <div id="rag-status-banner" style="padding: 12px 18px; border-radius: 10px; background: rgba(30, 41, 59, 0.6); border: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <span style="font-weight: 600;">Status: </span>
+                            <span id="rag-status-badge" class="badge-success">RAG Active</span>
+                        </div>
+                        <div>
+                            <span style="font-weight: 600;">Engine: </span>
+                            <span id="rag-engine-badge" style="font-size: 0.85rem; padding: 3px 10px; border-radius: 4px; background: rgba(99, 102, 241, 0.2); color: #818cf8;">ChromaDB Persistent Store</span>
+                        </div>
+                        <div>
+                            <span style="font-weight: 600;">Total Criteria Items: </span>
+                            <span id="rag-total-count" style="font-weight: 700; color: var(--accent-bright); font-size: 1.1rem;">0</span>
+                        </div>
+                    </div>
+
+                    <!-- Dimension Cards Grid (5 Dimensions) -->
+                    <div id="rag-categories-grid" class="rag-categories-grid">
+                        <div class="loading-state">Loading RAG Knowledge Base...</div>
+                    </div>
+
+                    <!-- Decomposed Requirement Text File Preview -->
+                    <div style="margin-top: 2rem;">
+                        <h3 style="margin-bottom: 0.5rem;">📄 HR Requirement Summary File (<code>hr_rag.txt</code>)</h3>
+                        <div class="logs-content-pane">
+                            <pre><code id="hr-rag-code-view">Loading hr_rag.txt content...</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Main Module Application Bootstrapper -->
+    <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

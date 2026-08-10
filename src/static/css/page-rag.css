@@ -1,0 +1,12 @@
+/* ==========================================================================
+   Page Styles - RAG Knowledge Base
+   Line Count: ~40 lines (Strict Limit: < 200 lines)
+   ========================================================================== */
+
+/* RAG 5-Dimension Categories Grid Container */
+.rag-categories-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 1.25rem;
+    margin-top: 1rem;
+}

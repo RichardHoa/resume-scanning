@@ -26,12 +26,10 @@ Usage:
 """
 import os
 import sys
-import json
 import argparse
 import uvicorn
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 # Add paths to sys.path so we can import step_1_extractor robustly
@@ -43,6 +41,10 @@ if PARENT_DIR not in sys.path:
     sys.path.insert(0, PARENT_DIR)
 
 from step_1_extractor import ResumeExtractor
+from step_2_evaluate import ResumeEvaluator
+from src.core.state import state
+from src.core.evaluation_order import load_evaluation_order
+from src.api import include_api_routers
 
 # 1. Parse Command Line Arguments at module level to let uvicorn and parser coexist
 parser = argparse.ArgumentParser(description="Resume Extractor FastAPI Server")
@@ -62,114 +64,64 @@ parser.add_argument("--port", type=int, default=8005,
 # Use parse_known_args so that uvicorn flags like --reload do not crash our parser
 args, unknown_args = parser.parse_known_args()
 
-# Initialize the global extractor instance
-extractor = ResumeExtractor(
+# Populate global state
+state.args = args
+state.temp_dir = os.path.join(SCRIPT_DIR, "temp_uploads")
+state.static_dir = os.path.join(SCRIPT_DIR, "static")
+
+os.makedirs(state.temp_dir, exist_ok=True)
+os.makedirs(state.static_dir, exist_ok=True)
+
+# Initialize the global extractor and evaluator instances in state
+state.extractor = ResumeExtractor(
     model_name=args.model, mock=args.mock,
     backend=args.backend, vllm_url=args.vllm_url
 )
+
+state.evaluator = ResumeEvaluator(
+    model_name=args.model or "Qwen/Qwen3.5-9B", mock=args.mock,
+    backend=args.backend, vllm_url=args.vllm_url
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load model once at startup to optimize processing times."""
     print("----------------------------------------------------------------", file=sys.stderr)
-    print(f"Initializing Resume Extraction Server", file=sys.stderr)
+    print("Initializing Resume Extraction & Evaluation Server", file=sys.stderr)
     print(f"Backend: {args.backend}", file=sys.stderr)
     print(f"Mock Mode: {args.mock}", file=sys.stderr)
     print("----------------------------------------------------------------", file=sys.stderr)
     
+    # Load secret evaluation order file on server startup
+    startup_order = load_evaluation_order()
+    if startup_order.get("file_found"):
+        print(f"[SERVER EVALUATION ORDER] Secret order loaded from '{startup_order.get('file_path')}': Tier 1={len(startup_order.get('tier1', []))} items, Tier 2={len(startup_order.get('tier2', []))} items", file=sys.stderr)
+    else:
+        print("[SERVER EVALUATION ORDER] Warning: No secret evaluation_order.txt file found at startup.", file=sys.stderr)
+
     if not args.mock and args.backend == "transformers":
         print("Loading local model (this can take a few minutes)...", file=sys.stderr)
-        extractor.load_model()
+        state.extractor.load_model()
+        state.evaluator.tokenizer = getattr(state.extractor, 'tokenizer_or_processor', None)
+        state.evaluator.model = state.extractor.model
         print("Model loaded successfully!", file=sys.stderr)
     elif args.backend == "vllm":
         print(f"Connecting to vLLM server at {args.vllm_url}...", file=sys.stderr)
-        extractor.load_model()
-        print(f"Using model: {extractor.model_name}", file=sys.stderr)
+        state.extractor.load_model()
+        state.evaluator.model_name = state.extractor.model_name
+        print(f"Using model: {state.extractor.model_name}", file=sys.stderr)
     else:
         print("Mock mode is enabled. Model will not be loaded into memory.", file=sys.stderr)
     yield
 
+
 # 2. Create the FastAPI Application
 app = FastAPI(title="Resume Extraction Server", lifespan=lifespan)
 
-# Ensure temporary upload directory exists
-TEMP_DIR = os.path.join(SCRIPT_DIR, "temp_uploads")
-os.makedirs(TEMP_DIR, exist_ok=True)
-
-# Mount the static files folder
-STATIC_DIR = os.path.join(SCRIPT_DIR, "static")
-os.makedirs(STATIC_DIR, exist_ok=True)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-@app.get("/")
-def read_root():
-    """Serves the dashboard index.html page."""
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    if not os.path.exists(index_path):
-        from fastapi.responses import HTMLResponse
-        return HTMLResponse(
-            content="<h1>Frontend not found</h1><p>Please build index.html in src/static/</p>",
-            status_code=404
-        )
-    return FileResponse(index_path)
-
-@app.get("/api/config")
-def get_config():
-    """Exposes current server configuration to the UI."""
-    return {
-        "model": extractor.model_name,
-        "backend": args.backend,
-        "image_mode": False,
-        "mock": args.mock
-    }
-
-@app.post("/api/extract")
-async def extract_resume(file: UploadFile = File(...)):
-    """Handles PDF resume uploads, extracts details, and returns JSON."""
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
-
-    # Save uploaded file temporarily in the workspace directory
-    safe_filename = os.path.basename(file.filename)
-    temp_file_path = os.path.join(TEMP_DIR, safe_filename)
-    try:
-        with open(temp_file_path, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
-            
-        print(f"Received file: {safe_filename}, processing extraction...", file=sys.stderr)
-        
-        # Run extractor class
-        import time
-        start_time = time.time()
-        formatted_json_str = extractor.extract(temp_file_path)
-        elapsed_time = time.time() - start_time
-        
-        # Load string back to dict to return standard structured response
-        try:
-            extracted_data = json.loads(formatted_json_str)
-            headers = {"X-Extraction-Time": f"{elapsed_time:.2f}"}
-            return JSONResponse(content=extracted_data, headers=headers)
-        except json.JSONDecodeError:
-            # Fallback in case raw text repair failed
-            headers = {"X-Extraction-Time": f"{elapsed_time:.2f}"}
-            return JSONResponse(
-                content={"error": "Failed to parse model output as JSON", "raw_output": formatted_json_str},
-                status_code=500,
-                headers=headers
-            )
-            
-    except Exception as e:
-        print(f"Error during extraction of {safe_filename}: {e}", file=sys.stderr)
-        raise HTTPException(status_code=500, detail=str(e))
-        
-    finally:
-        # Cleanup temp upload file
-        if os.path.exists(temp_file_path):
-            try:
-                os.remove(temp_file_path)
-            except Exception as cleanup_err:
-                print(f"Warning: Failed to delete temp file {temp_file_path}: {cleanup_err}", file=sys.stderr)
+# Mount static files folder & include routers
+app.mount("/static", StaticFiles(directory=state.static_dir), name="static")
+include_api_routers(app)
 
 if __name__ == "__main__":
     print(f"Starting server on {args.host}:{args.port}", file=sys.stderr)

@@ -1,0 +1,45 @@
+/* ==========================================================================
+   UI Component System - Panels & Glass Cards
+   Line Count: ~50 lines (Strict Limit: < 200 lines)
+   ========================================================================== */
+
+/* Main Panel Card Container */
+.panel {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: var(--shadow-md);
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Panel Header Typography */
+.panel-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.panel-header h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.panel-header p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+/* Panel Header Split Container */
+.panel-header-split {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 1rem;
+}

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<!--
+  ==============================================================================
+  AI Resume Extractor & Evaluation Dashboard - Step 2: HR Evaluator Page
+  ==============================================================================
+  Description: Dedicated HTML page for configuring standard and hidden HR job
+               requirements, running batch AI resume evaluations, and viewing
+               the leaderboard breakdown across 5 evaluation dimensions.
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HR Evaluator | AI Resume Scanner</title>
+    <!-- Modern Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Main Combined Stylesheet -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- ==================================================================== -->
+        <!-- TOP NAVIGATION BAR                                                   -->
+        <!-- ==================================================================== -->
+        <header class="main-header">
+            <div class="header-brand">
+                <div class="brand-logo-icon">⚡</div>
+                <div class="brand-title-group">
+                    <h1>Antigravity Extractor</h1>
+                    <span class="subtitle">Vietnamese Resume Parsing & RAG Engine</span>
+                </div>
+            </div>
+
+            <!-- Page Navigation Links -->
+            <nav class="app-nav-bar">
+                <a href="/extractor" class="nav-link">
+                    <span class="nav-icon">⚡</span> Step 1: CV Extractor
+                </a>
+                <a href="/evaluator" class="nav-link active">
+                    <span class="nav-icon">🎯</span> Step 2: HR Evaluator
+                </a>
+                <a href="/rag" class="nav-link">
+                    <span class="nav-icon">🧠</span> RAG Knowledge Base
+                </a>
+                <a href="/candidates" class="nav-link">
+                    <span class="nav-icon">📊</span> Candidate Pool
+                </a>
+            </nav>
+
+            <!-- Configuration Status Badges -->
+            <div class="header-config">
+                <div class="config-badge" id="badge-model">
+                    <span class="badge-label">Model:</span>
+                    <span class="badge-value" id="val-model">Loading...</span>
+                </div>
+                <div class="config-badge" id="badge-mode">
+                    <span class="badge-label">Mode:</span>
+                    <span class="badge-value" id="val-mode">Loading...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ==================================================================== -->
+        <!-- MAIN CONTENT AREA - STEP 2: HR EVALUATOR                            -->
+        <!-- ==================================================================== -->
+        <main class="main-content">
+            <div class="page-view active" id="page-evaluator">
+                <div class="eval-layout">
+                    <!-- Left Column: Requirements Setup & Candidate Batch Selector -->
+                    <div class="eval-column">
+                        <!-- 1. HR Criteria Input Panel -->
+                        <div class="panel">
+                            <div class="panel-header">
+                                <h2>1. HR Job Criteria Setup</h2>
+                                <p>Input standard job specs and confidential internal requirements.</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="hr-std-req">Standard Job Requirements</label>
+                                <textarea id="hr-std-req" rows="4" class="form-control" placeholder="e.g. Position: Senior Backend Engineer&#10;Required Skills: Python, FastAPI, PostgreSQL, Microservices&#10;Experience: > 4 years"></textarea>
+                            </div>
+                            <div class="form-group" style="margin-top: 1rem;">
+                                <label for="hr-hidden-req">HR Hidden Requirements (Culture Fit / Unstated Rules)</label>
+                                <textarea id="hr-hidden-req" rows="3" class="form-control form-control-hidden" placeholder="e.g. Prefer candidates with startup experience. Proactive communication. No job hopping under 8 months."></textarea>
+                            </div>
+                        </div>
+
+                        <!-- 2. Scanned Candidate Selection Panel -->
+                        <div class="panel" style="margin-top: 1.5rem;">
+                            <div class="panel-header-split">
+                                <div>
+                                    <h2>2. Select Scanned CVs</h2>
+                                    <p>Select candidates to evaluate in batch.</p>
+                                </div>
+                                <button class="btn btn-sm btn-secondary" id="btn-refresh-resumes">↻ Refresh</button>
+                            </div>
+
+                            <div class="batch-select-bar">
+                                <label><input type="checkbox" id="chk-select-all"> Select All Candidates</label>
+                                <span class="selected-count" id="selected-count-badge">0 selected</span>
+                            </div>
+
+                            <!-- List of Scanned Candidates (Populated dynamically) -->
+                            <div class="scanned-resumes-list" id="scanned-resumes-container">
+                                <div class="loading-state">Loading scanned resumes...</div>
+                            </div>
+
+                            <button class="btn btn-primary btn-block" id="btn-run-eval" style="margin-top: 1rem;" disabled>
+                                🚀 Run AI Resume Evaluation
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Evaluation Leaderboard & Detailed Scores -->
+                    <div class="eval-column">
+                        <!-- Placeholder State (Before evaluation runs) -->
+                        <div class="panel" id="eval-placeholder-panel">
+                            <div class="empty-state">
+                                <div class="empty-icon">🎯</div>
+                                <h3>No Evaluation Results Yet</h3>
+                                <p>Input job requirements on the left, select candidate CVs, and click "Run AI Resume Evaluation" to view RAG scores and evidence breakdown.</p>
+                            </div>
+                        </div>
+
+                        <!-- Results Leaderboard Panel -->
+                        <div class="panel" id="eval-results-panel" style="display: none;">
+                            <div class="results-header" style="margin-bottom: 1rem;">
+                                <h2>Candidate Evaluation Results</h2>
+                                <span class="badge-success" id="eval-total-badge">0 Evaluated</span>
+                            </div>
+
+                            <!-- Dynamic Tier 1, Tier 2, Tier 3 Leaderboard Blocks -->
+                            <div id="tier-blocks-container"></div>
+
+                            <!-- Selected Candidate 5-Dimension Score Grid -->
+                            <div class="candidate-detail-view" id="candidate-detail-view" style="display: none; margin-top: 1.5rem;">
+                                <div class="panel-header-split" style="background: var(--bg-main); padding: 1rem; border-radius: 12px; border: 1px solid var(--border);">
+                                    <div>
+                                        <h3 id="det-cand-name">Candidate Name</h3>
+                                        <span class="text-muted" id="det-cand-file" style="font-size:0.8rem;">resume.json</span>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <span id="det-cand-score" style="font-size: 1.6rem; font-weight:800; color:var(--accent-bright); font-family:var(--font-mono);">0.0</span>
+                                        <span class="badge-rec" id="det-cand-rec">MATCH</span>
+                                    </div>
+                                </div>
+                                <div class="dimensions-grid" id="dimensions-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Global Loader Overlay -->
+    <div class="loader-overlay" id="loader-overlay" style="display: none;">
+        <div class="loader-card">
+            <div class="spinner-ring">
+                <div></div><div></div><div></div><div></div>
+            </div>
+            <h3 id="loader-title">Evaluating Candidate Resumes...</h3>
+            <p id="loader-desc">Decomposing requirements and computing vector similarities.</p>
+            <div class="loader-progress-bar">
+                <div class="loader-progress-fill" id="loader-progress"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Module Application Bootstrapper -->
+    <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>
