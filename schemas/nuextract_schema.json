@@ -2,8 +2,7 @@
   "position_applied": {
     "title": "string",
     "level": ["junior", "mid-level", "senior", "leadership", "unknown"],
-    "total_years_experience": "string",
-    "seniority_summary": "string"
+    "total_years_experience": "string"
   },
   "self_evaluation": "verbatim-string",
   "skills_and_specialties": ["max 20 skills formatted in descriptive sentences with experience context"],

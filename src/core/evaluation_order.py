@@ -182,15 +182,19 @@ def get_candidate_tier(data: dict, fname: str, order_data: dict) -> dict:
             if not item_clean or len(item_clean) < 2:
                 continue
                 
+            # 1. Exact match with any candidate email or email username/prefix
             for em in all_emails:
-                if item_clean == em or item_clean in em or em in item_clean:
+                em_prefix = em.split("@")[0].strip().lower() if "@" in em else ""
+                if item_clean == em or (em_prefix and item_clean == em_prefix):
                     return idx
 
-            if item_clean == fname_lower or item_clean == base_name or item_clean in fname_lower or base_name in item_clean:
+            # 2. Exact match with filename or base name
+            if item_clean == fname_lower or item_clean == base_name:
                 return idx
 
+            # 3. Exact match with candidate name or position title
             for nm in all_names:
-                if item_clean == nm or item_clean in nm or nm in item_clean:
+                if item_clean == nm:
                     return idx
         return -1
 

@@ -350,6 +350,7 @@ export class EvaluatorController {
 
             const strengthsList = (d.strengths || []).map(s => `<li>${this.escapeHtml(s)}</li>`).join('');
             const gapsList = (d.gaps || []).map(g => `<li style="color:#f87171;">${this.escapeHtml(g)}</li>`).join('');
+            const reasoningText = d.reasoning_summary ? this.escapeHtml(d.reasoning_summary) : '';
 
             card.innerHTML = `
                 <div class="dim-header">
@@ -359,9 +360,13 @@ export class EvaluatorController {
                 <div class="dim-progress-track">
                     <div class="dim-progress-fill" style="width: ${d.score}%;"></div>
                 </div>
-                <div style="font-size:0.8rem; font-weight:600; margin-top:4px;">Strengths:</div>
+                ${reasoningText ? `
+                    <div style="font-size:0.8rem; font-weight:600; margin-top:6px; color: var(--accent-bright);">🧠 AI Reasoning (Lập luận đánh giá):</div>
+                    <div class="dim-reasoning-box">${reasoningText}</div>
+                ` : ''}
+                <div style="font-size:0.8rem; font-weight:600; margin-top:6px;">Strengths:</div>
                 <ul class="dim-list">${strengthsList || '<li>None noted</li>'}</ul>
-                <div style="font-size:0.8rem; font-weight:600; margin-top:4px;">Gaps / Concerns:</div>
+                <div style="font-size:0.8rem; font-weight:600; margin-top:6px;">Gaps / Concerns:</div>
                 <ul class="dim-list">${gapsList || '<li>None noted</li>'}</ul>
             `;
             dimensionsContainer.appendChild(card);

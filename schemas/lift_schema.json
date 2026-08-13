@@ -17,10 +17,6 @@
         "total_years_experience": {
           "type": "string",
           "description": "Calculated total years of working experience across all jobs (from earliest to latest job end date)."
-        },
-        "seniority_summary": {
-          "type": "string",
-          "description": "Detailed sentence summarizing total years worked and breakdown of experience by field/role (e.g., '4 years total experience: 2.5 years in C&B, 1.5 years in Recruitment')."
         }
       },
       "required": ["title", "level"]

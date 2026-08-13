@@ -113,3 +113,14 @@
 
 .modal-bullets.strengths li { color: #34d399; }
 .modal-bullets.gaps li { color: #f87171; }
+
+.modal-reasoning-box {
+    background: rgba(99, 102, 241, 0.08);
+    border-left: 3px solid var(--accent);
+    padding: 10px 14px;
+    border-radius: 0 8px 8px 0;
+    font-size: 0.86rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-top: 4px;
+}

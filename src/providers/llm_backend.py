@@ -94,8 +94,9 @@ def run_local_inference(resume_text: str, model: Any, tokenizer: Any) -> str:
     generated_ids = model.generate(
         **filtered_inputs,
         max_new_tokens=MAX_NEW_TOKENS,
-        do_sample=False,
-        repetition_penalty=1.0,
+        do_sample=True,
+        temperature=0.2,
+        repetition_penalty=1.05,
         pad_token_id=tokenizer.eos_token_id
     )
 
@@ -169,7 +170,9 @@ def vllm_chat_request(vllm_url: str, model_name: Optional[str], messages: list) 
     payload = json.dumps({
         "model": model_name,
         "messages": messages,
-        "temperature": 0.0,
+        "temperature": 0.2,
+        "frequency_penalty": 0.3,
+        "repetition_penalty": 1.05,
         "max_tokens": MAX_NEW_TOKENS,
         "guided_json": schema
     }).encode("utf-8")
@@ -214,7 +217,9 @@ def vllm_nuextract_chat_request(vllm_url: str, model_name: Optional[str], messag
     payload = json.dumps({
         "model": model_name,
         "messages": messages,
-        "temperature": 0.0,
+        "temperature": 0.2,
+        "frequency_penalty": 0.3,
+        "repetition_penalty": 1.05,
         "max_tokens": MAX_NEW_TOKENS,
         "chat_template_kwargs": {
             "template": template_str,
@@ -267,8 +272,7 @@ def run_mock_extraction(resume_text: str) -> str:
         "position_applied": {
             "title": "Nhân viên phát triển phần mềm",
             "level": "mid-level",
-            "total_years_experience": "3.5 years",
-            "seniority_summary": "3.5 years total experience: 2.5 years in Python Backend development, 1.0 year in System Administration"
+            "total_years_experience": "3.5 years"
         },
         "self_evaluation": "Lập trình viên nhiệt huyết với kinh nghiệm phát triển hệ thống web, mong muốn đóng góp cho các dự án lớn.",
         "skills_and_specialties": [

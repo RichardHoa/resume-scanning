@@ -195,48 +195,159 @@ def repair_truncated_json(text: str) -> str:
         return repaired
 
 
+def fix_array_key_value_syntax(text: str) -> str:
+    """
+    Fixes invalid LLM JSON outputs where key-value pairs are placed inside string arrays:
+      ["item1", "key": "value"] -> ["item1", "key: value"]
+    """
+    def repair_kv(match):
+        key = match.group(1)
+        val = match.group(2).strip()
+        if val.startswith('"') and val.endswith('"') and len(val) >= 2:
+            val = val[1:-1]
+        return f'"{key}: {val}"'
+
+    def replace_array_content(match):
+        array_body = match.group(1)
+        fixed_body = re.sub(
+            r'"([a-zA-Z0-9_-]+)"\s*:\s*("[^"\r\n]*?"|\d+|true|false|null)',
+            repair_kv,
+            array_body
+        )
+        return f"[{fixed_body}]"
+
+    return re.sub(r'\[\s*(.*?)\s*\]', replace_array_content, text, flags=re.DOTALL)
+
+
+def sanitize_json_string_newlines(text: str) -> str:
+    """
+    Replaces unescaped literal linebreaks (\n, \r, \t) inside JSON string literals with escaped equivalents.
+    """
+    if not text:
+        return ""
+    result = []
+    in_string = False
+    escape = False
+    for ch in text:
+        if escape:
+            result.append(ch)
+            escape = False
+            continue
+        if ch == '\\' and in_string:
+            result.append(ch)
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            result.append(ch)
+            continue
+        if in_string:
+            if ch == '\n':
+                result.append('\\n')
+            elif ch == '\r':
+                result.append('\\r')
+            elif ch == '\t':
+                result.append('\\t')
+            else:
+                result.append(ch)
+        else:
+            result.append(ch)
+    return "".join(result)
+
+
 def clean_and_parse_json(text: str) -> Optional[Dict[str, Any]]:
     """
     Safely extracts and parses JSON dict from LLM string output.
-    Strips thinking tags (<think>...</think>), markdown code blocks, and fixes common syntax issues.
+    Strips thinking tags (<think>...</think>), markdown code blocks, fixes unescaped newlines,
+    and isolates JSON candidate blocks from right-to-left.
     """
     if not text or not text.strip():
         return None
 
+    # Step 1: Strip thinking tags and process header markers
     cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-    cleaned = re.sub(r'<think>.*?(?=\{|```)', '', cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r'<think>.*?(?=\s*\{)', '', cleaned, flags=re.DOTALL)  # Handle unclosed <think> by stripping up to first {
     cleaned = re.sub(r'^Thinking Process:.*?(?=\n\s*[\{`])', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
-
     cleaned = re.sub(r'```(?:json)?\s*', '', cleaned)
     cleaned = cleaned.replace('```', '').strip()
 
-    cleaned_no_trailing = re.sub(r',\s*([}\]])', r'\1', cleaned)
-
-    try:
-        parsed = json.loads(cleaned_no_trailing)
-        if isinstance(parsed, dict):
-            return parsed
-    except Exception:
-        pass
-
-    start_idx = cleaned.find('{')
-    end_idx = cleaned.rfind('}')
-    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-        candidate = cleaned[start_idx:end_idx + 1]
-        candidate = re.sub(r',\s*([}\]])', r'\1', candidate)
+    def _try_parse(raw_str: str) -> Optional[Dict[str, Any]]:
+        if not raw_str or not raw_str.strip():
+            return None
+        
+        # 1. Direct parse
         try:
-            parsed = json.loads(candidate)
-            if isinstance(parsed, dict):
-                return parsed
+            p = json.loads(raw_str)
+            if isinstance(p, dict):
+                return p
         except Exception:
             pass
 
+        # 2. Trailing comma cleanup
+        cleaned_str = re.sub(r',\s*([}\]])', r'\1', raw_str)
+        try:
+            p = json.loads(cleaned_str)
+            if isinstance(p, dict):
+                return p
+        except Exception:
+            pass
+
+        # 3. Sanitize unescaped newlines inside string literals
+        sanitized = sanitize_json_string_newlines(cleaned_str)
+        try:
+            p = json.loads(sanitized)
+            if isinstance(p, dict):
+                return p
+        except Exception:
+            pass
+
+        # 4. Key-value array syntax fix
+        kv_fixed = fix_array_key_value_syntax(sanitized)
+        try:
+            p = json.loads(kv_fixed)
+            if isinstance(p, dict):
+                return p
+        except Exception:
+            pass
+
+        # 5. Internal unescaped double quote repair
+        try:
+            quote_fixed = re.sub(r'(?<=[a-zA-Z0-9_])"(?=[a-zA-Z0-9_])', "'", kv_fixed)
+            p = json.loads(quote_fixed)
+            if isinstance(p, dict):
+                return p
+        except Exception:
+            pass
+
+        return None
+
+    # Try direct parse on entire cleaned text first
+    res = _try_parse(cleaned)
+    if res:
+        return res
+
+    # Step 2: Extract candidate JSON object blocks by finding '{' from right to left
+    brace_indices = [m.start() for m in re.finditer(r'\{', cleaned)]
+    end_idx = cleaned.rfind('}')
+
+    if brace_indices and end_idx != -1:
+        # Search backwards from the last '{' to the first '{'
+        for start_idx in reversed(brace_indices):
+            if start_idx >= end_idx:
+                continue
+            candidate = cleaned[start_idx:end_idx + 1]
+            res = _try_parse(candidate)
+            if res:
+                return res
+
+    # Step 3: Fallback to repair_truncated_json
     try:
         repaired = repair_truncated_json(extract_json_substring(text))
-        parsed = json.loads(repaired)
-        if isinstance(parsed, dict):
-            return parsed
+        res = _try_parse(repaired)
+        if res:
+            return res
     except Exception:
         pass
 
     return None
+

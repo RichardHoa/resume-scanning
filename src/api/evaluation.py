@@ -5,9 +5,12 @@ import os
 import sys
 import json
 import time
+import asyncio
+from typing import List, Optional
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
-from src.core.config import APPROVED_DIR, OUTPUT_DIR
+from src.core.config import APPROVED_DIR, OUTPUT_DIR, EVAL_RESULTS_DIR
 from src.core.state import state
 from src.core.evaluation_order import (
     load_evaluation_order,
@@ -19,19 +22,31 @@ from src.core.evaluation_order import (
 router = APIRouter(prefix="/api", tags=["evaluation"])
 
 
+class EvaluationBatchRequest(BaseModel):
+    standard_requirements: Optional[str] = Field(default="", description="Standard Job Requirements text")
+    hidden_requirements: Optional[str] = Field(default="", description="Hidden Job Requirements text")
+    resume_filenames: List[str] = Field(..., description="List of candidate resume JSON filenames to evaluate")
+    num_evaluations: Optional[int] = Field(default=20, ge=1, le=100, description="Number of evaluation iterations per category")
+
+
 @router.post("/evaluate_batch")
-async def evaluate_batch(payload: dict):
+async def evaluate_batch(payload: EvaluationBatchRequest):
     """
     Evaluates scanned resumes against HR Standard & Hidden Requirements strictly in secret evaluation_order.
     Logs execution timings per requirement decomposition, per resume, and per dimension category.
+    Runs evaluation in worker thread via asyncio.to_thread to prevent blocking the FastAPI event loop.
     """
     start_batch_time = time.time()
-    standard_req = payload.get("standard_requirements", "")
-    hidden_req = payload.get("hidden_requirements", "")
-    filenames = payload.get("resume_filenames", [])
+    standard_req = payload.standard_requirements or ""
+    hidden_req = payload.hidden_requirements or ""
+    filenames = payload.resume_filenames or []
+    num_evaluations = payload.num_evaluations or 20
 
     if not filenames:
         raise HTTPException(status_code=400, detail="No resume filenames selected for evaluation.")
+
+    if not state.evaluator:
+        raise HTTPException(status_code=500, detail="Resume Evaluator model is not initialized on the server.")
 
     order_data = load_evaluation_order()
     search_dirs = [
@@ -77,11 +92,20 @@ async def evaluate_batch(payload: dict):
         resume_data = item["data"]
         base_name = os.path.splitext(fname)[0]
         try:
-            eval_result = state.evaluator.evaluate_resume(resume_data, standard_req, hidden_req, resume_name=base_name)
+            eval_result = await asyncio.to_thread(
+                state.evaluator.evaluate_resume,
+                resume_data,
+                standard_req,
+                hidden_req,
+                resume_name=base_name,
+                output_dir=EVAL_RESULTS_DIR,
+                num_evaluations=num_evaluations
+            )
             eval_result["candidate_email"] = item["email"]
             eval_result["tier"] = item["tier"]
             eval_result["tier_name"] = item["tier_name"]
             eval_result["tier_order"] = item["tier_order"]
+
             results.append(eval_result)
         except Exception as e:
             print(f"Error evaluating {fname}: {e}", file=sys.stderr)
@@ -95,6 +119,7 @@ async def evaluate_batch(payload: dict):
                 "tier_name": item["tier_name"],
                 "tier_order": item["tier_order"]
             })
+
 
     total_batch_time = time.time() - start_batch_time
 

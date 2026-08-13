@@ -11,6 +11,7 @@ if _PROJECT_ROOT not in sys.path:
 
 import re
 import json
+from typing import Any, Union, List, Set, Dict, Optional
 import numpy as np
 from src.metrics.embedding import LexicalEvaluator
 
@@ -53,7 +54,7 @@ def evaluate_phone(gt_phone: str, pred_phone: str) -> float:
     return 1.0 if gt_p == pred_p else 0.0
 
 
-def text_similarity(t1: str, t2: str, evaluator: Any) -> float:
+def text_similarity(t1: str, t2: str, evaluator: Union[LexicalEvaluator, Any]) -> float:
     t1_clean = str(t1).strip()
     t2_clean = str(t2).strip()
     if not t1_clean and not t2_clean:
@@ -114,14 +115,11 @@ def solve_assignment(cost_matrix):
 
 
 def evaluate_skills(gt_skills: list, pred_skills: list, evaluator=None, threshold: float = 0.80) -> float:
-    if not gt_skills and not pred_skills:
+    gt_list = [str(s).strip() for s in (gt_skills or []) if str(s).strip()]
+    pred_list = [str(s).strip() for s in (pred_skills or []) if str(s).strip()]
+
+    if not gt_list and not pred_list:
         return 1.0
-    if not gt_skills or not pred_skills:
-        return 0.0
-
-    gt_list = [str(s).strip() for s in gt_skills if str(s).strip()]
-    pred_list = [str(s).strip() for s in pred_skills if str(s).strip()]
-
     if not gt_list or not pred_list:
         return 0.0
 
@@ -228,9 +226,11 @@ def evaluate_nested_list(gt_list: list, pred_list: list, field_weights: dict, ev
 
 def evaluate_json_pair(gt: dict, pred: dict, evaluator: Any) -> dict:
     scores = {}
+    gt = gt if isinstance(gt, dict) else {}
+    pred = pred if isinstance(pred, dict) else {}
     
-    gt_pa = gt.get("position_applied", {})
-    pred_pa = pred.get("position_applied", {})
+    gt_pa = gt.get("position_applied") or {}
+    pred_pa = pred.get("position_applied") or {}
     scores["position_applied.title"] = text_similarity(gt_pa.get("title", ""), pred_pa.get("title", ""), evaluator)
     
     gt_lvl = str(gt_pa.get("level", "")).strip().lower()
@@ -241,8 +241,8 @@ def evaluate_json_pair(gt: dict, pred: dict, evaluator: Any) -> dict:
 
     scores["self_evaluation"] = text_similarity(gt.get("self_evaluation", ""), pred.get("self_evaluation", ""), evaluator)
 
-    gt_bi = gt.get("basic_information", {})
-    pred_bi = pred.get("basic_information", {})
+    gt_bi = gt.get("basic_information") or {}
+    pred_bi = pred.get("basic_information") or {}
     scores["basic_information.email"] = evaluate_email(gt_bi.get("email", ""), pred_bi.get("email", ""))
     scores["basic_information.phone"] = evaluate_phone(gt_bi.get("phone", ""), pred_bi.get("phone", ""))
     scores["basic_information.location"] = text_similarity(gt_bi.get("location", ""), pred_bi.get("location", ""), evaluator)
@@ -256,17 +256,17 @@ def evaluate_json_pair(gt: dict, pred: dict, evaluator: Any) -> dict:
     )
 
     scores["skills_and_specialties"] = evaluate_skills(
-        gt.get("skills_and_specialties", []), pred.get("skills_and_specialties", []), evaluator
+        gt.get("skills_and_specialties") or [], pred.get("skills_and_specialties") or [], evaluator
     )
 
     cert_weights = {"name": 0.5, "issuing_organization": 0.3, "duration": 0.2}
     scores["certifications"] = evaluate_nested_list(
-        gt.get("certifications", []), pred.get("certifications", []), cert_weights, evaluator
+        gt.get("certifications") or [], pred.get("certifications") or [], cert_weights, evaluator
     )
 
     lang_weights = {"language": 0.5, "proficiency": 0.3, "certificates": 0.2}
     scores["languages"] = evaluate_nested_list(
-        gt.get("languages", []), pred.get("languages", []), lang_weights, evaluator
+        gt.get("languages") or [], pred.get("languages") or [], lang_weights, evaluator
     )
 
     work_weights = {
@@ -277,7 +277,7 @@ def evaluate_json_pair(gt: dict, pred: dict, evaluator: Any) -> dict:
         "responsibilities": 0.20
     }
     scores["work_experience"] = evaluate_nested_list(
-        gt.get("work_experience", []), pred.get("work_experience", []), work_weights, evaluator
+        gt.get("work_experience") or [], pred.get("work_experience") or [], work_weights, evaluator
     )
 
     edu_weights = {
@@ -288,12 +288,12 @@ def evaluate_json_pair(gt: dict, pred: dict, evaluator: Any) -> dict:
         "gpa": 0.15
     }
     scores["education_background"] = evaluate_nested_list(
-        gt.get("education_background", []), pred.get("education_background", []), edu_weights, evaluator
+        gt.get("education_background") or [], pred.get("education_background") or [], edu_weights, evaluator
     )
 
     proj_weights = {"project_name": 0.40, "description": 0.40, "duration": 0.20}
     scores["projects"] = evaluate_nested_list(
-        gt.get("projects", []), pred.get("projects", []), proj_weights, evaluator
+        gt.get("projects") or [], pred.get("projects") or [], proj_weights, evaluator
     )
 
     categories = [

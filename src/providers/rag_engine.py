@@ -10,6 +10,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 import json
+import threading
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from src.core.config import ROOT_DIR, RAG_DIR, DEFAULT_EMBEDDING_MODEL
@@ -23,6 +24,7 @@ class LocalCriteriaRAG:
     and performs semantic similarity vector retrieval with category metadata filtering.
     """
     def __init__(self, model_name: str = DEFAULT_EMBEDDING_MODEL):
+        self._lock = threading.Lock()
         self.documents: List[Dict[str, Any]] = []
         self.model = None
         self.embedding_type = "dense"
@@ -38,7 +40,11 @@ class LocalCriteriaRAG:
         try:
             from sentence_transformers import SentenceTransformer
             print(f"[LocalRAG] Loading embedding model: {model_name}", file=sys.stderr)
-            self.model = SentenceTransformer(model_name)
+            try:
+                self.model = SentenceTransformer(model_name)
+            except Exception as load_err:
+                print(f"[LocalRAG Warning] Direct load failed ({load_err}). Retrying with local_files_only=True...", file=sys.stderr)
+                self.model = SentenceTransformer(model_name, local_files_only=True)
         except Exception as e:
             raise RuntimeError(
                 f"[LocalRAG Fatal Error] Could not load SentenceTransformer embedding model '{model_name}' ({e}). "
@@ -70,20 +76,24 @@ class LocalCriteriaRAG:
         self.documents = []
         if self.collection is not None:
             try:
-                results = self.collection.get(include=["documents", "metadatas"])
+                results = self.collection.get(include=["documents", "metadatas", "embeddings"])
                 if results and results.get("documents"):
                     docs = results["documents"]
                     metas = results.get("metadatas", [])
                     ids = results.get("ids", [])
+                    embs = results.get("embeddings") if results.get("embeddings") is not None else []
                     for idx, text in enumerate(docs):
                         meta = metas[idx] if idx < len(metas) and metas[idx] else {}
                         doc_id = ids[idx] if idx < len(ids) else f"doc_{idx}"
-                        self.documents.append({
+                        doc_obj = {
                             "id": doc_id,
                             "text": text,
                             "category": meta.get("category", "unknown"),
                             "type": meta.get("type", "standard")
-                        })
+                        }
+                        if idx < len(embs) and embs[idx] is not None:
+                            doc_obj["embedding"] = embs[idx]
+                        self.documents.append(doc_obj)
                     print(f"[LocalRAG] Loaded {len(self.documents)} persistent requirement criteria items from ChromaDB collection ({self.db_path}).", file=sys.stderr)
                     self._compute_embeddings()
             except Exception as e:
@@ -146,13 +156,18 @@ class LocalCriteriaRAG:
             raw_cat = str(doc.get("category") or "").strip().lower()
             cat_map = {
                 "seniority": "seniority_title",
+                "seniority_title": "seniority_title",
                 "position": "seniority_title",
                 "skills": "technical_skills",
+                "technical_skills": "technical_skills",
                 "tech_skills": "technical_skills",
                 "experience": "work_experience",
+                "work_experience": "work_experience",
                 "education": "education_certifications",
+                "education_certifications": "education_certifications",
                 "culture": "hidden_culture",
-                "hidden": "hidden_culture"
+                "hidden": "hidden_culture",
+                "hidden_culture": "hidden_culture"
             }
             cat = cat_map.get(raw_cat, raw_cat)
             if cat in categories_dict:
@@ -190,93 +205,94 @@ class LocalCriteriaRAG:
         """
         Decomposes HR text into atomic criteria chunks with category tags using LLM.
         """
-        standard_req = (standard_req or "").strip()
-        hidden_req = (hidden_req or "").strip()
+        with self._lock:
+            standard_req = (standard_req or "").strip()
+            hidden_req = (hidden_req or "").strip()
 
-        if not force_reingest and self.has_stored_rag():
-            print(f"[LocalRAG] Reusing persistent ChromaDB database ({len(self.documents)} items in {self.db_path}). SKIPPING LLM requirement categorization step!", file=sys.stderr)
-            return
+            if not force_reingest and self.has_stored_rag():
+                print(f"[LocalRAG] Reusing persistent ChromaDB database ({len(self.documents)} items in {self.db_path}). SKIPPING LLM requirement categorization step!", file=sys.stderr)
+                return
 
-        self.clear_rag_database()
+            self.clear_rag_database()
 
-        if not standard_req and not hidden_req:
-            print("[LocalRAG] No HR requirements or hidden requirements provided. Documents list will be empty.", file=sys.stderr)
-            return
+            if not standard_req and not hidden_req:
+                print("[LocalRAG] No HR requirements or hidden requirements provided. Documents list will be empty.", file=sys.stderr)
+                return
 
-        if llm_decomposer_func is None:
-            raise RuntimeError("[LocalRAG Error] llm_decomposer_func is required for requirement decomposition.")
+            if llm_decomposer_func is None:
+                raise RuntimeError("[LocalRAG Error] llm_decomposer_func is required for requirement decomposition.")
 
-        print("[LocalRAG] Using LLM requirement decomposer...", file=sys.stderr)
-        try:
-            decomposed = llm_decomposer_func(standard_req, hidden_req)
-        except Exception as e:
-            raise RuntimeError(f"[LocalRAG Error] LLM requirement decomposition failed: {e}") from e
-
-        if decomposed is None or not isinstance(decomposed, dict):
-            raise RuntimeError("[LocalRAG Error] LLM requirement decomposition returned invalid or unparseable result.")
-
-        now_str = datetime.now().isoformat()
-        ids = []
-        documents = []
-        metadatas = []
-        item_counter = 0
-
-        for cat, items in decomposed.items():
-            if isinstance(items, list):
-                for item in items:
-                    cleaned_item = str(item).strip()
-                    if cleaned_item:
-                        item_counter += 1
-                        doc_id = f"crit_{cat}_{item_counter}"
-                        req_type = "hidden" if cat == "hidden_culture" else "standard"
-                        
-                        doc_obj = {
-                            "id": doc_id,
-                            "text": cleaned_item,
-                            "category": cat,
-                            "type": req_type
-                        }
-                        self.documents.append(doc_obj)
-                        
-                        ids.append(doc_id)
-                        documents.append(cleaned_item)
-                        metadatas.append({"category": cat, "type": req_type, "created_at": now_str})
-
-        embeddings = []
-        if self.model and documents:
+            print("[LocalRAG] Using LLM requirement decomposer...", file=sys.stderr)
             try:
-                dense_embeddings = self.model.encode(documents)
-                embeddings = dense_embeddings.tolist() if hasattr(dense_embeddings, "tolist") else [e.tolist() for e in dense_embeddings]
-                for idx, emb in enumerate(dense_embeddings):
-                    if idx < len(self.documents):
-                        self.documents[idx]["embedding"] = emb
+                decomposed = llm_decomposer_func(standard_req, hidden_req)
             except Exception as e:
-                print(f"[LocalRAG Embedding Error] {e}", file=sys.stderr)
+                raise RuntimeError(f"[LocalRAG Error] LLM requirement decomposition failed: {e}") from e
 
-        if self.collection is not None and documents:
-            try:
-                add_kwargs = {
-                    "ids": ids,
-                    "documents": documents,
-                    "metadatas": metadatas
-                }
-                if embeddings:
-                    add_kwargs["embeddings"] = embeddings
-                self.collection.add(**add_kwargs)
-                print(f"[LocalRAG] Successfully ingested & stored {len(documents)} requirement vector embeddings into ChromaDB collection.", file=sys.stderr)
-            except Exception as e:
-                print(f"[LocalRAG ChromaDB Error] Failed to insert criteria into ChromaDB collection: {e}", file=sys.stderr)
-        else:
-            json_path = os.path.join(self.db_dir, "criteria_rag.json")
-            try:
-                clean_docs = [{k: v for k, v in d.items() if k != "embedding"} for d in self.documents]
-                with open(json_path, "w", encoding="utf-8") as f:
-                    json.dump(clean_docs, f, ensure_ascii=False, indent=2)
-                print(f"[LocalRAG] Saved {len(clean_docs)} criteria items to fallback persistence ({json_path}).", file=sys.stderr)
-            except Exception as e:
-                print(f"[LocalRAG Error] Failed to write fallback JSON: {e}", file=sys.stderr)
+            if decomposed is None or not isinstance(decomposed, dict):
+                raise RuntimeError("[LocalRAG Error] LLM requirement decomposition returned invalid or unparseable result.")
 
-        self.export_hr_rag_file(standard_req, hidden_req, decomposed)
+            now_str = datetime.now().isoformat()
+            ids = []
+            documents = []
+            metadatas = []
+            item_counter = 0
+
+            for cat, items in decomposed.items():
+                if isinstance(items, list):
+                    for item in items:
+                        cleaned_item = str(item).strip()
+                        if cleaned_item:
+                            item_counter += 1
+                            doc_id = f"crit_{cat}_{item_counter}"
+                            req_type = "hidden" if cat == "hidden_culture" else "standard"
+                            
+                            doc_obj = {
+                                "id": doc_id,
+                                "text": cleaned_item,
+                                "category": cat,
+                                "type": req_type
+                            }
+                            self.documents.append(doc_obj)
+                            
+                            ids.append(doc_id)
+                            documents.append(cleaned_item)
+                            metadatas.append({"category": cat, "type": req_type, "created_at": now_str})
+
+            embeddings = []
+            if self.model and documents:
+                try:
+                    dense_embeddings = self.model.encode(documents)
+                    embeddings = dense_embeddings.tolist() if hasattr(dense_embeddings, "tolist") else [e.tolist() for e in dense_embeddings]
+                    for idx, emb in enumerate(dense_embeddings):
+                        if idx < len(self.documents):
+                            self.documents[idx]["embedding"] = emb
+                except Exception as e:
+                    print(f"[LocalRAG Embedding Error] {e}", file=sys.stderr)
+
+            if self.collection is not None and documents:
+                try:
+                    add_kwargs = {
+                        "ids": ids,
+                        "documents": documents,
+                        "metadatas": metadatas
+                    }
+                    if embeddings:
+                        add_kwargs["embeddings"] = embeddings
+                    self.collection.add(**add_kwargs)
+                    print(f"[LocalRAG] Successfully ingested & stored {len(documents)} requirement vector embeddings into ChromaDB collection.", file=sys.stderr)
+                except Exception as e:
+                    print(f"[LocalRAG ChromaDB Error] Failed to insert criteria into ChromaDB collection: {e}", file=sys.stderr)
+            else:
+                json_path = os.path.join(self.db_dir, "criteria_rag.json")
+                try:
+                    clean_docs = [{k: v for k, v in d.items() if k != "embedding"} for d in self.documents]
+                    with open(json_path, "w", encoding="utf-8") as f:
+                        json.dump(clean_docs, f, ensure_ascii=False, indent=2)
+                    print(f"[LocalRAG] Saved {len(clean_docs)} criteria items to fallback persistence ({json_path}).", file=sys.stderr)
+                except Exception as e:
+                    print(f"[LocalRAG Error] Failed to write fallback JSON: {e}", file=sys.stderr)
+
+            self.export_hr_rag_file(standard_req, hidden_req, decomposed)
 
     def export_hr_rag_file(self, standard_req: str, hidden_req: str, decomposed: Dict[str, List[str]], output_path: str = "hr_rag.txt"):
         """Exports a summary detailing how HR requirements are classified into 5 RAG dimensions."""

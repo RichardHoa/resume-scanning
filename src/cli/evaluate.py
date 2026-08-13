@@ -26,12 +26,15 @@ def parse_args():
     parser.add_argument("--hr-req", type=str, default="", help="Path to HR requirement file containing normal and hidden requirements separated by '---'")
     parser.add_argument("--model-name", type=str, default=DEFAULT_LLM_MODEL, help="LLM model repository or local path")
     parser.add_argument("--backend", type=str, default="transformers", choices=["transformers", "vllm"], help="Inference backend")
-    parser.add_argument("--vllm-url", type=str, default=DEFAULT_VLLM_URL, help="vLLM server URL")
+    parser.add_argument("--vllm-url", type=str, default=DEFAULT_VLLM_URL, help="Base URL of the vLLM OpenAI-compatible server (only used with --backend vllm)")
     parser.add_argument("--mock", action="store_true", help="Mock run without loading model weights")
     parser.add_argument("--output", type=str, help="Path to save evaluation JSON result (file path or output directory for batch mode)")
     parser.add_argument("--arr", type=str, help="Comma-separated list of resume numbers to process (e.g., --arr=6,7,8)")
+    parser.add_argument("--workers", type=int, default=1, help="Number of concurrent worker threads for candidate evaluation (useful with vLLM backend)")
+    parser.add_argument("--num-evaluations", "--runs", type=int, default=20, help="Number of evaluation iterations per category to calculate median (default: 20)")
     parser.add_argument("--force-reingest", action="store_true", help="Force re-ingesting HR requirements into RAG vector database")
     return parser.parse_args()
+
 
 
 def load_requirements(args):
@@ -147,24 +150,48 @@ def main():
         print(f"Found {len(json_files)} JSON resume files in '{input_dir}'. Starting batch evaluation...", file=sys.stderr)
         evaluator.load_model()
 
-        batch_start = time.time()
-        for idx, filename in enumerate(json_files, start=1):
+        if standard_req or hidden_req:
+            print("[HR Requirements] Pre-ingesting criteria into RAG vector store...", file=sys.stderr)
+            evaluator.rag.ingest_requirements(
+                standard_req,
+                hidden_req,
+                llm_decomposer_func=lambda s, h: evaluator._decompose_requirements_with_llm(s, h, "batch_init"),
+                force_reingest=args.force_reingest
+            )
+
+        def _process_single_resume(item_info):
+            idx, filename = item_info
             file_path = os.path.join(input_dir, filename)
             resume_name = os.path.splitext(filename)[0]
-            out_filename = f"{resume_name}_evaluation.json"
-            out_path = os.path.join(output_dir, out_filename)
 
             print(f"\n[{idx}/{len(json_files)}] Evaluating {filename}...", file=sys.stderr)
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     resume_data = json.load(f)
 
-                result = evaluator.evaluate_resume(resume_data, standard_req, hidden_req, resume_name)
-                with open(out_path, "w", encoding="utf-8") as f:
-                    json.dump(result, f, ensure_ascii=False, indent=2)
+                result = evaluator.evaluate_resume(
+                    resume_data,
+                    standard_req,
+                    hidden_req,
+                    resume_name=resume_name,
+                    output_dir=output_dir,
+                    num_evaluations=args.num_evaluations
+                )
+                out_path = os.path.join(output_dir, f"{resume_name}_evaluation.json")
                 print(f"  Saved evaluation result to: {out_path}", file=sys.stderr)
             except Exception as e:
                 print(f"  Error evaluating {filename}: {e}", file=sys.stderr)
+
+        batch_start = time.time()
+        workers = max(1, args.workers)
+        if workers > 1:
+            from concurrent.futures import ThreadPoolExecutor
+            print(f"Executing batch evaluation with {workers} parallel worker threads...", file=sys.stderr)
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                list(executor.map(_process_single_resume, list(enumerate(json_files, start=1))))
+        else:
+            for item in enumerate(json_files, start=1):
+                _process_single_resume(item)
 
         total_batch_time = time.time() - batch_start
         print(f"\nBatch processing completed in {total_batch_time:.2f} seconds. Output folder: {output_dir}", file=sys.stderr)
@@ -182,21 +209,35 @@ def main():
         evaluator.load_model()
 
         print(f"Evaluating single resume '{resume_name}' against HR criteria...", file=sys.stderr)
-        result = evaluator.evaluate_resume(resume_data, standard_req, hidden_req, resume_name)
 
         if args.output:
             if os.path.isdir(args.output) or not args.output.endswith('.json'):
-                os.makedirs(args.output, exist_ok=True)
-                out_path = os.path.join(args.output, f"{resume_name}_evaluation.json")
+                target_dir = args.output
+                target_path = os.path.join(args.output, f"{resume_name}_evaluation.json")
             else:
-                out_path = args.output
-                os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+                target_dir = None
+                target_path = args.output
 
-            with open(out_path, "w", encoding="utf-8") as f:
-                json.dump(result, f, ensure_ascii=False, indent=2)
-            print(f"Saved evaluation result to: {out_path}")
+            result = evaluator.evaluate_resume(
+                resume_data,
+                standard_req,
+                hidden_req,
+                resume_name=resume_name,
+                output_dir=target_dir,
+                output_path=target_path,
+                num_evaluations=args.num_evaluations
+            )
+            print(f"Saved evaluation result to: {target_path}")
         else:
+            result = evaluator.evaluate_resume(
+                resume_data,
+                standard_req,
+                hidden_req,
+                resume_name=resume_name,
+                num_evaluations=args.num_evaluations
+            )
             print(json.dumps(result, ensure_ascii=False, indent=2))
+
 
 
 if __name__ == "__main__":

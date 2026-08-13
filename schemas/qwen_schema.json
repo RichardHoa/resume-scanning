@@ -2,8 +2,7 @@
   "position_applied": {
     "title": "Job title as written on the resume, or inferred from context if not stated explicitly.",
     "level": "Classify based on total years of experience (earliest job start to most recent job): <2 years = 'junior', 2-5 years = 'mid-level', >5 years = 'senior', manager/team-lead or above = 'leadership', insufficient data = 'unknown'. Values: junior | mid-level | senior | leadership | unknown",
-    "total_years_experience": "Calculate total years of working experience across all jobs (from earliest job start to latest/current job end date). E.g. '3.5 years', '5 years', or '0 years'.",
-    "seniority_summary": "Detailed sentence summarizing total years worked and breakdown of experience by field/role (e.g. '4 years total experience: 2.5 years in C&B, 1.5 years in Recruitment')."
+    "total_years_experience": "Calculate total years of working experience across all jobs (from earliest job start to latest/current job end date). E.g. '3.5 years', '5 years', or '0 years'."
   },
   "self_evaluation": "Personal summary or career objective section verbatim. Empty string if not present.",
   "skills_and_specialties": ["Extract maximum 20 key technical skills, tools, technologies, and competencies. DO NOT generate more than 20 skills. Omit generic buzzwords. Each skill must include experience level formatted in descriptive sentences (not just digits or single words), e.g. 'Python: 3+ years experience building REST APIs with FastAPI' or 'C&B: Hands-on experience managing payroll for 200+ employees'."],

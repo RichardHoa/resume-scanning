@@ -358,6 +358,7 @@ export class CandidatePoolController {
             const strengthsList = (d.strengths || []).map(s => `<li>${this.escapeHtml(s)}</li>`).join('');
             const gapsList = (d.gaps || []).map(g => `<li>${this.escapeHtml(g)}</li>`).join('');
             const quotesList = (d.evidence_quotes || []).map(q => `<div class="modal-quote-box">"${this.escapeHtml(q)}"</div>`).join('');
+            const reasoningText = d.reasoning_summary ? this.escapeHtml(d.reasoning_summary) : '';
 
             dimCardsHtml += `
                 <div class="modal-dim-card">
@@ -373,6 +374,7 @@ export class CandidatePoolController {
                     <div class="modal-dim-progress">
                         <div class="modal-dim-progress-fill ${fillClass}" style="width: ${Math.min(100, Math.max(5, d.score))}%;"></div>
                     </div>
+                    ${reasoningText ? `<div style="margin-top:8px; font-weight:600; font-size:0.82rem; color: var(--accent-bright);">🧠 AI Reasoning (Lập luận đánh giá):</div><div class="modal-reasoning-box">${reasoningText}</div>` : ''}
                     ${strengthsList ? `<div style="margin-top:6px; font-weight:600; font-size:0.82rem;">Key Strengths:</div><ul class="modal-bullets strengths">${strengthsList}</ul>` : ''}
                     ${gapsList ? `<div style="margin-top:6px; font-weight:600; font-size:0.82rem;">Identified Gaps:</div><ul class="modal-bullets gaps">${gapsList}</ul>` : ''}
                     ${quotesList ? `<div style="margin-top:6px; font-weight:600; font-size:0.82rem;">Evidence Quotes:</div>${quotesList}` : ''}
