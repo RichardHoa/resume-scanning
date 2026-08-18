@@ -1,87 +1,101 @@
 <!DOCTYPE html>
 <!--
   ==============================================================================
-  AI Resume Extractor & Evaluation Dashboard - Index / Default Home Entry
+  Vietnamese Resume Scanner - Index / Default Entry Workbench
   ==============================================================================
-  Description: Default home page redirecting or rendering Step 1: CV Extractor view.
 -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CV Extractor | AI Resume Scanner</title>
-    <!-- Modern Google Fonts -->
+    <title>Vietnamese Resume Scanner | CV Extractor Workbench</title>
+    <!-- Google Fonts: Be Vietnam Pro, Noto Sans, JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Noto+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Main Combined Stylesheet -->
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body>
-    <div class="app-container">
-        <!-- Top Sticky Header Navigation -->
-        <header class="main-header">
-            <div class="header-brand">
-                <div class="brand-logo-icon">⚡</div>
-                <div class="brand-title-group">
-                    <h1>Antigravity Extractor</h1>
-                    <span class="subtitle">Vietnamese Resume Parsing & RAG Engine</span>
+<<body>
+    <a href="#main-content" class="sr-only focus-not-sr-only">Skip to Main Content</a>
+    <div class="app-workbench">
+        <!-- Persistent Left Command Rail -->
+        <aside class="command-rail" role="navigation" aria-label="Main Navigation">
+            <div class="rail-brand">
+                <div class="rail-brand-logo">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.78c0-2.33 4.67-3.5 7-3.5s7 1.17 7 3.5V19z"/></svg>
+                </div>
+                <div class="rail-brand-title">
+                    <span class="brand-heading">Fulbright Candidate Matrix</span>
+                    <span class="subtitle">Layout Engine & RAG</span>
                 </div>
             </div>
 
-            <nav class="app-nav-bar">
-                <a href="/extractor" class="nav-link active">
-                    <span class="nav-icon">⚡</span> Step 1: CV Extractor
+            <nav class="rail-nav-menu">
+                <span class="rail-section-label">WORKSPACES</span>
+                <a href="/extractor" class="nav-link active" aria-current="page">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span> Step 1: CV Extractor
                 </a>
                 <a href="/evaluator" class="nav-link">
-                    <span class="nav-icon">🎯</span> Step 2: HR Evaluator
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg></span> Step 2: HR Evaluator
                 </a>
                 <a href="/rag" class="nav-link">
-                    <span class="nav-icon">🧠</span> RAG Knowledge Base
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 12v1a2 2 0 0 0 2 2h2v4.93zm4.9-3.24a9.96 9.96 0 0 0 1.9-4.69H16v-1a2 2 0 0 0-2-2h-3v-2a1 1 0 0 1 1-1h3.5a.5.5 0 0 0 .5-.5V5.1A9.97 9.97 0 0 1 17.9 16.69z"/></svg></span> RAG Knowledge Base
                 </a>
                 <a href="/candidates" class="nav-link">
-                    <span class="nav-icon">📊</span> Candidate Pool
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></span> Candidate Pool
                 </a>
             </nav>
 
-            <div class="header-config">
-                <div class="config-badge" id="badge-model">
-                    <span class="badge-label">Model:</span>
-                    <span class="badge-value" id="val-model">Loading...</span>
+            <div class="rail-telemetry">
+                <div class="telemetry-row">
+                    <span>ENGINE</span>
+                    <span class="status-indicator"><span class="status-dot"></span> READY</span>
                 </div>
-                <div class="config-badge" id="badge-mode">
-                    <span class="badge-label">Mode:</span>
-                    <span class="badge-value" id="val-mode">Loading...</span>
+                <div class="telemetry-row">
+                    <span>VECTOR STORE</span>
+                    <span style="color: var(--color-secondary); font-weight:700;">ChromaDB</span>
                 </div>
             </div>
-        </header>
+        </aside>
 
-        <!-- Main Extractor Area -->
-        <main class="main-content">
+        <!-- Main Workbench Stage -->
+        <main class="workbench-stage" id="main-content">
+            <div class="workbench-header">
+                <div class="workbench-title-group">
+                    <h1><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Step 1: CV Extractor Workbench</h1>
+                    <p>Upload Vietnamese & English PDF resumes to trigger layout AI extraction into structured JSON profiles.</p>
+                </div>
+            </div>
+
             <div class="page-view active" id="page-extractor">
                 <section class="panel upload-panel" id="upload-section">
                     <div class="panel-header">
-                        <h2>Upload Candidate CV</h2>
-                        <p>Upload PDF resumes to run AI layout parsing and extract Vietnamese & English details.</p>
+                        <h2>Upload Candidate Resume</h2>
+                        <p>Drag and drop a PDF file or browse to begin extraction.</p>
                     </div>
-                    <div class="upload-dropzone" id="dropzone">
+                    <div class="upload-dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload PDF Resume file dropzone">
                         <input type="file" id="file-input" accept=".pdf" style="display: none;">
                         <div class="dropzone-content">
-                            <div class="upload-icon"></div>
+                            <div class="upload-icon">
+                                <svg viewBox="0 0 24 24" style="width: 48px; height: 48px; fill: var(--color-secondary);" aria-hidden="true" focusable="false"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+                            </div>
                             <h3>Drag & Drop CV PDF here</h3>
-                            <p>or <span class="browse-link">browse files</span> from your computer</p>
+                            <p>or <button type="button" class="btn-link browse-link" style="background:none; border:none; padding:0; font:inherit; color:var(--color-secondary); text-decoration:underline; cursor:pointer;">browse files</button> from your computer</p>
                         </div>
                     </div>
                     <div class="file-preview-card" id="file-preview" style="display: none;">
-                        <div class="file-icon-pdf"></div>
+                        <div class="file-icon-pdf">
+                            <svg viewBox="0 0 24 24" style="width: 28px; height: 28px; fill: var(--color-destructive);" aria-hidden="true" focusable="false"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5z"/></svg>
+                        </div>
                         <div class="file-details">
                             <span class="file-name" id="preview-filename">resume.pdf</span>
                             <span class="file-size" id="preview-filesize">0 KB</span>
                         </div>
-                        <button class="btn-remove" id="btn-remove-file" aria-label="Remove File">&times;</button>
+                        <button class="btn-remove" id="btn-remove-file" aria-label="Remove Selected File" type="button">&times;</button>
                     </div>
-                    <button class="btn btn-primary btn-block" id="btn-extract" disabled>
-                        ⚡ Start AI Extraction
+                    <button class="btn btn-primary btn-block" id="btn-extract" disabled type="button">
+                        <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Start AI Resume Extraction
                     </button>
                 </section>
 
@@ -90,15 +104,21 @@
                         <div class="results-title-group">
                             <h2>Extraction Results</h2>
                             <span class="badge-success">Success</span>
-                            <div class="config-badge" id="badge-time" style="display: none;">
-                                <span class="badge-label">Time:</span>
-                                <span class="badge-value" id="val-time">-</span>
+                            <div class="badge-success" id="badge-time" style="display: none;">
+                                <span id="val-time">-</span>
                             </div>
                         </div>
                         <div class="results-actions">
-                            <button class="btn btn-secondary" id="btn-copy">📋 Copy JSON</button>
-                            <button class="btn btn-success" id="btn-download">💾 Download JSON</button>
-                            <button class="btn btn-danger" id="btn-reset">Analyze Another</button>
+                            <button class="btn btn-secondary" id="btn-toggle-view" type="button">
+                                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg> Split View
+                            </button>
+                            <button class="btn btn-secondary" id="btn-copy" type="button">
+                                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy JSON
+                            </button>
+                            <button class="btn btn-success" id="btn-download" type="button">
+                                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Download JSON
+                            </button>
+                            <button class="btn btn-danger" id="btn-reset" type="button">Analyze Another</button>
                         </div>
                     </div>
 
@@ -111,17 +131,19 @@
                         </div>
 
                         <div class="split-pane visual-pane">
-                            <div class="tabs-nav">
-                                <button class="tab-btn active" data-tab="tab-profile">Profile</button>
-                                <button class="tab-btn" data-tab="tab-experience">Work Experience</button>
-                                <button class="tab-btn" data-tab="tab-education">Education & Certs</button>
-                                <button class="tab-btn" data-tab="tab-projects">Skills & Projects</button>
+                            <div class="tabs-nav" role="tablist" aria-label="Extracted Resume Profile Tabs">
+                                <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-profile" data-tab="tab-profile" id="tab-btn-profile">Profile</button>
+                                <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-experience" data-tab="tab-experience" id="tab-btn-experience">Work Experience</button>
+                                <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-education" data-tab="tab-education" id="tab-btn-education">Education & Certs</button>
+                                <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-projects" data-tab="tab-projects" id="tab-btn-projects">Skills & Projects</button>
                             </div>
 
                             <div class="tab-content active" id="tab-profile">
                                 <div class="profile-card">
                                     <div class="profile-header">
-                                        <div class="profile-avatar">👤</div>
+                                        <div class="profile-avatar">
+                                            <svg viewBox="0 0 24 24" style="width: 28px; height: 28px; fill: var(--color-primary);"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                                        </div>
                                         <div>
                                             <h4 id="profile-position">Job Title</h4>
                                             <span class="skill-pill" id="profile-level">Senior</span>
@@ -183,8 +205,8 @@
             <div class="spinner-ring">
                 <div></div><div></div><div></div><div></div>
             </div>
-            <h3 id="loader-title">Processing PDF...</h3>
-            <p id="loader-desc">Running layout OCR extraction.</p>
+            <h3 id="loader-title">Processing Resume PDF...</h3>
+            <p id="loader-desc">Running layout OCR & AI extraction.</p>
             <div class="loader-progress-bar">
                 <div class="loader-progress-fill" id="loader-progress"></div>
             </div>

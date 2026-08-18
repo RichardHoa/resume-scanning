@@ -1,0 +1,26 @@
+[
+  {
+    "id": "crit_seniority_title_1",
+    "text": "Cần 3+ năm kinh nghiệm Python, FastAPI, PostgreSQL.",
+    "category": "seniority_title",
+    "type": "standard"
+  },
+  {
+    "id": "crit_technical_skills_2",
+    "text": "Cần 3+ năm kinh nghiệm Python, FastAPI, PostgreSQL.",
+    "category": "technical_skills",
+    "type": "standard"
+  },
+  {
+    "id": "crit_work_experience_3",
+    "text": "Cần 3+ năm kinh nghiệm Python, FastAPI, PostgreSQL.",
+    "category": "work_experience",
+    "type": "standard"
+  },
+  {
+    "id": "crit_hidden_culture_4",
+    "text": "Ưu tiên ứng viên có tinh thần làm việc nhóm tốt.",
+    "category": "hidden_culture",
+    "type": "hidden"
+  }
+]

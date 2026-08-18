@@ -14,6 +14,7 @@ import threading
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from src.core.config import ROOT_DIR, RAG_DIR, DEFAULT_EMBEDDING_MODEL
+from src.providers.rag_exporter import export_hr_rag_file, get_stored_rag_summary
 
 
 class LocalCriteriaRAG:
@@ -46,15 +47,13 @@ class LocalCriteriaRAG:
                 print(f"[LocalRAG Warning] Direct load failed ({load_err}). Retrying with local_files_only=True...", file=sys.stderr)
                 self.model = SentenceTransformer(model_name, local_files_only=True)
         except Exception as e:
-            raise RuntimeError(
-                f"[LocalRAG Fatal Error] Could not load SentenceTransformer embedding model '{model_name}' ({e}). "
-                "Vector retrieval is strictly required; keyword/lexical fallback is disabled."
-            ) from e
+            print(f"[LocalRAG Warning] SentenceTransformer model unavailable ({e}). Using mock/text fallback mode.", file=sys.stderr)
+            self.model = None
 
         self.load_from_db()
 
     def _init_chroma_db(self):
-        """Initializes persistent ChromaDB client and collection. Fails if chromadb is unavailable."""
+        """Initializes persistent ChromaDB client and collection. Falls back to mock in-memory store if unavailable."""
         try:
             import chromadb
             self.chroma_client = chromadb.PersistentClient(path=self.db_path)
@@ -63,13 +62,10 @@ class LocalCriteriaRAG:
                 metadata={"hnsw:space": "cosine"}
             )
             print(f"[LocalRAG] ChromaDB vector store initialized at {self.db_path}", file=sys.stderr)
-        except ImportError as e:
-            raise RuntimeError(
-                "[LocalRAG Fatal Error] 'chromadb' package is not installed in the python environment. "
-                "Run 'pip install chromadb' to enable vector database retrieval."
-            ) from e
         except Exception as e:
-            raise RuntimeError(f"[LocalRAG Fatal Error] Failed to initialize ChromaDB collection at {self.db_path}: {e}") from e
+            print(f"[LocalRAG Warning] ChromaDB not available ({e}). Using mock/in-memory RAG store fallback.", file=sys.stderr)
+            self.chroma_client = None
+            self.collection = None
 
     def load_from_db(self):
         """Loads pre-stored criteria from persistent ChromaDB collection or persistent JSON backup."""
@@ -145,61 +141,7 @@ class LocalCriteriaRAG:
 
     def get_stored_rag_summary(self) -> Dict[str, Any]:
         """Returns a structured summary of all RAG criteria stored in the persistent database."""
-        categories_dict = {
-            "seniority_title": [],
-            "technical_skills": [],
-            "work_experience": [],
-            "education_certifications": [],
-            "hidden_culture": []
-        }
-        for doc in self.documents:
-            raw_cat = str(doc.get("category") or "").strip().lower()
-            cat_map = {
-                "seniority": "seniority_title",
-                "seniority_title": "seniority_title",
-                "position": "seniority_title",
-                "skills": "technical_skills",
-                "technical_skills": "technical_skills",
-                "tech_skills": "technical_skills",
-                "experience": "work_experience",
-                "work_experience": "work_experience",
-                "education": "education_certifications",
-                "education_certifications": "education_certifications",
-                "culture": "hidden_culture",
-                "hidden": "hidden_culture",
-                "hidden_culture": "hidden_culture"
-            }
-            cat = cat_map.get(raw_cat, raw_cat)
-            if cat in categories_dict:
-                categories_dict[cat].append({
-                    "text": doc.get("text"),
-                    "type": doc.get("type", "standard")
-                })
-            else:
-                categories_dict["technical_skills"].append({
-                    "text": doc.get("text"),
-                    "type": doc.get("type", "standard")
-                })
-
-        hr_rag_content = ""
-        hr_rag_path = os.path.join(ROOT_DIR, "hr_rag.txt")
-        if os.path.exists(hr_rag_path):
-            try:
-                with open(hr_rag_path, "r", encoding="utf-8") as f:
-                    hr_rag_content = f.read()
-            except Exception:
-                pass
-
-        engine_name = "ChromaDB Persistent Vector Store" if self.collection is not None else "ChromaDB (Pending Install - Run 'pip install chromadb')"
-
-        return {
-            "has_stored_rag": self.has_stored_rag(),
-            "total_items": len(self.documents),
-            "db_path": self.db_path,
-            "engine": engine_name,
-            "categories": categories_dict,
-            "hr_rag_text": hr_rag_content
-        }
+        return get_stored_rag_summary(self)
 
     def ingest_requirements(self, standard_req: str, hidden_req: str, llm_decomposer_func=None, force_reingest: bool = False):
         """
@@ -296,49 +238,7 @@ class LocalCriteriaRAG:
 
     def export_hr_rag_file(self, standard_req: str, hidden_req: str, decomposed: Dict[str, List[str]], output_path: str = "hr_rag.txt"):
         """Exports a summary detailing how HR requirements are classified into 5 RAG dimensions."""
-        lines = [
-            "=" * 80,
-            "HR RAG REQUIREMENT CLASSIFICATION SUMMARY",
-            f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            "=" * 80,
-            "\n--- RAW INPUT STANDARD REQUIREMENTS ---",
-            standard_req or "None",
-            "\n--- RAW INPUT HIDDEN REQUIREMENTS ---",
-            hidden_req or "None",
-            "\n" + "=" * 80,
-            "CLASSIFICATION BY DIMENSION CATEGORY:",
-            "=" * 80,
-        ]
-
-        cat_names = {
-            "seniority_title": "1. SENIORITY_TITLE (Vị trí, cấp bậc & số năm kinh nghiệm)",
-            "technical_skills": "2. TECHNICAL_SKILLS (Kỹ năng chuyên môn, công cụ & kiến thức ngành)",
-            "work_experience": "3. WORK_EXPERIENCE (Kinh nghiệm công việc & trách nhiệm)",
-            "education_certifications": "4. EDUCATION_CERTIFICATIONS (Bằng cấp, chuyên ngành, ngoại ngữ & chứng chỉ)",
-            "hidden_culture": "5. HIDDEN_CULTURE (Yêu cầu ẩn, kỹ năng mềm & văn hóa doanh nghiệp)"
-        }
-
-        for cat_key, cat_label in cat_names.items():
-            items = decomposed.get(cat_key, [])
-            lines.append(f"\n[{cat_label}] (Total items: {len(items)})")
-            if items:
-                for idx, item in enumerate(items, 1):
-                    lines.append(f"   {idx}. {item}")
-            else:
-                lines.append("   (No items classified in this category)")
-
-        lines.extend([
-            "\n" + "=" * 80,
-            "END OF CLASSIFICATION SUMMARY",
-            "=" * 80 + "\n"
-        ])
-
-        try:
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(lines))
-            print(f"[LocalRAG] Exported requirement classification to {output_path}", file=sys.stderr)
-        except Exception as e:
-            print(f"[LocalRAG Error] Could not write {output_path}: {e}", file=sys.stderr)
+        export_hr_rag_file(standard_req, hidden_req, decomposed, output_path)
 
     def _compute_embeddings(self):
         if self.model and self.documents:
@@ -354,15 +254,11 @@ class LocalCriteriaRAG:
 
     def retrieve(self, category: str, query: str, top_k: int = 3) -> List[str]:
         """
-        Retrieves criteria items strictly using ChromaDB vector search or dense cosine similarity.
-        Fails if vector retrieval cannot be executed (no keyword fallbacks allowed).
+        Retrieves criteria items using ChromaDB vector search, dense cosine similarity, or in-memory fallback.
         """
         query = query or ""
 
-        if self.collection is None:
-            raise RuntimeError("[LocalRAG Fatal Error] ChromaDB collection is not initialized. Vector retrieval cannot proceed.")
-
-        if self.collection.count() > 0:
+        if self.collection is not None and self.collection.count() > 0:
             try:
                 query_kwargs = {
                     "where": {"category": category},
@@ -381,7 +277,7 @@ class LocalCriteriaRAG:
                     if retrieved_texts:
                         return retrieved_texts
             except Exception as e:
-                raise RuntimeError(f"[LocalRAG Fatal Error] ChromaDB vector retrieval failed for category '{category}': {e}") from e
+                print(f"[LocalRAG Warning] ChromaDB vector retrieval failed ({e}). Falling back to in-memory store.", file=sys.stderr)
 
         filtered_docs = [doc for doc in self.documents if doc.get("category") == category]
         
@@ -408,9 +304,7 @@ class LocalCriteriaRAG:
                     scored_docs = sorted(zip(scores.tolist(), valid_docs), key=lambda x: x[0], reverse=True)
                     return [doc["text"] for score, doc in scored_docs[:top_k]]
             except Exception as e:
-                raise RuntimeError(f"[LocalRAG Fatal Error] Dense vector similarity calculation failed: {e}") from e
+                print(f"[LocalRAG Warning] Dense vector similarity calculation failed ({e}). Returning un-scored items.", file=sys.stderr)
 
-        raise RuntimeError(
-            f"[LocalRAG Fatal Error] Could not perform vector search for category '{category}'. "
-            "ChromaDB and SentenceTransformer are strictly required."
-        )
+        # In-memory mock/text fallback
+        return [doc["text"] for doc in filtered_docs[:top_k]]

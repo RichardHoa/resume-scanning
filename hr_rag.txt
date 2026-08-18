@@ -1,0 +1,33 @@
+================================================================================
+HR RAG REQUIREMENT CLASSIFICATION SUMMARY
+Generated: 2026-08-18 17:34:15
+================================================================================
+
+--- RAW INPUT STANDARD REQUIREMENTS ---
+Cần 3+ năm kinh nghiệm Python, FastAPI, PostgreSQL.
+
+--- RAW INPUT HIDDEN REQUIREMENTS ---
+Ưu tiên ứng viên có tinh thần làm việc nhóm tốt.
+
+================================================================================
+CLASSIFICATION BY DIMENSION CATEGORY:
+================================================================================
+
+[1. SENIORITY_TITLE (Vị trí, cấp bậc & số năm kinh nghiệm)] (Total items: 1)
+   1. Cần 3+ năm kinh nghiệm Python, FastAPI, PostgreSQL.
+
+[2. TECHNICAL_SKILLS (Kỹ năng chuyên môn, công cụ & kiến thức ngành)] (Total items: 1)
+   1. Cần 3+ năm kinh nghiệm Python, FastAPI, PostgreSQL.
+
+[3. WORK_EXPERIENCE (Kinh nghiệm công việc & trách nhiệm)] (Total items: 1)
+   1. Cần 3+ năm kinh nghiệm Python, FastAPI, PostgreSQL.
+
+[4. EDUCATION_CERTIFICATIONS (Bằng cấp, chuyên ngành, ngoại ngữ & chứng chỉ)] (Total items: 0)
+   (No items classified in this category)
+
+[5. HIDDEN_CULTURE (Yêu cầu ẩn, kỹ năng mềm & văn hóa doanh nghiệp)] (Total items: 1)
+   1. Ưu tiên ứng viên có tinh thần làm việc nhóm tốt.
+
+================================================================================
+END OF CLASSIFICATION SUMMARY
+================================================================================

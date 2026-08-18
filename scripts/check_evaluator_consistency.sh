@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=eval_consistency
+#SBATCH --job-name=check_evaluator_consistency
 #SBATCH --partition=researcher
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -7,12 +7,15 @@
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:1
 #SBATCH --time=12:00:00
-#SBATCH --output=logging/slurm_consistency_%j.out
-#SBATCH --error=logging/slurm_consistency_%j.err
+#SBATCH --output=logging/slurm_evaluator_consistency_%j.out
+#SBATCH --error=logging/slurm_evaluator_consistency_%j.err
 
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script for 20-Round Resume Evaluation Consistency Test
 # -----------------------------------------------------------------------------
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
 
 # Optimization & Threading Environment Variables (Prevent ONNX/PyTorch crashes & RAM OOM)
 export MAX_JOBS=1
@@ -106,14 +109,14 @@ if python3 -c "import vllm" 2>/dev/null; then
     --dtype auto \
     --port "$PORT" \
     --host 127.0.0.1 \
-    --max-model-len 16000 \
+    --max-model-len "$VLLM_MAX_MODEL_LEN" \
     --max-num-seqs 256 \
     --gpu-memory-utilization 0.8 \
     --trust-remote-code \
     --enable-prefix-caching \
     --enable-chunked-prefill \
     --served-model-name "$MODEL" \
-    > logs/vllm_consistency.log 2>&1 &
+    > logs/vllm_evaluator_consistency.log 2>&1 &
 
   VLLM_PID=$!
   trap "kill -9 $VLLM_PID 2>/dev/null || true" EXIT INT TERM
@@ -125,8 +128,8 @@ if python3 -c "import vllm" 2>/dev/null; then
     if ! kill -0 $VLLM_PID 2>/dev/null; then
       echo "====================================================================="
       echo "[$(date +'%H:%M:%S')] CRITICAL: vLLM server process (PID $VLLM_PID) exited unexpectedly!"
-      echo "--- Tail of logs/vllm_consistency.log ---"
-      tail -n 35 logs/vllm_consistency.log 2>/dev/null || echo "(No log file found)"
+      echo "--- Tail of logs/vllm_evaluator_consistency.log ---"
+      tail -n 35 logs/vllm_evaluator_consistency.log 2>/dev/null || echo "(No log file found)"
       echo "====================================================================="
       break
     fi
@@ -141,7 +144,7 @@ if python3 -c "import vllm" 2>/dev/null; then
     if [ $((i % 2)) -eq 0 ]; then
       ELAPSED=$((i * 5))
       echo "[$(date +'%H:%M:%S')] Loading vLLM server (Attempt $i/720, elapsed: ${ELAPSED}s)..."
-      LAST_LOG=$(tail -n 2 logs/vllm_consistency.log 2>/dev/null | tr '\n' ' ')
+      LAST_LOG=$(tail -n 2 logs/vllm_evaluator_consistency.log 2>/dev/null | tr '\n' ' ')
       if [ -n "$LAST_LOG" ]; then
         echo "   └─ vLLM activity: $LAST_LOG"
       fi
@@ -165,7 +168,7 @@ if python3 -c "import vllm" 2>/dev/null; then
     fi
 
     echo "=== Starting 20-Round Consistency Evaluation Matrix Generation ==="
-    python3 -u scripts/run_consistency.py \
+    python3 -u "$SCRIPT_DIR/run_consistency.py" \
       --model-name "$MODEL" \
       --backend vllm \
       --vllm-url "http://127.0.0.1:$PORT/v1" \
@@ -173,12 +176,13 @@ if python3 -c "import vllm" 2>/dev/null; then
       --job-req hr-requirement.txt \
       --workers 6 \
       --rounds 20 \
+      --num-evaluations 20 \
       --output consistency_results.csv
   else
     echo "====================================================================================="
     echo "ERROR: vLLM server failed to start within 3600s timeout on port $PORT."
-    echo "--- Full contents / tail of logs/vllm_consistency.log ---"
-    tail -n 50 logs/vllm_consistency.log 2>/dev/null || echo "(No log file found)"
+    echo "--- Full contents / tail of logs/vllm_evaluator_consistency.log ---"
+    tail -n 50 logs/vllm_evaluator_consistency.log 2>/dev/null || echo "(No log file found)"
     echo "====================================================================================="
   fi
 
@@ -192,4 +196,4 @@ else
   echo "====================================================================================="
   exit 1
 fi
-echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Consistency Evaluation Job Finished ==="
+echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Evaluator Consistency Job Finished ==="

@@ -54,7 +54,7 @@ parser.add_argument("--mock", action="store_true",
                     help="Mock mode: use pre-defined mock extraction without loading the model")
 parser.add_argument("--backend", type=str, default="vllm", choices=["transformers", "vllm"],
                     help="Inference backend: 'transformers' (load model locally) or 'vllm' (call a running vLLM server)")
-parser.add_argument("--vllm-url", type=str, default="http://localhost:8100/v1",
+parser.add_argument("--vllm-url", type=str, default="http://127.0.0.1:8100/v1",
                     help="Base URL of the vLLM OpenAI-compatible server (only used with --backend vllm)")
 parser.add_argument("--host", type=str, default="0.0.0.0",
                     help="Host bind address")

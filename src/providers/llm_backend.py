@@ -149,8 +149,18 @@ def vllm_discover_model(vllm_url: str) -> str:
     """Query the vLLM server's `/v1/models` endpoint and return the first model ID."""
     url = vllm_url.rstrip("/") + "/models"
     req = urllib.request.Request(url, method="GET")
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        body = json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.URLError as e:
+        raise RuntimeError(
+            f"Cannot connect to vLLM server at {vllm_url} ({e.reason or e}). "
+            f"Please verify the vLLM server is running (e.g. 'bash scripts/start_vllm.sh') "
+            f"or switch to '--backend transformers' or '--mock'."
+        ) from e
+    except Exception as e:
+        raise RuntimeError(f"Failed to query vLLM server models at {url}: {e}") from e
+
     models = body.get("data", [])
     if not models:
         raise RuntimeError(f"No models found on vLLM server at {vllm_url}")
@@ -171,10 +181,12 @@ def vllm_chat_request(vllm_url: str, model_name: Optional[str], messages: list) 
         "model": model_name,
         "messages": messages,
         "temperature": 0.2,
-        "frequency_penalty": 0.3,
         "repetition_penalty": 1.05,
         "max_tokens": MAX_NEW_TOKENS,
-        "guided_json": schema
+        "guided_json": schema,
+        "chat_template_kwargs": {
+            "enable_thinking": False
+        }
     }).encode("utf-8")
 
     req = urllib.request.Request(
@@ -195,6 +207,12 @@ def vllm_chat_request(vllm_url: str, model_name: Optional[str], messages: list) 
             pass
         raise RuntimeError(
             f"vLLM request failed (HTTP {e.code}): {error_body}"
+        ) from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(
+            f"Cannot connect to vLLM server at {vllm_url} ({e.reason or e}). "
+            f"Please verify the vLLM server is running (e.g. 'bash scripts/start_vllm.sh') "
+            f"or switch to '--backend transformers' or '--mock'."
         ) from e
 
 
@@ -218,7 +236,6 @@ def vllm_nuextract_chat_request(vllm_url: str, model_name: Optional[str], messag
         "model": model_name,
         "messages": messages,
         "temperature": 0.2,
-        "frequency_penalty": 0.3,
         "repetition_penalty": 1.05,
         "max_tokens": MAX_NEW_TOKENS,
         "chat_template_kwargs": {
@@ -245,6 +262,12 @@ def vllm_nuextract_chat_request(vllm_url: str, model_name: Optional[str], messag
             pass
         raise RuntimeError(
             f"vLLM request failed (HTTP {e.code}): {error_body}"
+        ) from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(
+            f"Cannot connect to vLLM server at {vllm_url} ({e.reason or e}). "
+            f"Please verify the vLLM server is running (e.g. 'bash scripts/start_vllm.sh') "
+            f"or switch to '--backend transformers' or '--mock'."
         ) from e
 
 

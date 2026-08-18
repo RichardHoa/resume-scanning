@@ -244,6 +244,8 @@ export class CandidatePoolController {
     appendCandidateCardToContainer(cand, container) {
         const card = document.createElement('div');
         card.className = 'cand-card';
+        card.setAttribute('tabindex', '0');
+        card.setAttribute('role', 'button');
 
         const name = cand.candidate_identifier || cand.candidate_name || cand.resume_name || 'Candidate';
         const title = cand.title || 'Candidate';
@@ -260,6 +262,8 @@ export class CandidatePoolController {
 
         const tierBadgeClass = cand.tier === 1 ? 'tier-badge-1' : (cand.tier === 2 ? 'tier-badge-2' : 'tier-badge-3');
         const tierLabel = cand.tier ? `Tier ${cand.tier}` : 'Tier 3';
+
+        card.setAttribute('aria-label', `Candidate: ${name}, Role: ${title}, Score: ${score}/100, ${recText}, ${tierLabel}`);
 
         const dims = cand.dimension_scores || {};
         let dimsHtml = '';
@@ -290,7 +294,7 @@ export class CandidatePoolController {
                     <span class="cand-role">${this.escapeHtml(title)}</span>
                 </div>
                 <div class="cand-score-badge">
-                    <span class="cand-score-val" style="color: ${score >= 85 ? '#34d399' : score >= 70 ? '#a5b4fc' : score >= 55 ? '#fcd34d' : '#fca5a5'};">${score}</span>
+                    <span class="cand-score-val" style="color: ${numScore >= 85 ? '#14532D' : numScore >= 70 ? '#075985' : numScore >= 55 ? '#92400E' : '#991B1B'};">${score}</span>
                     <span class="cand-score-lbl">Score</span>
                 </div>
             </div>
@@ -298,7 +302,7 @@ export class CandidatePoolController {
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <span class="match-pill ${recClass}">${recText}</span>
                 <span class="tier-badge ${tierBadgeClass}">${tierLabel}</span>
-                <span style="font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono);">${cand.filename || ''}</span>
+                <span class="cand-filename-tag">${this.escapeHtml(cand.filename || '')}</span>
             </div>
 
             ${dimsHtml ? `<div class="cand-dimensions-mini">${dimsHtml}</div>` : ''}
@@ -308,19 +312,29 @@ export class CandidatePoolController {
                     <span class="badge-strength-cnt">✓ ${cand.summary?.total_strengths || 0} Strengths</span>
                     <span class="badge-gap-cnt">⚠ ${cand.summary?.total_gaps || 0} Gaps</span>
                 </div>
-                <span class="cand-inspect-btn">View Details →</span>
+                <button class="btn btn-sm btn-secondary cand-inspect-btn" type="button" tabindex="-1">View Details →</button>
             </div>
         `;
 
-        card.addEventListener('click', () => this.openCandidateModal(cand));
+        const openHandler = () => this.openCandidateModal(cand, card);
+        card.addEventListener('click', openHandler);
+        card.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openHandler();
+            }
+        });
+
         container.appendChild(card);
     }
 
     /**
-     * Opens modal dialog showing full candidate evaluation report.
+     * Opens modal dialog showing full candidate evaluation report with keyboard focus trap.
      * @param {Object} cand - Candidate evaluation data object.
+     * @param {HTMLElement} triggerEl - Optional element that triggered the modal.
      */
-    openCandidateModal(cand) {
+    openCandidateModal(cand, triggerEl = null) {
+        this.lastFocusedElement = triggerEl || document.activeElement;
         this.currentModalCandidate = cand;
         if (!this.candModal || !this.modalCandBody) return;
 
@@ -374,10 +388,10 @@ export class CandidatePoolController {
                     <div class="modal-dim-progress">
                         <div class="modal-dim-progress-fill ${fillClass}" style="width: ${Math.min(100, Math.max(5, d.score))}%;"></div>
                     </div>
-                    ${reasoningText ? `<div style="margin-top:8px; font-weight:600; font-size:0.82rem; color: var(--accent-bright);">🧠 AI Reasoning (Lập luận đánh giá):</div><div class="modal-reasoning-box">${reasoningText}</div>` : ''}
-                    ${strengthsList ? `<div style="margin-top:6px; font-weight:600; font-size:0.82rem;">Key Strengths:</div><ul class="modal-bullets strengths">${strengthsList}</ul>` : ''}
-                    ${gapsList ? `<div style="margin-top:6px; font-weight:600; font-size:0.82rem;">Identified Gaps:</div><ul class="modal-bullets gaps">${gapsList}</ul>` : ''}
-                    ${quotesList ? `<div style="margin-top:6px; font-weight:600; font-size:0.82rem;">Evidence Quotes:</div>${quotesList}` : ''}
+                    ${reasoningText ? `<div class="modal-reasoning-title">🧠 AI Reasoning (Lập luận đánh giá):</div><div class="modal-reasoning-box">${reasoningText}</div>` : ''}
+                    ${strengthsList ? `<div class="modal-section-title">Key Strengths:</div><ul class="modal-bullets strengths">${strengthsList}</ul>` : ''}
+                    ${gapsList ? `<div class="modal-section-title">Identified Gaps:</div><ul class="modal-bullets gaps">${gapsList}</ul>` : ''}
+                    ${quotesList ? `<div class="modal-section-title">Evidence Quotes:</div>${quotesList}` : ''}
                 </div>
             `;
         });
@@ -386,11 +400,11 @@ export class CandidatePoolController {
             <div class="modal-hero-banner">
                 <div>
                     <h2>${this.escapeHtml(name)} <span class="match-pill ${recClass}">${recText}</span></h2>
-                    <p style="font-size:0.85rem; color:var(--text-muted); margin-top:4px;">Evaluated on ${cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleString() : 'N/A'}</p>
+                    <p>Evaluated on ${cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleString() : 'N/A'}</p>
                 </div>
                 <div class="modal-score-box">
-                    <span class="modal-score-number" style="color: ${score >= 85 ? '#34d399' : score >= 70 ? '#a5b4fc' : score >= 55 ? '#fcd34d' : '#fca5a5'};">${score}</span>
-                    <span style="font-size:0.8rem; color:var(--text-muted);">Overall Score</span>
+                    <span class="modal-score-number" style="color: ${numScore >= 85 ? '#14532D' : numScore >= 70 ? '#075985' : numScore >= 55 ? '#92400E' : '#991B1B'};">${score}</span>
+                    <span style="font-size:0.82rem; color:#334155; font-weight:800; text-transform:uppercase; font-family:var(--font-mono);">Overall Score</span>
                 </div>
             </div>
             <div class="modal-dim-grid">${dimCardsHtml}</div>
@@ -398,16 +412,24 @@ export class CandidatePoolController {
 
         this.candModal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
+
+        if (this.modalCloseBtn) {
+            this.modalCloseBtn.focus();
+        }
     }
 
     /**
-     * Closes candidate detail modal dialog.
+     * Closes candidate detail modal dialog and restores keyboard focus.
      */
     closeCandidateModal() {
         if (!this.candModal) return;
         this.candModal.style.display = 'none';
         document.body.style.overflow = '';
         this.currentModalCandidate = null;
+
+        if (this.lastFocusedElement && typeof this.lastFocusedElement.focus === 'function') {
+            this.lastFocusedElement.focus();
+        }
     }
 
     /**

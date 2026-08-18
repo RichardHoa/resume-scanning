@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=eval_vllm
+#SBATCH --job-name=extract_vllm
 #SBATCH --partition=researcher
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -7,12 +7,15 @@
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:1
 #SBATCH --time=12:00:00
-#SBATCH --output=logging/slurm_%j.out
-#SBATCH --error=logging/slurm_%j.err
+#SBATCH --output=logging/slurm_extract_%j.out
+#SBATCH --error=logging/slurm_extract_%j.err
 
 # -----------------------------------------------------------------------------
-# SLURM Batch Job Script for High-Speed vLLM Resume Evaluation Server
+# SLURM Batch Job Script for High-Speed vLLM Resume Batch Extraction
 # -----------------------------------------------------------------------------
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
 
 # Optimization & Threading Environment Variables (Prevent ONNX/PyTorch crashes & RAM OOM)
 export MAX_JOBS=1
@@ -24,8 +27,18 @@ export OPENBLAS_NUM_THREADS=4
 export VECLIB_MAXIMUM_THREADS=4
 export NUMEXPR_NUM_THREADS=4
 
+# Disable detailed prompt logging to txt files (keep console logs normal)
+export DISABLE_PROMPT_LOGGING=1
+
 # Ensure output & log directories exist
 mkdir -p logs evaluation_json logging output_jsons pdfs
+
+# Target PDF Directory (Default: Vietnamese-dataset/CnB)
+PDF_DIR="${1:-Vietnamese-dataset/CnB}"
+# Target Model Name (Default: Qwen/Qwen3.5-35B-A3B)
+MODEL="${2:-Qwen/Qwen3.5-35B-A3B}"
+# Usual output directory for JSON extraction
+OUTPUT_DIR="output_jsons"
 
 # Load cluster modules (miniconda3)
 echo "[$(date +'%H:%M:%S')] STEP 1: Loading system environment modules..."
@@ -46,13 +59,6 @@ echo "[$(date +'%H:%M:%S')] STEP 2: Activating Conda environment 'resume_env'...
 eval "$(conda shell.bash hook 2>/dev/null)" || true
 source activate resume_env 2>/dev/null || conda activate resume_env 2>/dev/null || true
 echo "[$(date +'%H:%M:%S')] Step 2 complete. Active Python: $(which python3 2>/dev/null || echo 'python3 not found')"
-
-# Ensure critical evaluation dependencies (sentence-transformers, chromadb) are installed
-if ! python3 -c "import sentence_transformers, chromadb" 2>/dev/null; then
-  echo "[NOTICE] 'sentence-transformers' or 'chromadb' package missing in Conda environment 'resume_env'."
-  echo "[NOTICE] Auto-installing missing evaluation dependencies via pip..."
-  python3 -m pip install sentence-transformers chromadb 2>/dev/null || pip install sentence-transformers chromadb 2>/dev/null || true
-fi
 
 # Print GPU info on compute node immediately
 echo "====================================================================="
@@ -79,11 +85,17 @@ echo "[$(date +'%H:%M:%S')] FlashInfer Autotune Cache: $VLLM_FLASHINFER_AUTOTUNE
 
 # Find an available open port instantly using OS socket binding
 PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('127.0.0.1', 0)); print(s.getsockname()[1]); s.close()" 2>/dev/null || echo 8100)
-MODEL="${1:-Qwen/Qwen3.5-35B-A3B}"
 
+echo "[$(date +'%H:%M:%S')] Target PDF Directory: $PDF_DIR"
+echo "[$(date +'%H:%M:%S')] Target Output Directory: $OUTPUT_DIR"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT"
 echo "[$(date +'%H:%M:%S')] HF Cache Path: ${HF_HOME:-default}"
+
+if [ ! -d "$PDF_DIR" ]; then
+  echo "[ERROR] PDF directory '$PDF_DIR' does not exist."
+  exit 1
+fi
 
 # Check if vllm python package is installed in environment
 if python3 -c "import vllm" 2>/dev/null; then
@@ -103,14 +115,14 @@ if python3 -c "import vllm" 2>/dev/null; then
     --dtype auto \
     --port "$PORT" \
     --host 127.0.0.1 \
-    --max-model-len 16000 \
+    --max-model-len "$VLLM_MAX_MODEL_LEN" \
     --max-num-seqs 256 \
     --gpu-memory-utilization 0.8 \
     --trust-remote-code \
     --enable-prefix-caching \
     --enable-chunked-prefill \
     --served-model-name "$MODEL" \
-    > logs/vllm_batch.log 2>&1 &
+    > logs/vllm_extract.log 2>&1 &
 
   VLLM_PID=$!
   trap "kill -9 $VLLM_PID 2>/dev/null || true" EXIT INT TERM
@@ -122,8 +134,8 @@ if python3 -c "import vllm" 2>/dev/null; then
     if ! kill -0 $VLLM_PID 2>/dev/null; then
       echo "====================================================================="
       echo "[$(date +'%H:%M:%S')] CRITICAL: vLLM server process (PID $VLLM_PID) exited unexpectedly!"
-      echo "--- Tail of logs/vllm_batch.log ---"
-      tail -n 35 logs/vllm_batch.log 2>/dev/null || echo "(No log file found)"
+      echo "--- Tail of logs/vllm_extract.log ---"
+      tail -n 35 logs/vllm_extract.log 2>/dev/null || echo "(No log file found)"
       echo "====================================================================="
       break
     fi
@@ -138,7 +150,7 @@ if python3 -c "import vllm" 2>/dev/null; then
     if [ $((i % 2)) -eq 0 ]; then
       ELAPSED=$((i * 5))
       echo "[$(date +'%H:%M:%S')] Loading vLLM server (Attempt $i/720, elapsed: ${ELAPSED}s)..."
-      LAST_LOG=$(tail -n 2 logs/vllm_batch.log 2>/dev/null | tr '\n' ' ')
+      LAST_LOG=$(tail -n 2 logs/vllm_extract.log 2>/dev/null | tr '\n' ' ')
       if [ -n "$LAST_LOG" ]; then
         echo "   └─ vLLM activity: $LAST_LOG"
       fi
@@ -148,33 +160,20 @@ if python3 -c "import vllm" 2>/dev/null; then
   done
 
   if [ $READY -eq 1 ]; then
-    echo "=== vLLM Server Ready! ==="
+    echo "=== vLLM Server Ready! Starting Batch Extraction ==="
+    echo "Processing PDFs from '$PDF_DIR' -> JSONs to '$OUTPUT_DIR' using model '$MODEL'"
 
-    JSON_COUNT=$(find output_jsons/ -maxdepth 1 -name "*.json" 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$JSON_COUNT" -eq 0 ]; then
-      echo "=== [Step 1 Auto-Run] 'output_jsons/' is empty. Extracting PDF resumes from 'pdfs/' first... ==="
-      python3 -u src/step_1_extractor.py \
-        --dir pdfs \
-        --output output_jsons \
-        --model-name "$MODEL" \
-        --backend vllm \
-        --vllm-url "http://127.0.0.1:$PORT/v1"
-    fi
-
-    echo "=== Starting Step 2 High-Precision vLLM Batch Evaluation ==="
-    python3 -u src/step_2_evaluate.py \
+    python3 -u src/step_1_extractor.py \
+      --dir "$PDF_DIR" \
+      --output "$OUTPUT_DIR" \
       --model-name "$MODEL" \
       --backend vllm \
-      --vllm-url "http://127.0.0.1:$PORT/v1" \
-      --dir output_jsons \
-      --job-req hr-requirement.txt \
-      --output evaluation_json \
-      --workers 6
+      --vllm-url "http://127.0.0.1:$PORT/v1"
   else
     echo "====================================================================================="
     echo "ERROR: vLLM server failed to start within 3600s timeout on port $PORT."
-    echo "--- Full contents / tail of logs/vllm_batch.log ---"
-    tail -n 50 logs/vllm_batch.log 2>/dev/null || echo "(No log file found)"
+    echo "--- Full contents / tail of logs/vllm_extract.log ---"
+    tail -n 50 logs/vllm_extract.log 2>/dev/null || echo "(No log file found)"
     echo "====================================================================================="
   fi
 
@@ -185,8 +184,7 @@ else
   echo "====================================================================================="
   echo "[ERROR] 'vllm' package is not installed in Conda environment 'resume_env'."
   echo "To use vLLM backend, run on terminal: pip install vllm"
-  echo "Or fallback to submit_eval_transformer.sh"
   echo "====================================================================================="
   exit 1
 fi
-echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Batch Evaluation Job Finished ==="
+echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Batch Extraction Job Finished ==="

@@ -36,6 +36,10 @@ export class ExtractorController {
         this.resultsSection = document.getElementById('results-section');
         this.jsonOutput = document.getElementById('json-output');
 
+        this.btnToggleView = document.getElementById('btn-toggle-view');
+        this.dashboardSplit = document.querySelector('.dashboard-split');
+        this.codePane = document.querySelector('.code-pane');
+
         this.btnCopy = document.getElementById('btn-copy');
         this.btnDownload = document.getElementById('btn-download');
         this.btnReset = document.getElementById('btn-reset');
@@ -47,6 +51,7 @@ export class ExtractorController {
 
         this.tabButtons = document.querySelectorAll('.tab-btn');
         this.tabContents = document.querySelectorAll('.tab-content');
+        this.isFullVisual = false;
     }
 
     /**
@@ -92,6 +97,10 @@ export class ExtractorController {
             this.btnExtract.addEventListener('click', () => this.runExtraction());
         }
 
+        if (this.btnToggleView) {
+            this.btnToggleView.addEventListener('click', () => this.toggleViewMode());
+        }
+
         if (this.btnCopy) this.btnCopy.addEventListener('click', () => this.copyJson());
         if (this.btnDownload) this.btnDownload.addEventListener('click', () => this.downloadJson());
         if (this.btnReset) this.btnReset.addEventListener('click', () => this.resetView());
@@ -106,6 +115,23 @@ export class ExtractorController {
                 document.getElementById(tabId)?.classList.add('active');
             });
         });
+    }
+
+    /**
+     * Toggles between Split View (Code + Visual) and Full Visual View (Visual Only 100% width).
+     */
+    toggleViewMode() {
+        if (!this.dashboardSplit) return;
+        this.isFullVisual = !this.isFullVisual;
+        if (this.isFullVisual) {
+            this.dashboardSplit.classList.add('full-visual-mode');
+            if (this.codePane) this.codePane.style.display = 'none';
+            if (this.btnToggleView) this.btnToggleView.textContent = '👁️ Show Split View';
+        } else {
+            this.dashboardSplit.classList.remove('full-visual-mode');
+            if (this.codePane) this.codePane.style.display = 'flex';
+            if (this.btnToggleView) this.btnToggleView.textContent = '👁️ Visual Only / Split';
+        }
     }
 
     /**

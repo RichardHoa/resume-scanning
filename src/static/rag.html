@@ -1,97 +1,103 @@
 <!DOCTYPE html>
 <!--
   ==============================================================================
-  AI Resume Extractor & Evaluation Dashboard - RAG Knowledge Base Page
+  Vietnamese Resume Scanner - RAG Knowledge Base Workbench
   ==============================================================================
-  Description: Dedicated HTML page for viewing persistent ChromaDB RAG vector
-               database status, inspecting decomposed HR criteria items across 5
-               dimensions, and clearing vector store cache.
 -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAG Knowledge Base | AI Resume Scanner</title>
-    <!-- Modern Google Fonts -->
+    <title>Vietnamese Resume Scanner | RAG Base Workbench</title>
+    <!-- Google Fonts: Be Vietnam Pro, Noto Sans, JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Noto+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Main Combined Stylesheet -->
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <div class="app-container">
-        <!-- ==================================================================== -->
-        <!-- TOP NAVIGATION BAR                                                   -->
-        <!-- ==================================================================== -->
-        <header class="main-header">
-            <div class="header-brand">
-                <div class="brand-logo-icon">⚡</div>
-                <div class="brand-title-group">
-                    <h1>Antigravity Extractor</h1>
-                    <span class="subtitle">Vietnamese Resume Parsing & RAG Engine</span>
+    <a href="#main-content" class="sr-only focus-not-sr-only">Skip to Main Content</a>
+    <div class="app-workbench">
+        <!-- Persistent Left Command Rail -->
+        <aside class="command-rail" role="navigation" aria-label="Main Navigation">
+            <div class="rail-brand">
+                <div class="rail-brand-logo">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.78c0-2.33 4.67-3.5 7-3.5s7 1.17 7 3.5V19z"/></svg>
+                </div>
+                <div class="rail-brand-title">
+                    <span class="brand-heading">Fulbright Candidate Matrix</span>
+                    <span class="subtitle">Layout Engine & RAG</span>
                 </div>
             </div>
 
-            <!-- Page Navigation Links -->
-            <nav class="app-nav-bar">
+            <nav class="rail-nav-menu">
+                <span class="rail-section-label">WORKSPACES</span>
                 <a href="/extractor" class="nav-link">
-                    <span class="nav-icon">⚡</span> Step 1: CV Extractor
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span> Step 1: CV Extractor
                 </a>
                 <a href="/evaluator" class="nav-link">
-                    <span class="nav-icon">🎯</span> Step 2: HR Evaluator
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg></span> Step 2: HR Evaluator
                 </a>
-                <a href="/rag" class="nav-link active">
-                    <span class="nav-icon">🧠</span> RAG Knowledge Base
+                <a href="/rag" class="nav-link active" aria-current="page">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 12v1a2 2 0 0 0 2 2h2v4.93zm4.9-3.24a9.96 9.96 0 0 0 1.9-4.69H16v-1a2 2 0 0 0-2-2h-3v-2a1 1 0 0 1 1-1h3.5a.5.5 0 0 0 .5-.5V5.1A9.97 9.97 0 0 1 17.9 16.69z"/></svg></span> RAG Knowledge Base
                 </a>
                 <a href="/candidates" class="nav-link">
-                    <span class="nav-icon">📊</span> Candidate Pool
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></span> Candidate Pool
                 </a>
             </nav>
 
-            <!-- Server Status & Model Info Badges -->
-            <div class="header-config">
-                <div class="config-badge" id="badge-model">
-                    <span class="badge-label">Model:</span>
-                    <span class="badge-value" id="val-model">Loading...</span>
+            <div class="rail-telemetry">
+                <div class="telemetry-row">
+                    <span>ENGINE</span>
+                    <span class="status-indicator"><span class="status-dot"></span> READY</span>
                 </div>
-                <div class="config-badge" id="badge-mode">
-                    <span class="badge-label">Mode:</span>
-                    <span class="badge-value" id="val-mode">Loading...</span>
+                <div class="telemetry-row">
+                    <span>VECTOR STORE</span>
+                    <span style="color: var(--color-secondary); font-weight:700;">ChromaDB</span>
                 </div>
             </div>
-        </header>
+        </aside>
 
-        <!-- ==================================================================== -->
-        <!-- MAIN CONTENT AREA - RAG KNOWLEDGE BASE                               -->
-        <!-- ==================================================================== -->
-        <main class="main-content">
+        <!-- Main Workbench Stage -->
+        <main class="workbench-stage" id="main-content">
+            <div class="workbench-header">
+                <div class="workbench-title-group">
+                    <h1><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 12v1a2 2 0 0 0 2 2h2v4.93zm4.9-3.24a9.96 9.96 0 0 0 1.9-4.69H16v-1a2 2 0 0 0-2-2h-3v-2a1 1 0 0 1 1-1h3.5a.5.5 0 0 0 .5-.5V5.1A9.97 9.97 0 0 1 17.9 16.69z"/></svg> RAG Vector Database Workbench</h1>
+                    <p>Inspect decomposed criteria vector embeddings stored in persistent ChromaDB across 5 dimensions.</p>
+                </div>
+            </div>
+
             <div class="page-view active" id="page-rag">
                 <div class="panel">
                     <div class="panel-header-split">
                         <div>
-                            <h2>🧠 RAG Criteria Knowledge Base</h2>
-                            <p>Persistent Local Vector Database (<code id="rag-db-path">rag/chroma_db</code>). Stores decomposed HR criteria vector embeddings across 5 dimensions.</p>
+                            <h2>RAG Criteria Knowledge Base</h2>
+                            <p>Persistent Local Vector Database (<code id="rag-db-path">rag/chroma_db</code>).</p>
                         </div>
                         <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-secondary" id="btn-refresh-rag">↻ Refresh RAG</button>
-                            <button class="btn btn-danger" id="btn-clear-rag">🗑️ Clear RAG DB</button>
+                            <button class="btn btn-secondary" id="btn-refresh-rag" type="button">
+                                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Refresh RAG
+                            </button>
+                            <button class="btn btn-danger" id="btn-clear-rag" type="button">
+                                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg> Clear RAG DB
+                            </button>
                         </div>
                     </div>
 
                     <!-- Vector Store Summary Status Banner -->
-                    <div id="rag-status-banner" style="padding: 12px 18px; border-radius: 10px; background: rgba(30, 41, 59, 0.6); border: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                    <div id="rag-status-banner" class="rag-status-banner">
                         <div>
-                            <span style="font-weight: 600;">Status: </span>
+                            <span style="font-weight: 700; font-size: 0.88rem; color: var(--text-main);">Status: </span>
                             <span id="rag-status-badge" class="badge-success">RAG Active</span>
                         </div>
                         <div>
-                            <span style="font-weight: 600;">Engine: </span>
-                            <span id="rag-engine-badge" style="font-size: 0.85rem; padding: 3px 10px; border-radius: 4px; background: rgba(99, 102, 241, 0.2); color: #818cf8;">ChromaDB Persistent Store</span>
+                            <span style="font-weight: 700; font-size: 0.88rem; color: var(--text-main);">Engine: </span>
+                            <span id="rag-engine-badge" class="rag-engine-tag">ChromaDB Persistent Store</span>
                         </div>
                         <div>
-                            <span style="font-weight: 600;">Total Criteria Items: </span>
-                            <span id="rag-total-count" style="font-weight: 700; color: var(--accent-bright); font-size: 1.1rem;">0</span>
+                            <span style="font-weight: 700; font-size: 0.88rem; color: var(--text-main);">Total Criteria Items: </span>
+                            <span id="rag-total-count" style="font-weight: 800; color: var(--color-primary); font-size: 1.15rem; font-family: var(--font-mono);">0</span>
                         </div>
                     </div>
 
@@ -101,8 +107,8 @@
                     </div>
 
                     <!-- Decomposed Requirement Text File Preview -->
-                    <div style="margin-top: 2rem;">
-                        <h3 style="margin-bottom: 0.5rem;">📄 HR Requirement Summary File (<code>hr_rag.txt</code>)</h3>
+                    <div style="margin-top: 1.75rem;">
+                        <h3 style="margin-bottom: 0.5rem; font-size: 1.05rem;">HR Requirement Summary File (<code>hr_rag.txt</code>)</h3>
                         <div class="logs-content-pane">
                             <pre><code id="hr-rag-code-view">Loading hr_rag.txt content...</code></pre>
                         </div>
@@ -112,7 +118,6 @@
         </main>
     </div>
 
-    <!-- Main Module Application Bootstrapper -->
     <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

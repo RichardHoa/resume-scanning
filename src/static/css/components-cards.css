@@ -1,41 +1,46 @@
-/* ==========================================================================
-   UI Component System - Panels & Glass Cards
-   Line Count: ~50 lines (Strict Limit: < 200 lines)
-   ========================================================================== */
+/* UI Component System - Panels & Elevated Cards */
 
-/* Main Panel Card Container */
+/* Main Panel Container */
 .panel {
     background-color: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 2rem;
+    border-radius: var(--radius-lg);
+    padding: 1.5rem 1.85rem;
     box-shadow: var(--shadow-md);
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1.25rem;
     position: relative;
     overflow: hidden;
+    transition: all var(--transition-fast);
+}
+
+.panel:hover {
+    border-color: #CBD5E1;
+    box-shadow: var(--shadow-lg);
 }
 
 /* Panel Header Typography */
 .panel-header {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.25rem;
 }
 
 .panel-header h2 {
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: #ffffff;
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: var(--brand-legacy-blue);
+    letter-spacing: -0.015em;
+    font-family: var(--font-display);
 }
 
 .panel-header p {
     color: var(--text-muted);
-    font-size: 0.9rem;
+    font-size: 0.88rem;
 }
 
-/* Panel Header Split Container */
+/* Panel Header Split Layout */
 .panel-header-split {
     display: flex;
     justify-content: space-between;
@@ -43,3 +48,4 @@
     flex-wrap: wrap;
     gap: 1rem;
 }
+

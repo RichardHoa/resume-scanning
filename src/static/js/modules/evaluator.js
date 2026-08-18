@@ -1,11 +1,11 @@
 /**
  * ==============================================================================
- * Step 2: HR Evaluator Controller
+ * Step 2: HR Evaluator Controller (Fulbright Redesign Edition)
  * ==============================================================================
- * Description: Manages standard & hidden job criteria input, candidate selection,
- *              batch evaluation execution, leaderboard generation, and 5-dimension
- *              score breakdown rendering.
- * Line Count: ~240 lines (Strict Limit: < 500 lines)
+ * Description: Manages job criteria, candidate selection with live filtering,
+ *              batch AI evaluation, KPI statistics calculation, and full-width
+ *              dossier inspector breakdown.
+ * Line Count: ~360 lines
  */
 
 import { API } from './api.js';
@@ -15,13 +15,14 @@ export class EvaluatorController {
         this.scannedResumes = [];
         this.selectedResumesSet = new Set();
         this.lastResults = [];
+        this.searchTerm = '';
 
         this.initDOMElements();
         this.initEvents();
     }
 
     /**
-     * Binds DOM element references required for batch resume evaluation.
+     * Binds DOM element references required for batch evaluation workflow.
      */
     initDOMElements() {
         this.scannedContainer = document.getElementById('scanned-resumes-container');
@@ -29,12 +30,26 @@ export class EvaluatorController {
         this.selectedCountBadge = document.getElementById('selected-count-badge');
         this.btnRunEval = document.getElementById('btn-run-eval');
         this.btnRefreshResumes = document.getElementById('btn-refresh-resumes');
+        this.candSearchInput = document.getElementById('eval-cand-search');
 
-        this.placeholderPanel = document.getElementById('eval-placeholder-panel');
-        this.resultsPanel = document.getElementById('eval-results-panel');
+        this.setupStage = document.getElementById('eval-setup-stage');
+        this.resultsStage = document.getElementById('eval-results-stage');
+        this.btnModifyCriteria = document.getElementById('btn-modify-criteria');
+
         this.tierBlocksContainer = document.getElementById('tier-blocks-container');
         this.evalTotalBadge = document.getElementById('eval-total-badge');
         this.detailView = document.getElementById('candidate-detail-view');
+
+        // KPI Banner elements
+        this.kpiTotalVal = document.getElementById('kpi-total-val');
+        this.kpiStrongVal = document.getElementById('kpi-strong-val');
+        this.kpiPotentialVal = document.getElementById('kpi-potential-val');
+        this.kpiAvgScoreVal = document.getElementById('kpi-avg-score-val');
+
+        // Stepped nav steps
+        this.stepNav1 = document.getElementById('step-nav-1');
+        this.stepNav2 = document.getElementById('step-nav-2');
+        this.stepNav3 = document.getElementById('step-nav-3');
 
         this.loaderOverlay = document.getElementById('loader-overlay');
         this.loaderTitle = document.getElementById('loader-title');
@@ -42,7 +57,7 @@ export class EvaluatorController {
     }
 
     /**
-     * Binds event listeners for checkbox selection, refresh buttons, and evaluation triggers.
+     * Binds event listeners for selection, search, refresh, and stage navigation.
      */
     initEvents() {
         if (this.btnRefreshResumes) {
@@ -53,20 +68,72 @@ export class EvaluatorController {
             this.chkSelectAll.addEventListener('change', () => {
                 this.selectedResumesSet.clear();
                 if (this.chkSelectAll.checked) {
-                    this.scannedResumes.forEach(r => this.selectedResumesSet.add(r.filename));
+                    const filtered = this.getFilteredResumes();
+                    filtered.forEach(r => this.selectedResumesSet.add(r.filename));
                 }
                 this.renderScannedList();
                 this.updateSelectedCount();
             });
         }
 
+        if (this.candSearchInput) {
+            this.candSearchInput.addEventListener('input', (e) => {
+                this.searchTerm = e.target.value.toLowerCase().trim();
+                this.renderScannedList();
+            });
+        }
+
         if (this.btnRunEval) {
             this.btnRunEval.addEventListener('click', () => this.runEvaluation());
+        }
+
+        if (this.btnModifyCriteria) {
+            this.btnModifyCriteria.addEventListener('click', () => {
+                this.switchToSetupStage();
+            });
         }
     }
 
     /**
-     * Fetches scanned resumes from backend and updates selection state.
+     * Returns list of resumes matching search term.
+     */
+    getFilteredResumes() {
+        if (!this.searchTerm) return this.scannedResumes;
+        return this.scannedResumes.filter(r => {
+            const name = (r.filename || '').toLowerCase();
+            const email = (r.email || '').toLowerCase();
+            const title = (r.title || '').toLowerCase();
+            return name.includes(this.searchTerm) || email.includes(this.searchTerm) || title.includes(this.searchTerm);
+        });
+    }
+
+    /**
+     * Switch view back to setup stage.
+     */
+    switchToSetupStage() {
+        if (this.setupStage) this.setupStage.style.display = 'block';
+        if (this.resultsStage) this.resultsStage.style.display = 'none';
+        this.updateStepIndicator(1);
+    }
+
+    /**
+     * Update progress step indicator bar.
+     */
+    updateStepIndicator(activeStep) {
+        [this.stepNav1, this.stepNav2, this.stepNav3].forEach((stepEl, idx) => {
+            if (!stepEl) return;
+            const stepNum = idx + 1;
+            stepEl.classList.remove('active', 'completed');
+            if (stepNum === activeStep) {
+                stepEl.classList.add('active');
+            } else if (stepNum < activeStep) {
+                stepEl.classList.add('completed');
+            }
+        });
+    }
+
+    /**
+     * Fetches scanned resumes from backend.
      */
     async loadScannedResumes() {
         if (!this.scannedContainer) return;
@@ -94,35 +161,40 @@ export class EvaluatorController {
     }
 
     /**
-     * Renders candidate checkbox cards list in left panel, grouped into Tier 1, Tier 2, and Tier 3 blocks.
+     * Renders candidate checkbox list grouped by tier.
      */
     renderScannedList() {
         this.scannedContainer.innerHTML = '';
 
-        // Render Secret Order Status Banner
+        const resumes = this.getFilteredResumes();
+        if (resumes.length === 0) {
+            this.scannedContainer.innerHTML = '<div class="empty-state" style="padding: 1rem 0; font-size: 0.85rem;">No candidates match your search filter.</div>';
+            return;
+        }
+
+        // Secret order status banner
         const banner = document.createElement('div');
         banner.style.cssText = 'padding: 8px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;';
         if (this.orderActive) {
-            banner.style.background = 'rgba(16, 185, 129, 0.12)';
-            banner.style.border = '1px solid rgba(16, 185, 129, 0.3)';
-            banner.style.color = '#34d399';
-            banner.innerHTML = `<span>🔒 Secret Order: Active</span><span style="font-size:0.72rem; opacity:0.85;">Tier 1: ${this.tier1Count} • Tier 2: ${this.tier2Count}</span>`;
+            banner.style.background = '#DCFCE7';
+            banner.style.border = '1px solid #86EFAC';
+            banner.style.color = '#15803D';
+            banner.innerHTML = `<span>🔒 Secret Order: Active</span><span style="font-size:0.72rem; opacity:0.9;">Tier 1: ${this.tier1Count} • Tier 2: ${this.tier2Count}</span>`;
         } else {
-            banner.style.background = 'rgba(245, 158, 11, 0.12)';
-            banner.style.border = '1px solid rgba(245, 158, 11, 0.3)';
-            banner.style.color = '#fbbf24';
+            banner.style.background = '#FFFBEB';
+            banner.style.border = '1px solid #FCD34D';
+            banner.style.color = '#B45309';
             banner.innerHTML = `<span>⚠️ Secret Order: File Not Found</span><span style="font-size:0.72rem;">evaluation_order.txt</span>`;
         }
         this.scannedContainer.appendChild(banner);
 
-        // Group resumes into Tiers
         const tiers = {
             1: { title: 'Resume Tier 1 (Priority)', badgeClass: 'tier-badge-1', items: [] },
             2: { title: 'Resume Tier 2 (Secondary)', badgeClass: 'tier-badge-2', items: [] },
             3: { title: 'Resume Tier 3 (Unlisted)', badgeClass: 'tier-badge-3', items: [] }
         };
 
-        this.scannedResumes.forEach(r => {
+        resumes.forEach(r => {
             const t = r.tier || 3;
             if (!tiers[t]) tiers[t] = tiers[3];
             tiers[t].items.push(r);
@@ -134,14 +206,13 @@ export class EvaluatorController {
 
             const block = document.createElement('div');
             block.className = `scanned-tier-block tier-${tNum}-block`;
-            block.style.cssText = 'background: var(--bg-main); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 12px;';
 
             block.innerHTML = `
-                <div class="tier-section-title" style="margin-top:0;">
-                    <span>${group.title}</span>
+                <div class="panel-header-split" style="margin-bottom: 8px;">
+                    <span style="font-weight: 700; font-size: 0.88rem; color: var(--brand-legacy-blue);">${group.title}</span>
                     <span class="tier-badge ${group.badgeClass}">${group.items.length} candidate(s)</span>
                 </div>
-                <div class="tier-items-list" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;"></div>
+                <div class="tier-items-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
             `;
 
             const itemsContainer = block.querySelector('.tier-items-list');
@@ -178,9 +249,6 @@ export class EvaluatorController {
         });
     }
 
-    /**
-     * Updates selected count badge and enables/disables evaluation submit button.
-     */
     updateSelectedCount() {
         if (this.selectedCountBadge) {
             this.selectedCountBadge.textContent = `${this.selectedResumesSet.size} selected`;
@@ -203,9 +271,11 @@ export class EvaluatorController {
             return;
         }
 
+        this.updateStepIndicator(2);
+
         if (this.loaderOverlay) {
             this.loaderTitle.textContent = `Evaluating ${filenames.length} Candidate(s)...`;
-            this.loaderDesc.textContent = 'Running evaluation strictly in secret evaluation_order...';
+            this.loaderDesc.textContent = 'Computing 5 RAG vector dimension scores strictly in evaluation order...';
             this.loaderOverlay.style.display = 'flex';
         }
 
@@ -224,24 +294,35 @@ export class EvaluatorController {
     }
 
     /**
-     * Renders candidate evaluation results divided into separate Resume Tier 1, Tier 2, and Tier 3 blocks.
-     * Candidates within each block maintain exact evaluation order.
-     * @param {Array<Object>} results - Candidate evaluation result objects.
+     * Renders evaluation results dashboard and dossier inspector.
      */
     renderDashboard(results) {
         this.lastResults = results;
-        if (this.placeholderPanel) this.placeholderPanel.style.display = 'none';
-        if (this.resultsPanel) this.resultsPanel.style.display = 'block';
-        if (this.evalTotalBadge) this.evalTotalBadge.textContent = `${results.length} Evaluated`;
+
+        if (this.setupStage) this.setupStage.style.display = 'none';
+        if (this.resultsStage) this.resultsStage.style.display = 'block';
+
+        this.updateStepIndicator(3);
+
+        // Update KPI summary stats
+        const totalCount = results.length;
+        const strongCount = results.filter(r => r.match_recommendation === 'STRONG_MATCH').length;
+        const potentialCount = results.filter(r => r.match_recommendation === 'POTENTIAL_MATCH').length;
+        const avgScore = totalCount > 0 ? (results.reduce((acc, curr) => acc + (curr.overall_score || 0), 0) / totalCount).toFixed(1) : '0.0';
+
+        if (this.kpiTotalVal) this.kpiTotalVal.textContent = totalCount;
+        if (this.kpiStrongVal) this.kpiStrongVal.textContent = strongCount;
+        if (this.kpiPotentialVal) this.kpiPotentialVal.textContent = potentialCount;
+        if (this.kpiAvgScoreVal) this.kpiAvgScoreVal.textContent = avgScore;
+        if (this.evalTotalBadge) this.evalTotalBadge.textContent = `${totalCount} Evaluated`;
 
         if (!this.tierBlocksContainer) return;
         this.tierBlocksContainer.innerHTML = '';
 
-        // Group evaluation results by Tier
         const tierGroups = {
-            1: { title: 'Resume Tier 1', badgeClass: 'tier-badge-1', cardClass: 'tier-1-card', items: [] },
-            2: { title: 'Resume Tier 2', badgeClass: 'tier-badge-2', cardClass: 'tier-2-card', items: [] },
-            3: { title: 'Resume Tier 3', badgeClass: 'tier-badge-3', cardClass: 'tier-3-card', items: [] }
+            1: { title: 'Resume Tier 1 (Priority Candidates)', badgeClass: 'tier-badge-1', cardClass: 'tier-1-card', items: [] },
+            2: { title: 'Resume Tier 2 (Secondary Candidates)', badgeClass: 'tier-badge-2', cardClass: 'tier-2-card', items: [] },
+            3: { title: 'Resume Tier 3 (Unlisted Candidates)', badgeClass: 'tier-badge-3', cardClass: 'tier-3-card', items: [] }
         };
 
         results.forEach(res => {
@@ -260,21 +341,21 @@ export class EvaluatorController {
             blockCard.className = `tier-block-card ${group.cardClass}`;
             
             blockCard.innerHTML = `
-                <div class="panel-header-split" style="margin-bottom: 12px;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <h3 style="margin: 0;">${group.title}</h3>
-                        <span class="tier-badge ${group.badgeClass}">Evaluation Order: Tier ${tNum}</span>
+                <div class="panel-header-split" style="margin-bottom: 14px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <h3 style="margin: 0; color: var(--brand-legacy-blue); font-size: 1.1rem;">${group.title}</h3>
+                        <span class="tier-badge ${group.badgeClass}">Tier ${tNum}</span>
                     </div>
-                    <span class="text-muted" style="font-size: 0.85rem;">${group.items.length} Evaluated</span>
+                    <span class="text-muted" style="font-size: 0.85rem; font-weight:600;">${group.items.length} Candidate(s)</span>
                 </div>
                 <div class="table-responsive">
                     <table class="leaderboard-table">
                         <thead>
                             <tr>
-                                <th>Eval Order</th>
+                                <th>Rank</th>
                                 <th>Candidate / Email</th>
-                                <th>Score</th>
-                                <th>Match Recommendation</th>
+                                <th>Match Score</th>
+                                <th>Recommendation</th>
                                 <th>Strengths / Gaps</th>
                                 <th>Action</th>
                             </tr>
@@ -291,19 +372,19 @@ export class EvaluatorController {
                 const tr = document.createElement('tr');
 
                 tr.innerHTML = `
-                    <td><span class="rank-badge">${evalOrderNum}</span></td>
+                    <td><span class="rank-badge rank-${evalOrderNum}">${evalOrderNum}</span></td>
                     <td>
-                        <strong>${this.escapeHtml(res.resume_name)}</strong><br>
-                        <span style="font-size:0.75rem; color: var(--text-muted);">✉ ${this.escapeHtml(res.candidate_email || res.candidate_identifier || 'N/A')}</span>
+                        <strong style="color: var(--brand-legacy-blue); font-size: 0.95rem;">${this.escapeHtml(res.resume_name)}</strong><br>
+                        <span style="font-size:0.78rem; color: var(--text-muted);">✉ ${this.escapeHtml(res.candidate_email || res.candidate_identifier || 'N/A')}</span>
                     </td>
-                    <td><strong style="color: var(--accent-bright); font-size:1.1rem;">${res.overall_score || 0}</strong>/100</td>
+                    <td><strong style="color: var(--brand-azure); font-size:1.2rem; font-family:var(--font-mono);">${res.overall_score || 0}</strong><span style="font-size:0.8rem; color:var(--text-muted);">/100</span></td>
                     <td><span class="badge-rec rec-${res.match_recommendation}">${res.match_recommendation}</span></td>
-                    <td style="font-size:0.8rem;">
-                        <span style="color:var(--success-light);">✓ ${res.summary?.total_strengths || 0}</span> | 
-                        <span style="color:var(--danger-light);">✗ ${res.summary?.total_gaps || 0}</span>
+                    <td style="font-size:0.82rem; font-weight:600;">
+                        <span style="color:#15803D;">✓ ${res.summary?.total_strengths || 0}</span> • 
+                        <span style="color:#B91C1C;">✗ ${res.summary?.total_gaps || 0}</span>
                     </td>
                     <td>
-                        <button class="btn btn-sm btn-secondary btn-inspect">Inspect Detail</button>
+                        <button class="btn btn-sm btn-secondary btn-inspect">Inspect Dossier</button>
                     </td>
                 `;
 
@@ -324,53 +405,91 @@ export class EvaluatorController {
     }
 
     /**
-     * Renders detailed 5-dimension scorecard for selected candidate.
-     * @param {Object} cand - Candidate evaluation details.
+     * Renders spacious full-width candidate dossier detail view.
      */
     renderCandidateDetail(cand) {
         if (!this.detailView) return;
         this.detailView.style.display = 'block';
 
-        document.getElementById('det-cand-name').textContent = cand.candidate_identifier || cand.resume_name;
-        document.getElementById('det-cand-file').textContent = `${cand.resume_name}.json • Evaluated ${cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleTimeString() : ''}`;
-        document.getElementById('det-cand-score').textContent = cand.overall_score || '0.0';
-
+        const nameEl = document.getElementById('det-cand-name');
+        const fileEl = document.getElementById('det-cand-file');
+        const scoreEl = document.getElementById('det-cand-score');
         const recBadge = document.getElementById('det-cand-rec');
-        recBadge.textContent = cand.match_recommendation;
-        recBadge.className = `rec-tag badge-rec rec-${cand.match_recommendation}`;
+        const summaryEl = document.getElementById('det-cand-summary');
+        const strengthsListEl = document.getElementById('det-cand-strengths-list');
+        const gapsListEl = document.getElementById('det-cand-gaps-list');
 
+        if (nameEl) nameEl.textContent = cand.candidate_identifier || cand.resume_name;
+        if (fileEl) fileEl.textContent = `${cand.resume_name}.json • Evaluated ${cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleTimeString() : 'Just now'}`;
+        if (scoreEl) scoreEl.textContent = cand.overall_score || '0.0';
+
+        if (recBadge) {
+            recBadge.textContent = cand.match_recommendation;
+            recBadge.className = `badge-rec rec-${cand.match_recommendation}`;
+        }
+
+        // Executive summary body
+        if (summaryEl) {
+            summaryEl.textContent = cand.summary?.executive_summary || `Candidate score is ${cand.overall_score}/100 with match classification of ${cand.match_recommendation}. Evaluated across 5 RAG vector dimensions.`;
+        }
+
+        // Populate Strengths & Gaps lists
+        if (strengthsListEl) {
+            const allStrengths = [];
+            const dims = cand.dimension_scores || {};
+            Object.values(dims).forEach(d => {
+                (d.strengths || []).forEach(s => allStrengths.push(s));
+            });
+            strengthsListEl.innerHTML = allStrengths.length > 0
+                ? allStrengths.map(s => `<li>${this.escapeHtml(s)}</li>`).join('')
+                : '<li>No explicit strengths recorded.</li>';
+        }
+
+        if (gapsListEl) {
+            const allGaps = [];
+            const dims = cand.dimension_scores || {};
+            Object.values(dims).forEach(d => {
+                (d.gaps || []).forEach(g => allGaps.push(g));
+            });
+            gapsListEl.innerHTML = allGaps.length > 0
+                ? allGaps.map(g => `<li>${this.escapeHtml(g)}</li>`).join('')
+                : '<li>No major gaps or risk factors noted.</li>';
+        }
+
+        // Render 5-Dimension Scorecard Cards
         const dimensionsContainer = document.getElementById('dimensions-container');
-        dimensionsContainer.innerHTML = '';
+        if (dimensionsContainer) {
+            dimensionsContainer.innerHTML = '';
+            const dims = cand.dimension_scores || {};
+            Object.keys(dims).forEach(key => {
+                const d = dims[key];
+                const card = document.createElement('div');
+                card.className = 'dimension-card';
 
-        const dims = cand.dimension_scores || {};
-        Object.keys(dims).forEach(key => {
-            const d = dims[key];
-            const card = document.createElement('div');
-            card.className = 'dimension-card';
+                const strengthsList = (d.strengths || []).map(s => `<li>${this.escapeHtml(s)}</li>`).join('');
+                const gapsList = (d.gaps || []).map(g => `<li style="color:#B91C1C;">${this.escapeHtml(g)}</li>`).join('');
+                const reasoningText = d.reasoning_summary ? this.escapeHtml(d.reasoning_summary) : '';
 
-            const strengthsList = (d.strengths || []).map(s => `<li>${this.escapeHtml(s)}</li>`).join('');
-            const gapsList = (d.gaps || []).map(g => `<li style="color:#f87171;">${this.escapeHtml(g)}</li>`).join('');
-            const reasoningText = d.reasoning_summary ? this.escapeHtml(d.reasoning_summary) : '';
-
-            card.innerHTML = `
-                <div class="dim-header">
-                    <span>${this.escapeHtml(d.category_name)} (${Math.round((d.weight || 0.2) * 100)}%)</span>
-                    <span class="dim-score">${d.score}/100</span>
-                </div>
-                <div class="dim-progress-track">
-                    <div class="dim-progress-fill" style="width: ${d.score}%;"></div>
-                </div>
-                ${reasoningText ? `
-                    <div style="font-size:0.8rem; font-weight:600; margin-top:6px; color: var(--accent-bright);">🧠 AI Reasoning (Lập luận đánh giá):</div>
-                    <div class="dim-reasoning-box">${reasoningText}</div>
-                ` : ''}
-                <div style="font-size:0.8rem; font-weight:600; margin-top:6px;">Strengths:</div>
-                <ul class="dim-list">${strengthsList || '<li>None noted</li>'}</ul>
-                <div style="font-size:0.8rem; font-weight:600; margin-top:6px;">Gaps / Concerns:</div>
-                <ul class="dim-list">${gapsList || '<li>None noted</li>'}</ul>
-            `;
-            dimensionsContainer.appendChild(card);
-        });
+                card.innerHTML = `
+                    <div class="dim-header">
+                        <span>${this.escapeHtml(d.category_name)} (${Math.round((d.weight || 0.2) * 100)}%)</span>
+                        <span class="dim-score">${d.score}/100</span>
+                    </div>
+                    <div class="dim-progress-track">
+                        <div class="dim-progress-fill" style="width: ${d.score}%;"></div>
+                    </div>
+                    ${reasoningText ? `
+                        <div style="font-size:0.8rem; font-weight:700; margin-top:6px; color: var(--brand-legacy-blue);">🧠 AI Reasoning:</div>
+                        <div class="dim-reasoning-box">${reasoningText}</div>
+                    ` : ''}
+                    <div style="font-size:0.8rem; font-weight:700; margin-top:6px; color:#15803D;">Strengths:</div>
+                    <ul class="dim-list">${strengthsList || '<li>None noted</li>'}</ul>
+                    <div style="font-size:0.8rem; font-weight:700; margin-top:6px; color:#B91C1C;">Gaps / Concerns:</div>
+                    <ul class="dim-list">${gapsList || '<li>None noted</li>'}</ul>
+                `;
+                dimensionsContainer.appendChild(card);
+            });
+        }
 
         this.detailView.scrollIntoView({ behavior: 'smooth' });
     }
@@ -380,3 +499,4 @@ export class EvaluatorController {
         return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 }
+

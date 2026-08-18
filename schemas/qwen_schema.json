@@ -33,7 +33,7 @@
       "company_description": "Company size, industry, client type, etc. as written. Empty string if not stated.",
       "position": "Job title at this company as written",
       "duration": "Employment period (start month/year - end month/year) as written. Use the image to correctly match dates to each job in multi-column layouts.",
-      "responsibilities": "All duties, responsibilities, and achievements verbatim. Extract completely — do not summarize or omit. Use '- ' for main items, '+ ' for sub-items."
+      "responsibilities": "All duties, responsibilities, accomplishments, and key achievements verbatim (including achievements listed in separate nearby sections like 'Key Achievements' or 'Thành tích nổi bật'). Extract completely — do not summarize or omit. Use '- ' for main items, '+ ' for sub-items."
     }
   ],
   "basic_information": {

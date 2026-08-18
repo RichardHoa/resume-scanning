@@ -14,6 +14,9 @@
 # SLURM Batch Job Script for Resume Evaluation (Transformers Backend)
 # -----------------------------------------------------------------------------
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+
 # Load cluster modules (miniconda3)
 module load miniconda3 2>/dev/null || true
 module load cuda 2>/dev/null || module load cuda13.0 2>/dev/null || true

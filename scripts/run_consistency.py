@@ -11,10 +11,11 @@ import argparse
 import time
 import re
 
-# Ensure repository root is in sys.path for 'src' package imports
+# Ensure repository root is in sys.path for 'src' package imports and set CWD
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
+os.chdir(_PROJECT_ROOT)
 
 from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL
 from src.pipelines.evaluator import ResumeEvaluator
@@ -52,7 +53,7 @@ def parse_args():
     parser.add_argument("--vllm-url", type=str, default=DEFAULT_VLLM_URL, help="vLLM server URL")
     parser.add_argument("--workers", type=int, default=6, help="Worker threads for parallel evaluation")
     parser.add_argument("--rounds", type=int, default=20, help="Number of consistency test rounds")
-    parser.add_argument("--num-evaluations", type=int, default=1, help="Evaluations per category per round")
+    parser.add_argument("--num-evaluations", type=int, default=20, help="Evaluations per category to compute median per evaluation round (default: 20)")
     parser.add_argument("--output", type=str, default="consistency_results.csv", help="Output CSV filepath")
     return parser.parse_args()
 

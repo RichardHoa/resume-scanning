@@ -1,44 +1,46 @@
-/* ==========================================================================
-   Page Styles - Candidate Evaluation Pool (Overview & Cards)
-   Line Count: ~170 lines (Strict Limit: < 200 lines)
-   ========================================================================== */
+/* Step 4: Candidate Evaluation Pool Page */
 
-/* Statistics Overview Summary Grid */
+/* Stats Grid */
 .cand-stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 1rem;
 }
 
 .stat-box {
-    background: var(--bg-main);
+    background: #FFFFFF;
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.25rem;
+    border-radius: var(--radius-md);
+    padding: 1.1rem;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
 }
 
 .stat-label {
     font-size: 0.78rem;
-    color: var(--text-muted);
-    font-weight: 600;
+    color: #1E293B; /* High-contrast crisp slate text */
+    font-weight: 800;
     text-transform: uppercase;
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
 }
 
 .stat-number {
-    font-size: 1.6rem;
+    font-size: 1.5rem;
     font-weight: 800;
     font-family: var(--font-mono);
-    color: var(--text-main);
+    color: var(--brand-legacy-blue);
 }
 
-.stat-strong .stat-number { color: #34d399; }
-.stat-potential .stat-number { color: #a5b4fc; }
-.stat-low .stat-number { color: #fcd34d; }
-.stat-reject .stat-number { color: #fca5a5; }
+.stat-strong .stat-number { color: #14532D; } /* Dark green WCAG AAA */
+.stat-potential .stat-number { color: #075985; } /* Dark sky blue WCAG AAA */
+.stat-low .stat-number { color: #92400E; } /* Dark amber WCAG AAA */
+.stat-reject .stat-number { color: #991B1B; } /* Dark red WCAG AAA */
 
 /* Toolbar: Search input & filter dropdowns */
 .cand-toolbar {
@@ -47,9 +49,9 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 1rem;
-    background: var(--bg-main);
+    background: #F8FAFC;
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     padding: 1rem;
     margin: 1rem 0;
 }
@@ -73,31 +75,41 @@
     align-items: center;
     gap: 8px;
     font-size: 0.85rem;
-    color: var(--text-muted);
+    font-weight: 700;
+    color: #0F172A;
 }
 
 /* Candidate Card Grid */
 .cand-cards-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
     gap: 1.25rem;
 }
 
 .cand-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 1.5rem;
+    background: #FFFFFF;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 1.35rem;
     display: flex;
     flex-direction: column;
     gap: 1rem;
     cursor: pointer;
     transition: all var(--transition-normal);
+    box-shadow: var(--shadow-sm);
+    outline: none;
 }
 
 .cand-card:hover {
-    border-color: var(--accent);
-    transform: translateY(-3px);
+    border-color: var(--brand-azure);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.cand-card:focus-visible {
+    border-color: var(--color-secondary);
+    outline: 3px solid var(--color-secondary);
+    outline-offset: 2px;
     box-shadow: var(--shadow-md);
 }
 
@@ -109,12 +121,15 @@
 
 .cand-info-group h3 {
     font-size: 1.1rem;
-    font-weight: 700;
+    font-weight: 800;
+    color: #0F172A; /* High-contrast primary heading */
+    letter-spacing: -0.01em;
 }
 
 .cand-role {
-    font-size: 0.85rem;
-    color: var(--text-muted);
+    font-size: 0.88rem;
+    color: #1E293B; /* Dark slate high contrast */
+    font-weight: 700;
 }
 
 .cand-score-badge {
@@ -124,25 +139,40 @@
 }
 
 .cand-score-val {
-    font-size: 1.5rem;
+    font-size: 1.55rem;
     font-weight: 800;
     font-family: var(--font-mono);
 }
 
 .cand-score-lbl {
-    font-size: 0.7rem;
-    color: var(--text-muted);
+    font-size: 0.76rem;
+    color: #334155;
     text-transform: uppercase;
+    font-family: var(--font-mono);
+    font-weight: 800;
+    letter-spacing: 0.03em;
+}
+
+.cand-filename-tag {
+    font-size: 0.8rem;
+    color: #1E293B; /* High contrast filename font */
+    font-family: var(--font-mono);
+    font-weight: 700;
+    background-color: #F1F5F9;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid #CBD5E1;
 }
 
 .cand-dimensions-mini {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 6px;
-    background: var(--bg-main);
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 0.78rem;
+    background: #F1F5F9;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid #94A3B8; /* Higher border contrast */
+    font-size: 0.82rem;
 }
 
 .dim-mini-item {
@@ -150,8 +180,16 @@
     justify-content: space-between;
 }
 
-.dim-mini-name { color: var(--text-muted); }
-.dim-mini-score { color: var(--text-main); font-weight: 600; }
+.dim-mini-name {
+    color: #0F172A; /* High-contrast label */
+    font-weight: 700;
+}
+
+.dim-mini-score {
+    color: #0F172A; /* High-contrast score */
+    font-weight: 800;
+    font-family: var(--font-mono);
+}
 
 .cand-card-footer {
     display: flex;
@@ -159,43 +197,57 @@
     align-items: center;
     border-top: 1px solid var(--border);
     padding-top: 0.75rem;
-    font-size: 0.8rem;
+    font-size: 0.84rem;
 }
 
-.badge-strength-cnt { color: var(--success-light); font-weight: 600; }
-.badge-gap-cnt { color: var(--warning-light); font-weight: 600; }
-.cand-inspect-btn { color: var(--accent-bright); font-weight: 600; }
+.badge-strength-cnt {
+    color: #14532D; /* High-contrast dark green */
+    font-weight: 800;
+}
+
+.badge-gap-cnt {
+    color: #7F1D1D; /* High-contrast dark red */
+    font-weight: 800;
+}
+
+.cand-inspect-btn {
+    color: #1E3A5F; /* High-contrast navy action button */
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
 
 /* Separate Tier Block Containers */
 .cand-tier-block {
-    background: var(--bg-main);
+    background: #FFFFFF;
     border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    border-radius: var(--radius-md);
+    padding: 1.35rem;
+    margin-bottom: 1.35rem;
+    box-shadow: var(--shadow-sm);
 }
 
 .cand-tier-block.tier-1-block {
-    border-left: 5px solid #f59e0b;
-    background: linear-gradient(180deg, rgba(245, 158, 11, 0.04) 0%, var(--bg-main) 100%);
+    border-left: 5px solid #14532D;
+    background: linear-gradient(180deg, #F0FDF4 0%, #FFFFFF 100%);
 }
 
 .cand-tier-block.tier-2-block {
-    border-left: 5px solid #3b82f6;
-    background: linear-gradient(180deg, rgba(59, 130, 246, 0.04) 0%, var(--bg-main) 100%);
+    border-left: 5px solid #075985;
+    background: linear-gradient(180deg, #F0F6FD 0%, #FFFFFF 100%);
 }
 
 .cand-tier-block.tier-3-block {
-    border-left: 5px solid #64748b;
-    background: linear-gradient(180deg, rgba(100, 116, 139, 0.04) 0%, var(--bg-main) 100%);
+    border-left: 5px solid #334155;
+    background: linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 100%);
 }
 
 .cand-tier-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.25rem;
+    margin-bottom: 1.1rem;
     padding-bottom: 0.75rem;
     border-bottom: 1px solid var(--border);
 }
@@ -208,7 +260,8 @@
 
 .cand-tier-title-group h3 {
     font-size: 1.15rem;
-    font-weight: 700;
+    font-weight: 800;
+    color: #0F172A;
     margin: 0;
 }
 

@@ -20,6 +20,9 @@
 #   kill $(cat logs/vllm.pid)
 # ---------------------------------------------------------------------------
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+
 MODEL="${1:-numind/NuExtract3}"
 PORT=8100
 export VLLM_USE_DEEP_GEMM=0
@@ -46,9 +49,9 @@ nohup vllm serve "$MODEL" \
     --dtype auto \
     --port "$PORT" \
     --host 0.0.0.0 \
-    --max-model-len 20000 \
+    --max-model-len "$VLLM_MAX_MODEL_LEN" \
     --gpu-memory-utilization 0.90 \
-    --kv-cache-dtype fp8 \
+    --kv-cache-dtype auto \
     > logs/vllm.log 2>&1 &
 
 echo $! > logs/vllm.pid

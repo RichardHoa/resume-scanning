@@ -1,12 +1,88 @@
-/* ==========================================================================
-   Page Styles - RAG Knowledge Base
-   Line Count: ~40 lines (Strict Limit: < 200 lines)
-   ========================================================================== */
+/* RAG Knowledge Base Page - Fulbright Brand Identity */
 
-/* RAG 5-Dimension Categories Grid Container */
+.rag-status-banner {
+    padding: 1rem 1.25rem;
+    border-radius: var(--radius-md);
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--brand-azure);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 0.5rem;
+}
+
+.rag-engine-tag {
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    background: #E0F2FE;
+    color: #0369A1;
+    border: 1px solid #7DD3FC;
+    font-family: var(--font-mono);
+}
+
 .rag-categories-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     gap: 1.25rem;
     margin-top: 1rem;
 }
+
+.rag-category-card {
+    background-color: #FFFFFF;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 1.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    box-shadow: var(--shadow-sm);
+}
+
+.rag-category-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.65rem;
+}
+
+.rag-category-title {
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--brand-legacy-blue);
+}
+
+.rag-item-pill {
+    background: var(--brand-azure-mist);
+    border: 1px solid #BEE0FF;
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    font-size: 0.82rem;
+    color: var(--brand-navy-dark);
+    line-height: 1.5;
+}
+
+.logs-content-pane {
+    background-color: #F8FAFC;
+    border: 1px solid var(--border-bright);
+    border-radius: var(--radius-sm);
+    padding: 1.25rem;
+    max-height: 380px;
+    overflow-y: auto;
+}
+
+.logs-content-pane code {
+    font-size: 0.85rem;
+    color: var(--text-main);
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: var(--font-mono);
+}
+
+
