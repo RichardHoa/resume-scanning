@@ -14,8 +14,58 @@
 # SLURM Batch Job Script for High-Speed vLLM Resume Batch Extraction
 # -----------------------------------------------------------------------------
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RAW_PDF_DIR="$1"
+RAW_MODEL="$2"
+RAW_OUTPUT_DIR="$3"
+INITIAL_CWD="$(pwd)"
+
+# -----------------------------------------------------------------------------
+# Robust Location of config.sh
+# Under SLURM, scripts are copied to /var/spool/slurmd/jobXXXXX/slurm_script,
+# so BASH_SOURCE[0] points to the spool directory. We locate config.sh via
+# SLURM_SUBMIT_DIR, BASH_SOURCE, or CWD.
+# -----------------------------------------------------------------------------
+FIND_CONFIG_DIR=""
+if [ -n "$SLURM_SUBMIT_DIR" ]; then
+  if [ -f "$SLURM_SUBMIT_DIR/scripts/config.sh" ]; then
+    FIND_CONFIG_DIR="$SLURM_SUBMIT_DIR/scripts"
+  elif [ -f "$SLURM_SUBMIT_DIR/config.sh" ]; then
+    FIND_CONFIG_DIR="$SLURM_SUBMIT_DIR"
+  fi
+fi
+
+if [ -z "$FIND_CONFIG_DIR" ]; then
+  CANDIDATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+  if [ -f "$CANDIDATE_DIR/config.sh" ]; then
+    FIND_CONFIG_DIR="$CANDIDATE_DIR"
+  elif [ -f "$CANDIDATE_DIR/scripts/config.sh" ]; then
+    FIND_CONFIG_DIR="$CANDIDATE_DIR/scripts"
+  fi
+fi
+
+if [ -z "$FIND_CONFIG_DIR" ]; then
+  if [ -f "$INITIAL_CWD/scripts/config.sh" ]; then
+    FIND_CONFIG_DIR="$INITIAL_CWD/scripts"
+  elif [ -f "$INITIAL_CWD/config.sh" ]; then
+    FIND_CONFIG_DIR="$INITIAL_CWD"
+  fi
+fi
+
+if [ -z "$FIND_CONFIG_DIR" ] || [ ! -f "$FIND_CONFIG_DIR/config.sh" ]; then
+  echo "[CRITICAL ERROR] Cannot locate 'config.sh'. Submitting directory: ${SLURM_SUBMIT_DIR:-$INITIAL_CWD}" >&2
+  exit 1
+fi
+
+SCRIPT_DIR="$FIND_CONFIG_DIR"
 source "$SCRIPT_DIR/config.sh"
+
+if [ -z "$PROJECT_ROOT" ]; then
+  echo "[CRITICAL ERROR] PROJECT_ROOT is not set after sourcing config.sh!" >&2
+  exit 1
+fi
+
+# Force execution strictly from project repository root directory
+cd "$PROJECT_ROOT" || exit 1
 
 # Optimization & Threading Environment Variables (Prevent ONNX/PyTorch crashes & RAM OOM)
 export MAX_JOBS=1
@@ -30,15 +80,37 @@ export NUMEXPR_NUM_THREADS=4
 # Disable detailed prompt logging to txt files (keep console logs normal)
 export DISABLE_PROMPT_LOGGING=1
 
-# Ensure output & log directories exist
-mkdir -p logs evaluation_json logging output_jsons pdfs
+# Resolve PDF input directory (Default: Vietnamese-dataset/CnB inside project root)
+if [ -n "$RAW_PDF_DIR" ]; then
+  if [[ "$RAW_PDF_DIR" = /* ]]; then
+    PDF_DIR="$RAW_PDF_DIR"
+  elif [ -d "$INITIAL_CWD/$RAW_PDF_DIR" ]; then
+    PDF_DIR="$(cd "$INITIAL_CWD/$RAW_PDF_DIR" && pwd)"
+  else
+    PDF_DIR="$PROJECT_ROOT/$RAW_PDF_DIR"
+  fi
+else
+  PDF_DIR="$PROJECT_ROOT/Vietnamese-dataset/CnB"
+fi
 
-# Target PDF Directory (Default: Vietnamese-dataset/CnB)
-PDF_DIR="${1:-Vietnamese-dataset/CnB}"
 # Target Model Name (Default: Qwen/Qwen3.5-35B-A3B)
-MODEL="${2:-Qwen/Qwen3.5-35B-A3B}"
-# Usual output directory for JSON extraction
-OUTPUT_DIR="output_jsons"
+MODEL="${RAW_MODEL:-Qwen/Qwen3.5-35B-A3B}"
+
+# Target Output Directory (Default: output_jsons inside project root)
+if [ -n "$RAW_OUTPUT_DIR" ]; then
+  if [[ "$RAW_OUTPUT_DIR" = /* ]]; then
+    OUTPUT_DIR="$RAW_OUTPUT_DIR"
+  elif [ -d "$INITIAL_CWD/$RAW_OUTPUT_DIR" ]; then
+    OUTPUT_DIR="$(cd "$INITIAL_CWD/$RAW_OUTPUT_DIR" && pwd)"
+  else
+    OUTPUT_DIR="$PROJECT_ROOT/$RAW_OUTPUT_DIR"
+  fi
+else
+  OUTPUT_DIR="$PROJECT_ROOT/output_jsons"
+fi
+
+# Ensure output & log directories exist at project root
+mkdir -p "$PROJECT_ROOT/logs" "$PROJECT_ROOT/evaluation_json" "$PROJECT_ROOT/logging" "$PROJECT_ROOT/output_jsons" "$PROJECT_ROOT/pdfs" "$OUTPUT_DIR"
 
 # Load cluster modules (miniconda3)
 echo "[$(date +'%H:%M:%S')] STEP 1: Loading system environment modules..."
@@ -86,6 +158,7 @@ echo "[$(date +'%H:%M:%S')] FlashInfer Autotune Cache: $VLLM_FLASHINFER_AUTOTUNE
 # Find an available open port instantly using OS socket binding
 PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('127.0.0.1', 0)); print(s.getsockname()[1]); s.close()" 2>/dev/null || echo 8100)
 
+echo "[$(date +'%H:%M:%S')] Project Root: $PROJECT_ROOT"
 echo "[$(date +'%H:%M:%S')] Target PDF Directory: $PDF_DIR"
 echo "[$(date +'%H:%M:%S')] Target Output Directory: $OUTPUT_DIR"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL"
@@ -115,14 +188,14 @@ if python3 -c "import vllm" 2>/dev/null; then
     --dtype auto \
     --port "$PORT" \
     --host 127.0.0.1 \
-    --max-model-len "$VLLM_MAX_MODEL_LEN" \
+    --max-model-len "${VLLM_MAX_MODEL_LEN:-20000}" \
     --max-num-seqs 256 \
     --gpu-memory-utilization 0.8 \
     --trust-remote-code \
     --enable-prefix-caching \
     --enable-chunked-prefill \
     --served-model-name "$MODEL" \
-    > logs/vllm_extract.log 2>&1 &
+    > "$PROJECT_ROOT/logs/vllm_extract.log" 2>&1 &
 
   VLLM_PID=$!
   trap "kill -9 $VLLM_PID 2>/dev/null || true" EXIT INT TERM
@@ -134,8 +207,8 @@ if python3 -c "import vllm" 2>/dev/null; then
     if ! kill -0 $VLLM_PID 2>/dev/null; then
       echo "====================================================================="
       echo "[$(date +'%H:%M:%S')] CRITICAL: vLLM server process (PID $VLLM_PID) exited unexpectedly!"
-      echo "--- Tail of logs/vllm_extract.log ---"
-      tail -n 35 logs/vllm_extract.log 2>/dev/null || echo "(No log file found)"
+      echo "--- Tail of $PROJECT_ROOT/logs/vllm_extract.log ---"
+      tail -n 35 "$PROJECT_ROOT/logs/vllm_extract.log" 2>/dev/null || echo "(No log file found)"
       echo "====================================================================="
       break
     fi
@@ -150,7 +223,7 @@ if python3 -c "import vllm" 2>/dev/null; then
     if [ $((i % 2)) -eq 0 ]; then
       ELAPSED=$((i * 5))
       echo "[$(date +'%H:%M:%S')] Loading vLLM server (Attempt $i/720, elapsed: ${ELAPSED}s)..."
-      LAST_LOG=$(tail -n 2 logs/vllm_extract.log 2>/dev/null | tr '\n' ' ')
+      LAST_LOG=$(tail -n 2 "$PROJECT_ROOT/logs/vllm_extract.log" 2>/dev/null | tr '\n' ' ')
       if [ -n "$LAST_LOG" ]; then
         echo "   └─ vLLM activity: $LAST_LOG"
       fi
@@ -163,7 +236,7 @@ if python3 -c "import vllm" 2>/dev/null; then
     echo "=== vLLM Server Ready! Starting Batch Extraction ==="
     echo "Processing PDFs from '$PDF_DIR' -> JSONs to '$OUTPUT_DIR' using model '$MODEL'"
 
-    python3 -u src/step_1_extractor.py \
+    python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
       --dir "$PDF_DIR" \
       --output "$OUTPUT_DIR" \
       --model-name "$MODEL" \
@@ -172,8 +245,8 @@ if python3 -c "import vllm" 2>/dev/null; then
   else
     echo "====================================================================================="
     echo "ERROR: vLLM server failed to start within 3600s timeout on port $PORT."
-    echo "--- Full contents / tail of logs/vllm_extract.log ---"
-    tail -n 50 logs/vllm_extract.log 2>/dev/null || echo "(No log file found)"
+    echo "--- Full contents / tail of $PROJECT_ROOT/logs/vllm_extract.log ---"
+    tail -n 50 "$PROJECT_ROOT/logs/vllm_extract.log" 2>/dev/null || echo "(No log file found)"
     echo "====================================================================================="
   fi
 

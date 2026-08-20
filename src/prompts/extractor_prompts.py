@@ -25,14 +25,9 @@ CORE DIRECTIVES:
 - Fidelity: Extract verbatim without summarizing, translating, or rephrasing. Retain dominant language for bilingual CVs. Include adjacent achievement/KPI blocks directly inside work responsibilities.
 - Special Fields:
   * languages: Always record foreign language certs (TOEIC, IELTS, HSK, JLPT, etc.) into `languages`, inferring language name if omitted.
-  * skills_and_specialties: Max 10 key technical skills. Detail experience level in descriptive sentences (e.g., "Python: 3+ years experience building REST APIs with FastAPI").
-  * total_years_experience: Calculate in `position_applied` from candidate's earliest job start date to present ({current_date_str}).
+  * position_applied: Extract job title as written on the resume (or inferred from context if not explicitly stated).
 
 JSON SCHEMA:
 {schema_str}
 """
 
-
-def get_nuextract_schema_template() -> dict:
-    """Returns the JSON schema template specifically formatted with NuExtract3 data types."""
-    return load_schema_from_file("nuextract")

@@ -10,9 +10,9 @@ def get_mock_category_response(category: str) -> str:
     mock_data = {
         "seniority_title": {
             "evidence_quotes": ["Worked as Senior Software Engineer for 4 years"],
-            "strengths": ["Chức danh và cấp bậc rất phù hợp với vị trí tuyển dụng", "Tổng số năm kinh nghiệm đáp ứng yêu cầu cấp senior"],
+            "strengths": ["Chức danh và cấp bậc rất phù hợp với vị trí tuyển dụng", "Số năm kinh nghiệm trong vị trí chuyên môn tương ứng đáp ứng đúng yêu cầu tuyển dụng"],
             "gaps": ["Kinh nghiệm quản lý nhóm còn khiêm tốn"],
-            "reasoning_summary": "Ứng viên đáp ứng tốt yêu cầu về số năm kinh nghiệm và vị trí tương đương.",
+            "reasoning_summary": "Ứng viên đáp ứng tốt yêu cầu về số năm kinh nghiệm cho vị trí yêu cầu.",
             "score": 85
         },
         "technical_skills": {

@@ -15,24 +15,16 @@ from typing import Dict, Any, Optional
 from src.core.config import SCHEMAS_DIR
 
 
-def load_schema_from_file(model_name: str) -> dict:
-    """Loads the appropriate schema dictionary from the schemas/ directory based on active model name."""
-    if not model_name:
-        model_name = ""
-
-    model_name_lower = model_name.lower()
-    if "nuextract" in model_name_lower:
-        schema_file = "nuextract_schema.json"
-    else:
-        schema_file = "qwen_schema.json"
-
-    schema_path = os.path.join(SCHEMAS_DIR, schema_file)
+def load_schema_from_file(model_name: str = "qwen") -> dict:
+    """Loads the canonical Qwen schema dictionary from the schemas/ directory."""
+    schema_path = os.path.join(SCHEMAS_DIR, "qwen_schema.json")
     try:
         with open(schema_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
         print(f"Warning: Failed to load schema from {schema_path} ({e}). Falling back to empty object.", file=sys.stderr)
         return {}
+
 
 
 def extract_json_substring(text: str) -> str:
@@ -175,7 +167,7 @@ def repair_truncated_json(text: str) -> str:
     repaired = safe_text.rstrip().rstrip(',') + closing
 
     REQUIRED_KEYS = {
-        "position_applied":       '{"title": "", "level": "unknown"}',
+        "position_applied":       '{"title": ""}',
         "self_evaluation":        '""',
         "skills_and_specialties": '[]',
         "languages":              '[]',

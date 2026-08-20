@@ -18,9 +18,7 @@ from src.core.json_utils import extract_json_substring, repair_truncated_json, c
 from src.providers.llm_backend import (
     load_local_model,
     run_local_inference,
-    run_local_inference_nuextract,
     run_vllm_inference,
-    run_vllm_inference_nuextract,
     run_mock_extraction,
     vllm_discover_model,
 )
@@ -122,22 +120,15 @@ class ResumeExtractor:
 
     def extract_single_pass(self, resume_text: str, pdf_path: str, max_retries: int = 5) -> tuple[Optional[dict], str]:
         """Runs a single LLM extraction pass with retry logic for invalid JSON."""
-        is_nuextract = self.model_name and "nuextract" in self.model_name.lower()
         last_raw_result = ""
 
         for attempt in range(1, max_retries + 1):
             if self.mock:
                 result = run_mock_extraction(resume_text)
             elif self.backend == "vllm":
-                if is_nuextract:
-                    result = run_vllm_inference_nuextract(resume_text, self.model_name, self.vllm_url)
-                else:
-                    result = run_vllm_inference(resume_text, self.model_name, self.vllm_url)
+                result = run_vllm_inference(resume_text, self.model_name, self.vllm_url)
             else:
-                if is_nuextract:
-                    result = run_local_inference_nuextract(resume_text, self.model, self.tokenizer_or_processor)
-                else:
-                    result = run_local_inference(resume_text, self.model, self.tokenizer_or_processor)
+                result = run_local_inference(resume_text, self.model, self.tokenizer_or_processor)
 
             last_raw_result = result
             parsed_dict = clean_and_parse_json(result)

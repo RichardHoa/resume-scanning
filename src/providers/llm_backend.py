@@ -15,11 +15,11 @@ import urllib.error
 from typing import Any, Tuple, Optional
 from src.core.config import MAX_NEW_TOKENS, DEFAULT_VLLM_URL
 from src.core.json_utils import load_schema_from_file
-from src.prompts.extractor_prompts import get_system_prompt, get_nuextract_schema_template
+from src.prompts.extractor_prompts import get_system_prompt
 
 
 def load_local_model(model_name: str) -> Tuple[Any, Any]:
-    """Loads a HuggingFace CausalLM / ImageTextToText model and tokenizer/processor."""
+    """Loads a HuggingFace CausalLM model and tokenizer."""
     print(f"Loading local model for: {model_name}...", file=sys.stderr)
     try:
         import torch
@@ -31,18 +31,6 @@ def load_local_model(model_name: str) -> Tuple[Any, Any]:
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}", file=sys.stderr)
-
-    if "nuextract" in model_name.lower():
-        from transformers import AutoModelForImageTextToText, AutoProcessor
-        print("  [NuExtract] Loading as AutoModelForImageTextToText with trust_remote_code=True...", file=sys.stderr)
-        model = AutoModelForImageTextToText.from_pretrained(
-            model_name,
-            torch_dtype="auto",
-            device_map="auto",
-            trust_remote_code=True
-        )
-        processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
-        return model, processor
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
@@ -107,42 +95,6 @@ def run_local_inference(resume_text: str, model: Any, tokenizer: Any) -> str:
     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
     return response
 
-
-def run_local_inference_nuextract(resume_text: str, model: Any, processor: Any) -> str:
-    """Run text-based extraction using a locally-loaded NuExtract model."""
-    import torch
-    messages = [
-        {"role": "user", "content": f"Below is the extracted markdown text from the candidate's resume:\n\n{resume_text}"}
-    ]
-    template_str = json.dumps(get_nuextract_schema_template(), indent=4)
-
-    inputs = processor.apply_chat_template(
-        messages,
-        template=template_str,
-        enable_thinking=False,
-        add_generation_prompt=True,
-        tokenize=True,
-        return_dict=True,
-        return_tensors="pt"
-    ).to(model.device)
-
-    print("Generating structured output (NuExtract)...", file=sys.stderr)
-    with torch.no_grad():
-        generated_ids = model.generate(
-            **inputs,
-            max_new_tokens=MAX_NEW_TOKENS,
-            do_sample=False
-        )
-
-    input_len = inputs["input_ids"].shape[1]
-    trimmed_ids = generated_ids[:, input_len:]
-    response = processor.batch_decode(
-        trimmed_ids,
-        skip_special_tokens=True,
-        clean_up_tokenization_spaces=False
-    )[0].strip()
-
-    return response
 
 
 def vllm_discover_model(vllm_url: str) -> str:
@@ -227,60 +179,6 @@ def run_vllm_inference(resume_text: str, model_name: Optional[str], vllm_url: st
     return vllm_chat_request(vllm_url, model_name, messages)
 
 
-def vllm_nuextract_chat_request(vllm_url: str, model_name: Optional[str], messages: list, template_str: str) -> str:
-    if not model_name:
-        model_name = vllm_discover_model(vllm_url)
-
-    url = vllm_url.rstrip("/") + "/chat/completions"
-    payload = json.dumps({
-        "model": model_name,
-        "messages": messages,
-        "temperature": 0.2,
-        "repetition_penalty": 1.05,
-        "max_tokens": MAX_NEW_TOKENS,
-        "chat_template_kwargs": {
-            "template": template_str,
-            "enable_thinking": False
-        }
-    }).encode("utf-8")
-
-    req = urllib.request.Request(
-        url, data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST"
-    )
-
-    try:
-        with urllib.request.urlopen(req, timeout=600) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-        return body["choices"][0]["message"]["content"]
-    except urllib.error.HTTPError as e:
-        error_body = ""
-        try:
-            error_body = e.read().decode("utf-8")
-        except Exception:
-            pass
-        raise RuntimeError(
-            f"vLLM request failed (HTTP {e.code}): {error_body}"
-        ) from e
-    except urllib.error.URLError as e:
-        raise RuntimeError(
-            f"Cannot connect to vLLM server at {vllm_url} ({e.reason or e}). "
-            f"Please verify the vLLM server is running (e.g. 'bash scripts/start_vllm.sh') "
-            f"or switch to '--backend transformers' or '--mock'."
-        ) from e
-
-
-def run_vllm_inference_nuextract(resume_text: str, model_name: Optional[str], vllm_url: str) -> str:
-    """Run text-based NuExtract extraction via a running vLLM server."""
-    messages = [
-        {"role": "user", "content": f"Below is the extracted markdown text from the candidate's resume:\n\n{resume_text}"}
-    ]
-    template_str = json.dumps(get_nuextract_schema_template(), indent=4)
-    print("Generating structured output (vLLM NuExtract)...", file=sys.stderr)
-    return vllm_nuextract_chat_request(vllm_url, model_name, messages, template_str)
-
-
 def run_mock_extraction(resume_text: str) -> str:
     print("=== MOCK MODE ACTIVATED ===", file=sys.stderr)
     print("--- Extracted Raw Text Preview ---", file=sys.stderr)
@@ -293,9 +191,7 @@ def run_mock_extraction(resume_text: str) -> str:
 
     mock_data = {
         "position_applied": {
-            "title": "Nhân viên phát triển phần mềm",
-            "level": "mid-level",
-            "total_years_experience": "3.5 years"
+            "title": "Nhân viên phát triển phần mềm"
         },
         "self_evaluation": "Lập trình viên nhiệt huyết với kinh nghiệm phát triển hệ thống web, mong muốn đóng góp cho các dự án lớn.",
         "skills_and_specialties": [
