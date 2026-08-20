@@ -83,6 +83,17 @@
                             <p>or <span class="browse-link">browse files</span> from your computer</p>
                         </div>
                     </div>
+                    <div class="lang-selector-group" style="margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; background: var(--color-surface, #f8fafc); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--color-border, #e2e8f0);">
+                        <label for="select-parse-language" style="font-weight: 600; font-size: 0.9rem; color: var(--color-text-main, #1e293b); display: flex; align-items: center; gap: 6px;">
+                            <svg viewBox="0 0 24 24" style="width: 18px; height: 18px; fill: currentColor;"><path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2.1l1.1-3h4.6l1.1 3H23l-4.5-12zm-2.62 7l1.62-4.41L19.12 17h-3.24z"/></svg>
+                            Target Parse Language Flag:
+                        </label>
+                        <select id="select-parse-language" style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--color-border, #cbd5e1); font-weight: 500; background: #ffffff; cursor: pointer;">
+                            <option value="vietnamese" selected>Vietnamese (Default)</option>
+                            <option value="english">English</option>
+                        </select>
+                    </div>
+
                     <div class="file-preview-card" id="file-preview" style="display: none;">
                         <div class="file-icon-pdf">
                             <svg viewBox="0 0 24 24" style="width: 28px; height: 28px; fill: var(--color-destructive);"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5z"/></svg>
@@ -119,6 +130,14 @@
                             </button>
                             <button class="btn btn-danger" id="btn-reset">Analyze Another</button>
                         </div>
+                    </div>
+
+                    <div class="warning-banner" id="warning-banner" style="display: none;">
+                        <div class="warning-banner-header">
+                            <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; fill: #d97706;"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+                            <span>Extraction Warnings Flagged (Low Consensus / Unmatched Text)</span>
+                        </div>
+                        <ul id="warning-list" class="warning-list"></ul>
                     </div>
 
                     <div class="dashboard-split">

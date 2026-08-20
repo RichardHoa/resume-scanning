@@ -5,7 +5,7 @@ import os
 import sys
 import json
 import time
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 
 from src.core.config import APPROVED_DIR, OUTPUT_DIR
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api", tags=["extraction"])
 
 
 @router.post("/extract")
-async def extract_resume(file: UploadFile = File(...)):
+async def extract_resume(file: UploadFile = File(...), language: str = Form("vietnamese")):
     """Handles PDF resume uploads, extracts details, and returns JSON."""
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
@@ -28,21 +28,25 @@ async def extract_resume(file: UploadFile = File(...)):
             content = await file.read()
             buffer.write(content)
             
-        print(f"Received file: {safe_filename}, processing extraction...", file=sys.stderr)
+        print(f"Received file: {safe_filename}, processing extraction (language: {language})...", file=sys.stderr)
         
         start_time = time.time()
-        formatted_json_str = state.extractor.extract(temp_file_path)
+        formatted_json_str = state.extractor.extract(temp_file_path, language=language)
         elapsed_time = time.time() - start_time
         
         try:
             extracted_data = json.loads(formatted_json_str)
+            headers = {"X-Extraction-Time": f"{elapsed_time:.2f}"}
+
+            if isinstance(extracted_data, dict) and "error" in extracted_data:
+                return JSONResponse(content=extracted_data, status_code=400, headers=headers)
+
             output_dir = OUTPUT_DIR
             os.makedirs(output_dir, exist_ok=True)
             base_name = os.path.splitext(safe_filename)[0]
             with open(os.path.join(output_dir, f"{base_name}.json"), "w", encoding="utf-8") as f:
                 json.dump(extracted_data, f, ensure_ascii=False, indent=2)
 
-            headers = {"X-Extraction-Time": f"{elapsed_time:.2f}"}
             return JSONResponse(content=extracted_data, headers=headers)
         except json.JSONDecodeError:
             headers = {"X-Extraction-Time": f"{elapsed_time:.2f}"}

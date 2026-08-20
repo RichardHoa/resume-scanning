@@ -20,6 +20,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/vllm_utils.sh"
 
 MODEL="Qwen/Qwen3.5-35B-A3B"
 DEFAULT_VLLM_PORT=8100
@@ -32,20 +33,12 @@ VLLM_LOG_FILE="logs/vllm_server.log"
 WEB_PID_FILE="logs/web.pid"
 WEB_LOG_FILE="logs/web_server.log"
 
-DAEMON_PID_FILE="server.pid"
-DAEMON_LOG_FILE="server.txt"
+DAEMON_PID_FILE="logs/server.pid"
+DAEMON_LOG_FILE="logs/server.txt"
 
 # --- HELPER: Setup Environment ---
 setup_environment() {
-  export MAX_JOBS=1
-  export NVCC_THREADS=1
-  export FLASHINFER_BUILD_MAX_JOBS=1
-  export OMP_NUM_THREADS=4
-  export MKL_NUM_THREADS=4
-  export OPENBLAS_NUM_THREADS=4
-  export VECLIB_MAXIMUM_THREADS=4
-  export NUMEXPR_NUM_THREADS=4
-
+  setup_vllm_env
   mkdir -p logs temp_uploads static
 
   module load miniconda3 2>/dev/null || true
@@ -62,18 +55,6 @@ setup_environment() {
 
   eval "$(conda shell.bash hook 2>/dev/null)" || true
   source activate resume_env 2>/dev/null || true
-
-  if [ -d "/compute_home/$USER/.cache/huggingface" ]; then
-    export HF_HOME="/compute_home/$USER/.cache/huggingface"
-  elif [ -d "$HOME/.cache/huggingface" ]; then
-    export HF_HOME="$HOME/.cache/huggingface"
-  fi
-
-  export TRITON_CACHE_DIR="${HF_HOME:-$HOME/.cache}/triton_cache"
-  mkdir -p "$TRITON_CACHE_DIR"
-
-  export VLLM_FLASHINFER_AUTOTUNE_CACHE_DIR="${HF_HOME:-$HOME/.cache}/flashinfer_autotune_cache"
-  mkdir -p "$VLLM_FLASHINFER_AUTOTUNE_CACHE_DIR"
 }
 
 # --- HELPER: Get vLLM Port ---
@@ -120,32 +101,18 @@ find_web_pids() {
 # --- ACTION: Stop vLLM Server Only ---
 stop_vllm() {
   echo "[server.sh] Stopping vLLM Inference Server..."
+  stop_vllm_server
   local pids=$(find_vllm_pids)
-  local stopped=0
-
   if [ -n "$pids" ]; then
     for pid in $pids; do
       if is_pid_running "$pid"; then
-        echo "  ├─ Terminating vLLM process PID $pid..."
-        kill "$pid" 2>/dev/null || true
-        stopped=1
-      fi
-    done
-    sleep 2
-    for pid in $pids; do
-      if is_pid_running "$pid"; then
-        echo "  ├─ Force killing vLLM process PID $pid..."
+        echo "  ├─ Terminating residual vLLM process PID $pid..."
         kill -9 "$pid" 2>/dev/null || true
       fi
     done
   fi
-
   rm -f "$VLLM_PID_FILE" "$VLLM_PORT_FILE"
-  if [ $stopped -eq 1 ]; then
-    echo "[server.sh] SUCCESS: vLLM Inference Server stopped."
-  else
-    echo "[server.sh] vLLM server is not currently running."
-  fi
+  echo "[server.sh] vLLM Inference Server stopped."
 }
 
 # --- ACTION: Stop Web Server Only ---
@@ -187,15 +154,17 @@ stop_all() {
   stop_web
   stop_vllm
 
-  # Clean up legacy daemon PID if present
-  if [ -f "$DAEMON_PID_FILE" ]; then
-    for pid in $(cat "$DAEMON_PID_FILE" 2>/dev/null); do
-      if is_pid_running "$pid"; then
-        kill -9 "$pid" 2>/dev/null || true
-      fi
-    done
-    rm -f "$DAEMON_PID_FILE"
-  fi
+  # Clean up daemon PID if present
+  for pfile in "$DAEMON_PID_FILE" "server.pid"; do
+    if [ -f "$pfile" ]; then
+      for pid in $(cat "$pfile" 2>/dev/null); do
+        if is_pid_running "$pid"; then
+          kill -9 "$pid" 2>/dev/null || true
+        fi
+      done
+      rm -f "$pfile"
+    fi
+  done
   echo "[server.sh] All server processes stopped."
 }
 
@@ -213,85 +182,11 @@ start_vllm() {
   local PORT=$(get_vllm_port)
   echo "$PORT" > "$VLLM_PORT_FILE"
 
-  echo "====================================================================="
-  echo "[$(date +'%Y-%m-%d %H:%M:%S')] Starting vLLM Inference Server..."
-  echo "  ├─ Model: $MODEL"
-  echo "  ├─ Port:  $PORT"
-  echo "  └─ Log:   $VLLM_LOG_FILE"
-  echo "====================================================================="
+  start_vllm_server "$MODEL" "$PORT" "$VLLM_LOG_FILE" || return 1
 
-  if ! python3 -c "import vllm" 2>/dev/null; then
-    echo "[ERROR] 'vllm' package is not installed in Conda environment."
-    echo "Please run: pip install vllm"
-    return 1
+  if [ -n "$VLLM_PID" ]; then
+    echo "$VLLM_PID" > "$VLLM_PID_FILE"
   fi
-
-  local VLLM_CMD
-  if command -v vllm &>/dev/null; then
-    VLLM_CMD="vllm serve"
-  elif python3 -c "import vllm.entrypoints.openai.api_server" 2>/dev/null; then
-    VLLM_CMD="python3 -u -m vllm.entrypoints.openai.api_server"
-  elif python3 -c "import vllm.entrypoints.cli.serve" 2>/dev/null; then
-    VLLM_CMD="python3 -u -m vllm.entrypoints.cli.serve"
-  else
-    VLLM_CMD="vllm serve"
-  fi
-
-  nohup $VLLM_CMD "$MODEL" \
-    --dtype auto \
-    --port "$PORT" \
-    --host 127.0.0.1 \
-    --max-model-len "$VLLM_MAX_MODEL_LEN" \
-    --max-num-seqs 256 \
-    --gpu-memory-utilization 0.8 \
-    --trust-remote-code \
-    --enable-prefix-caching \
-    --enable-chunked-prefill \
-    --served-model-name "$MODEL" \
-    > "$VLLM_LOG_FILE" 2>&1 &
-
-  local VLLM_PID=$!
-  echo "$VLLM_PID" > "$VLLM_PID_FILE"
-
-  echo "[server.sh] vLLM process launched (PID: $VLLM_PID). Waiting for engine readiness..."
-
-  local READY=0
-  for i in {1..720}; do
-    if ! is_pid_running $VLLM_PID; then
-      echo "====================================================================="
-      echo "[ERROR] vLLM server process (PID $VLLM_PID) exited unexpectedly!"
-      echo "--- Tail of $VLLM_LOG_FILE ---"
-      tail -n 35 "$VLLM_LOG_FILE" 2>/dev/null || echo "(No log file found)"
-      echo "====================================================================="
-      rm -f "$VLLM_PID_FILE" "$VLLM_PORT_FILE"
-      return 1
-    fi
-
-    local HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PORT/v1/models" 2>/dev/null || echo "000")
-    if [ "$HTTP_CODE" -eq 200 ]; then
-      READY=1
-      echo "[$(date +'%H:%M:%S')] SUCCESS: vLLM server is READY on port $PORT!"
-      break
-    fi
-
-    if [ $((i % 2)) -eq 0 ]; then
-      local ELAPSED=$((i * 5))
-      echo "[$(date +'%H:%M:%S')] Loading vLLM model (Attempt $i/720, elapsed: ${ELAPSED}s)..."
-      local LAST_LOG=$(tail -n 2 "$VLLM_LOG_FILE" 2>/dev/null | tr '\n' ' ')
-      if [ -n "$LAST_LOG" ]; then
-        echo "   └─ vLLM activity: $LAST_LOG"
-      fi
-    fi
-
-    sleep 5
-  done
-
-  if [ $READY -ne 1 ]; then
-    echo "ERROR: vLLM server failed to respond within timeout on port $PORT."
-    rm -f "$VLLM_PID_FILE" "$VLLM_PORT_FILE"
-    return 1
-  fi
-
   return 0
 }
 

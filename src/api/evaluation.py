@@ -27,6 +27,7 @@ class EvaluationBatchRequest(BaseModel):
     hidden_requirements: Optional[str] = Field(default="", description="Hidden Job Requirements text")
     resume_filenames: List[str] = Field(..., description="List of candidate resume JSON filenames to evaluate")
     num_evaluations: Optional[int] = Field(default=20, ge=1, le=100, description="Number of evaluation iterations per category")
+    language: Optional[str] = Field(default="vietnamese", description="Output language for evaluation reasoning, strengths, and gaps ('vietnamese' or 'english')")
 
 
 @router.post("/evaluate_batch")
@@ -41,6 +42,7 @@ async def evaluate_batch(payload: EvaluationBatchRequest):
     hidden_req = payload.hidden_requirements or ""
     filenames = payload.resume_filenames or []
     num_evaluations = payload.num_evaluations or 20
+    eval_language = payload.language or "vietnamese"
 
     if not filenames:
         raise HTTPException(status_code=400, detail="No resume filenames selected for evaluation.")
@@ -99,7 +101,8 @@ async def evaluate_batch(payload: EvaluationBatchRequest):
                 hidden_req,
                 resume_name=base_name,
                 output_dir=EVAL_RESULTS_DIR,
-                num_evaluations=num_evaluations
+                num_evaluations=num_evaluations,
+                language=eval_language
             )
             eval_result["candidate_email"] = item["email"]
             eval_result["tier"] = item["tier"]

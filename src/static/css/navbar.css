@@ -42,13 +42,14 @@
     fill: currentColor;
 }
 
-.rail-brand-title h1 {
+.rail-brand-title h1, .rail-brand-title .brand-heading {
     font-size: 0.98rem;
     font-weight: 800;
     line-height: 1.2;
     letter-spacing: -0.02em;
     color: var(--color-primary);
     font-family: var(--font-display);
+    display: block;
 }
 
 .rail-brand-title .subtitle {

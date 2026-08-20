@@ -21,4 +21,4 @@ fi
 
 # Dynamically fetch VLLM_MAX_MODEL_LEN from Python src.core.config (Single Source of Truth)
 VLLM_MAX_MODEL_LEN=$(python3 -c "import sys; sys.path.insert(0, '$_ROOT_DIR'); from src.core.config import VLLM_MAX_MODEL_LEN; print(VLLM_MAX_MODEL_LEN)" 2>/dev/null || echo 20000)
-export VLLM_MAX_MODEL_LEN
+# Note: Do not export VLLM_MAX_MODEL_LEN as vLLM 0.27+ warns about unrecognized VLLM_* env vars

@@ -1,11 +1,10 @@
 /**
  * ==============================================================================
- * Candidate Pool Controller
+ * Candidate Pool Controller (Harmonious Executive Light Theme)
  * ==============================================================================
  * Description: Manages candidate evaluation pool browsing, search filtering,
  *              sorting by score/date/name, summary statistics, and candidate
  *              detail modal overlay.
- * Line Count: ~340 lines (Strict Limit: < 500 lines)
  */
 
 import { API } from './api.js';
@@ -31,7 +30,7 @@ export class CandidatePoolController {
 
         this.candModal = document.getElementById('cand-detail-modal');
         this.modalCandName = document.getElementById('modal-cand-name');
-        this.modalCandFile = document.getElementById('modal-cand-file');
+        this.modalCandRole = document.getElementById('modal-cand-role') || document.getElementById('modal-cand-file');
         this.modalCandBody = document.getElementById('modal-cand-body');
         this.modalCloseBtn = document.getElementById('modal-close-btn');
         this.modalBtnDownload = document.getElementById('modal-btn-download');
@@ -110,12 +109,12 @@ export class CandidatePoolController {
 
         const avgScore = total > 0 ? (scoreSum / total).toFixed(1) : '0.0';
 
-        document.getElementById('cand-stat-total').textContent = total;
-        document.getElementById('cand-stat-strong').textContent = strong;
-        document.getElementById('cand-stat-potential').textContent = potential;
-        document.getElementById('cand-stat-low').textContent = low;
-        document.getElementById('cand-stat-reject').textContent = reject;
-        document.getElementById('cand-stat-avg').textContent = avgScore;
+        if (document.getElementById('cand-stat-total')) document.getElementById('cand-stat-total').textContent = total;
+        if (document.getElementById('cand-stat-strong')) document.getElementById('cand-stat-strong').textContent = strong;
+        if (document.getElementById('cand-stat-potential')) document.getElementById('cand-stat-potential').textContent = potential;
+        if (document.getElementById('cand-stat-low')) document.getElementById('cand-stat-low').textContent = low;
+        if (document.getElementById('cand-stat-reject')) document.getElementById('cand-stat-reject').textContent = reject;
+        if (document.getElementById('cand-stat-avg')) document.getElementById('cand-stat-avg').textContent = avgScore;
     }
 
     /**
@@ -139,11 +138,10 @@ export class CandidatePoolController {
             }
 
             if (query) {
-                const name = (cand.candidate_identifier || '').toLowerCase();
-                const fname = (cand.filename || cand.resume_name || '').toLowerCase();
+                const name = (cand.candidate_identifier || cand.candidate_name || '').toLowerCase();
                 const title = (cand.title || '').toLowerCase();
-                const email = (cand.email || '').toLowerCase();
-                if (!name.includes(query) && !fname.includes(query) && !title.includes(query) && !email.includes(query)) {
+                const email = (cand.candidate_email || cand.email || '').toLowerCase();
+                if (!name.includes(query) && !title.includes(query) && !email.includes(query)) {
                     return false;
                 }
             }
@@ -153,8 +151,8 @@ export class CandidatePoolController {
         filtered.sort((a, b) => {
             const scoreA = a.overall_score || 0;
             const scoreB = b.overall_score || 0;
-            const nameA = (a.candidate_identifier || '').toLowerCase();
-            const nameB = (b.candidate_identifier || '').toLowerCase();
+            const nameA = (a.candidate_identifier || a.candidate_name || '').toLowerCase();
+            const nameB = (b.candidate_identifier || b.candidate_name || '').toLowerCase();
             const dateA = new Date(a.evaluated_at || 0).getTime();
             const dateB = new Date(b.evaluated_at || 0).getTime();
             const tierA = a.tier || 3;
@@ -188,10 +186,10 @@ export class CandidatePoolController {
         this.candCardsGrid.innerHTML = '';
         if (candidates.length === 0) {
             this.candCardsGrid.innerHTML = `
-                <div class="empty-state" style="grid-column: 1 / -1; padding: 3rem 1rem;">
-                    <div class="empty-icon">🔍</div>
-                    <h3>No Candidates Match Search</h3>
-                    <p>Try adjusting your search criteria or status filter.</p>
+                <div class="empty-state" style="grid-column: 1 / -1; padding: 3rem 1rem; text-align: center;">
+                    <div class="empty-icon" style="font-size: 2.5rem; margin-bottom: 1rem;">🔍</div>
+                    <h3 style="color: #0F172A; font-weight: 800;">No Candidates Match Search</h3>
+                    <p style="color: #334155;">Try adjusting your search criteria or status filter.</p>
                 </div>
             `;
             return;
@@ -199,12 +197,11 @@ export class CandidatePoolController {
 
         const sortBy = this.candSortBy ? this.candSortBy.value : 'evaluation_order';
 
-        // Group into Tiers if evaluation_order sort is active
         if (sortBy === 'evaluation_order') {
             const tiers = {
                 1: { title: 'Resume Tier 1 (Priority Candidates)', badgeClass: 'tier-badge-1', blockClass: 'tier-1-block', items: [] },
                 2: { title: 'Resume Tier 2 (Secondary Candidates)', badgeClass: 'tier-badge-2', blockClass: 'tier-2-block', items: [] },
-                3: { title: 'Resume Tier 3 (Unlisted / General Pool)', badgeClass: 'tier-badge-3', blockClass: 'tier-3-block', items: [] }
+                3: { title: 'Resume Tier 3 (General Pool)', badgeClass: 'tier-badge-3', blockClass: 'tier-3-block', items: [] }
             };
 
             candidates.forEach(c => {
@@ -225,9 +222,9 @@ export class CandidatePoolController {
                     <div class="cand-tier-header">
                         <div class="cand-tier-title-group">
                             <h3>${group.title}</h3>
-                            <span class="tier-badge ${group.badgeClass}">Evaluation Order: Tier ${tNum}</span>
+                            <span class="tier-badge ${group.badgeClass}">Tier ${tNum}</span>
                         </div>
-                        <span class="text-muted" style="font-size: 0.85rem; font-weight: 600;">${group.items.length} Candidate(s)</span>
+                        <span style="font-size: 0.88rem; font-weight: 700; color: #334155;">${group.items.length} Candidate(s)</span>
                     </div>
                     <div class="tier-grid cand-cards-grid"></div>
                 `;
@@ -248,7 +245,8 @@ export class CandidatePoolController {
         card.setAttribute('role', 'button');
 
         const name = cand.candidate_identifier || cand.candidate_name || cand.resume_name || 'Candidate';
-        const title = cand.title || 'Candidate';
+        const title = cand.title || 'Candidate Dossier';
+        const email = cand.candidate_email || cand.email || (cand.candidate_identifier && cand.candidate_identifier.includes('@') ? cand.candidate_identifier : '');
         const numScore = parseFloat(cand.overall_score !== undefined ? cand.overall_score : 0) || 0;
         const score = numScore.toFixed(1);
         const rec = cand.match_recommendation || (numScore >= 85 ? 'STRONG_MATCH' : (numScore >= 70 ? 'POTENTIAL_MATCH' : (numScore >= 55 ? 'LOW_MATCH' : 'REJECT')));
@@ -263,56 +261,80 @@ export class CandidatePoolController {
         const tierBadgeClass = cand.tier === 1 ? 'tier-badge-1' : (cand.tier === 2 ? 'tier-badge-2' : 'tier-badge-3');
         const tierLabel = cand.tier ? `Tier ${cand.tier}` : 'Tier 3';
 
-        card.setAttribute('aria-label', `Candidate: ${name}, Role: ${title}, Score: ${score}/100, ${recText}, ${tierLabel}`);
+        card.setAttribute('aria-label', `Candidate: ${name}, Role: ${title}, Email: ${email || 'N/A'}, Score: ${score}/100, ${recText}`);
 
+        // Vital Info: Breakdown of Match Score Progress Bars
         const dims = cand.dimension_scores || {};
-        let dimsHtml = '';
+        let dimsBreakdownHtml = '';
         const dimKeys = ['technical_skills', 'work_experience', 'seniority_title', 'education_certifications', 'hidden_culture'];
         const dimShortNames = {
             'technical_skills': 'Tech Skills',
-            'work_experience': 'Experience',
-            'seniority_title': 'Seniority',
-            'education_certifications': 'Education',
-            'hidden_culture': 'Culture Fit'
+            'work_experience': 'Work Experience',
+            'seniority_title': 'Seniority Level',
+            'education_certifications': 'Education & Certs',
+            'hidden_culture': 'Culture & Soft Skills'
         };
 
         dimKeys.forEach(k => {
             if (dims[k]) {
-                dimsHtml += `
-                    <div class="dim-mini-item">
-                        <span class="dim-mini-name">${dimShortNames[k]}</span>
-                        <span class="dim-mini-score">${(dims[k].score || 0).toFixed(0)}/100</span>
+                const dScore = Math.round(dims[k].score || 0);
+                let fillClass = 'fill-cyan';
+                if (dScore >= 85) fillClass = 'fill-emerald';
+                else if (dScore >= 70) fillClass = 'fill-cyan';
+                else if (dScore >= 55) fillClass = 'fill-amber';
+                else fillClass = 'fill-crimson';
+
+                dimsBreakdownHtml += `
+                    <div class="dim-bar-item">
+                        <div class="dim-bar-header">
+                            <span class="dim-bar-name">${dimShortNames[k]}</span>
+                            <span class="dim-bar-val">${dScore}/100</span>
+                        </div>
+                        <div class="dim-progress-track">
+                            <div class="dim-progress-fill ${fillClass}" style="width: ${Math.min(100, Math.max(5, dScore))}%;"></div>
+                        </div>
                     </div>
                 `;
             }
         });
+
+        const isOcrReview = cand.ocr_applied || cand.intensive_hr_review_required || (Array.isArray(cand.warning) && cand.warning.some(w => typeof w === 'string' && w.includes('OCR')));
+        const ocrPillHtml = isOcrReview ? `<span class="badge-ocr-review" title="No text layer found in PDF. OCR was used for text extraction. High-level manual HR review required.">⚠️ INTENSIVE HR REVIEW (OCR)</span>` : '';
+
+        const emailChipHtml = email ? `
+            <a href="mailto:${this.escapeHtml(email)}" class="cand-email-chip" onclick="event.stopPropagation()" title="Send email to ${this.escapeHtml(email)}">
+                <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+                ${this.escapeHtml(email)}
+            </a>
+        ` : '';
 
         card.innerHTML = `
             <div class="cand-card-header">
                 <div class="cand-info-group">
                     <h3>${this.escapeHtml(name)}</h3>
                     <span class="cand-role">${this.escapeHtml(title)}</span>
+                    ${emailChipHtml}
                 </div>
                 <div class="cand-score-badge">
-                    <span class="cand-score-val" style="color: ${numScore >= 85 ? '#14532D' : numScore >= 70 ? '#075985' : numScore >= 55 ? '#92400E' : '#991B1B'};">${score}</span>
+                    <span class="cand-score-val" style="color: ${numScore >= 85 ? '#059669' : numScore >= 70 ? '#0284C7' : numScore >= 55 ? '#D97706' : '#DC2626'};">${score}</span>
                     <span class="cand-score-lbl">Score</span>
                 </div>
             </div>
 
-            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div class="cand-badges-row">
                 <span class="match-pill ${recClass}">${recText}</span>
                 <span class="tier-badge ${tierBadgeClass}">${tierLabel}</span>
-                <span class="cand-filename-tag">${this.escapeHtml(cand.filename || '')}</span>
+                ${ocrPillHtml}
             </div>
 
-            ${dimsHtml ? `<div class="cand-dimensions-mini">${dimsHtml}</div>` : ''}
+            ${dimsBreakdownHtml ? `<div class="cand-dimensions-breakdown">${dimsBreakdownHtml}</div>` : ''}
 
             <div class="cand-card-footer">
                 <div class="summary-badges">
                     <span class="badge-strength-cnt">✓ ${cand.summary?.total_strengths || 0} Strengths</span>
                     <span class="badge-gap-cnt">⚠ ${cand.summary?.total_gaps || 0} Gaps</span>
                 </div>
-                <button class="btn btn-sm btn-secondary cand-inspect-btn" type="button" tabindex="-1">View Details →</button>
+                <button class="btn btn-sm btn-secondary cand-inspect-btn" type="button" tabindex="-1">Inspect Dossier →</button>
             </div>
         `;
 
@@ -339,13 +361,14 @@ export class CandidatePoolController {
         if (!this.candModal || !this.modalCandBody) return;
 
         const name = cand.candidate_identifier || cand.candidate_name || cand.resume_name || 'Candidate';
-        const filename = cand.filename || `${cand.resume_name || 'candidate'}_evaluation.json`;
+        const title = cand.title || 'Candidate Dossier';
+        const email = cand.candidate_email || cand.email || (cand.candidate_identifier && cand.candidate_identifier.includes('@') ? cand.candidate_identifier : '');
         const numScore = parseFloat(cand.overall_score || 0);
         const score = numScore.toFixed(1);
         const rec = cand.match_recommendation || 'POTENTIAL_MATCH';
 
         if (this.modalCandName) this.modalCandName.textContent = name;
-        if (this.modalCandFile) this.modalCandFile.textContent = filename;
+        if (this.modalCandRole) this.modalCandRole.textContent = email ? `${title} • ${email}` : title;
 
         let recClass = 'match-potential';
         let recText = 'POTENTIAL MATCH';
@@ -396,14 +419,28 @@ export class CandidatePoolController {
             `;
         });
 
+        const isOcrReview = cand.ocr_applied || cand.intensive_hr_review_required || (Array.isArray(cand.warning) && cand.warning.some(w => typeof w === 'string' && w.includes('OCR')));
+        const ocrAlertBanner = isOcrReview ? `
+            <div class="modal-ocr-alert-banner">
+                <div class="modal-ocr-alert-icon">⚠️</div>
+                <div class="modal-ocr-alert-content">
+                    <strong>INTENSIVE HR REVIEW REQUIRED (OCR APPLIED)</strong>
+                    <p>This resume contained no native text layer (scanned or image PDF). Optical Character Recognition (OCR) was used to extract candidate information. Please perform thorough manual HR verification of extracted details.</p>
+                </div>
+            </div>
+        ` : '';
+
+        const emailLink = email ? `<a href="mailto:${this.escapeHtml(email)}" style="color: var(--color-secondary); font-weight: 700; text-decoration: underline;">${this.escapeHtml(email)}</a>` : '';
+
         this.modalCandBody.innerHTML = `
+            ${ocrAlertBanner}
             <div class="modal-hero-banner">
                 <div>
                     <h2>${this.escapeHtml(name)} <span class="match-pill ${recClass}">${recText}</span></h2>
-                    <p>Evaluated on ${cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleString() : 'N/A'}</p>
+                    <p>${this.escapeHtml(title)} ${emailLink ? `• ${emailLink}` : ''} • Evaluated on ${cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleString() : 'N/A'}</p>
                 </div>
                 <div class="modal-score-box">
-                    <span class="modal-score-number" style="color: ${numScore >= 85 ? '#14532D' : numScore >= 70 ? '#075985' : numScore >= 55 ? '#92400E' : '#991B1B'};">${score}</span>
+                    <span class="modal-score-number" style="color: ${numScore >= 85 ? '#059669' : numScore >= 70 ? '#0284C7' : numScore >= 55 ? '#D97706' : '#DC2626'};">${score}</span>
                     <span style="font-size:0.82rem; color:#334155; font-weight:800; text-transform:uppercase; font-family:var(--font-mono);">Overall Score</span>
                 </div>
             </div>
@@ -437,10 +474,11 @@ export class CandidatePoolController {
      */
     downloadModalCandidate() {
         if (!this.currentModalCandidate) return;
+        const candidateName = (this.currentModalCandidate.candidate_identifier || this.currentModalCandidate.candidate_name || 'candidate').replace(/\s+/g, '_');
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.currentModalCandidate, null, 2));
         const anchor = document.createElement('a');
         anchor.setAttribute("href", dataStr);
-        anchor.setAttribute("download", this.currentModalCandidate.filename || 'candidate_eval.json');
+        anchor.setAttribute("download", `${candidateName}_evaluation.json`);
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();

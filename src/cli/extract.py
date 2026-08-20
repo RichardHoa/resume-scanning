@@ -33,6 +33,8 @@ def parse_args():
                         help="Inference backend: 'transformers' (load model locally) or 'vllm' (call a running vLLM server)")
     parser.add_argument("--vllm-url", type=str, default=DEFAULT_VLLM_URL,
                         help="Base URL of the vLLM OpenAI-compatible server (only used with --backend vllm)")
+    parser.add_argument("--language", type=str, default="vietnamese", choices=["vietnamese", "english"],
+                        help="Target parse language: 'vietnamese' (default) or 'english'")
     return parser.parse_args()
 
 
@@ -75,7 +77,7 @@ def main():
 
         start_time = time.time()
         try:
-            formatted_json = extractor.extract(args.pdf)
+            formatted_json = extractor.extract(args.pdf, language=args.language)
         except Exception as e:
             print(f"Error during extraction: {e}", file=sys.stderr)
             sys.exit(1)
@@ -136,7 +138,7 @@ def main():
             print(f"\n[{idx}/{len(pdf_files)}] Processing {filename}...", file=sys.stderr)
             start_time = time.time()
             try:
-                formatted_json = extractor.extract(pdf_path)
+                formatted_json = extractor.extract(pdf_path, language=args.language)
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write(formatted_json)
                 elapsed = time.time() - start_time

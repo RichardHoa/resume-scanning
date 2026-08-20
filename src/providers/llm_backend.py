@@ -42,10 +42,10 @@ def load_local_model(model_name: str) -> Tuple[Any, Any]:
     return model, tokenizer
 
 
-def run_local_inference(resume_text: str, model: Any, tokenizer: Any) -> str:
+def run_local_inference(resume_text: str, model: Any, tokenizer: Any, language: str = "vietnamese") -> str:
     """Run text-based extraction using a locally-loaded HuggingFace model."""
     messages = [
-        {"role": "system", "content": get_system_prompt()},
+        {"role": "system", "content": get_system_prompt(language)},
         {"role": "user", "content": f"Below is the extracted markdown text from the candidate's resume:\n\n{resume_text}"}
     ]
 
@@ -107,7 +107,7 @@ def vllm_discover_model(vllm_url: str) -> str:
     except urllib.error.URLError as e:
         raise RuntimeError(
             f"Cannot connect to vLLM server at {vllm_url} ({e.reason or e}). "
-            f"Please verify the vLLM server is running (e.g. 'bash scripts/start_vllm.sh') "
+            f"Please verify the vLLM server is running (e.g. './scripts/server.sh --start-vllm') "
             f"or switch to '--backend transformers' or '--mock'."
         ) from e
     except Exception as e:
@@ -163,15 +163,15 @@ def vllm_chat_request(vllm_url: str, model_name: Optional[str], messages: list) 
     except urllib.error.URLError as e:
         raise RuntimeError(
             f"Cannot connect to vLLM server at {vllm_url} ({e.reason or e}). "
-            f"Please verify the vLLM server is running (e.g. 'bash scripts/start_vllm.sh') "
+            f"Please verify the vLLM server is running (e.g. './scripts/server.sh --start-vllm') "
             f"or switch to '--backend transformers' or '--mock'."
         ) from e
 
 
-def run_vllm_inference(resume_text: str, model_name: Optional[str], vllm_url: str) -> str:
+def run_vllm_inference(resume_text: str, model_name: Optional[str], vllm_url: str, language: str = "vietnamese") -> str:
     """Run text-based extraction via a running vLLM server."""
     messages = [
-        {"role": "system", "content": get_system_prompt()},
+        {"role": "system", "content": get_system_prompt(language)},
         {"role": "user", "content": f"Below is the extracted markdown text from the candidate's resume:\n\n{resume_text}"}
     ]
 
@@ -179,7 +179,7 @@ def run_vllm_inference(resume_text: str, model_name: Optional[str], vllm_url: st
     return vllm_chat_request(vllm_url, model_name, messages)
 
 
-def run_mock_extraction(resume_text: str) -> str:
+def run_mock_extraction(resume_text: str, language: str = "vietnamese") -> str:
     print("=== MOCK MODE ACTIVATED ===", file=sys.stderr)
     print("--- Extracted Raw Text Preview ---", file=sys.stderr)
     lines = resume_text.split("\n")
@@ -195,10 +195,10 @@ def run_mock_extraction(resume_text: str) -> str:
         },
         "self_evaluation": "Lập trình viên nhiệt huyết với kinh nghiệm phát triển hệ thống web, mong muốn đóng góp cho các dự án lớn.",
         "skills_and_specialties": [
-            "Python: 3.5 năm kinh nghiệm phát triển backend web service với FastAPI và Django",
-            "SQL & PostgreSQL: 3 năm kinh nghiệm thiết kế cơ sở dữ liệu và tối ưu truy vấn",
-            "Docker & Containerization: 2 năm kinh nghiệm đóng gói và triển khai ứng dụng",
-            "Git & CI/CD: 3 năm kinh nghiệm quản lý phiên bản mã nguồn và quy trình tự động hóa"
+            "- Python: Quản lý và phát triển hệ thống backend web service với FastAPI và Django trong 3.5 năm. Thiết kế kiến trúc RESTful API hiệu năng cao xử lý hàng ngàn lượt truy cập song song. Tối ưu hóa mã nguồn Python bằng async I/O và cấu trúc dữ liệu hiệu quả.",
+            "- SQL & PostgreSQL: Thiết kế và quản lý hệ thống cơ sở dữ liệu PostgreSQL quy mô lớn trong 3 năm. Thực hiện tối ưu hóa truy vấn phức tạp, lập chỉ mục phù hợp và điều chỉnh hiệu năng database. Đảm bảo tính toàn vẹn dữ liệu và xây dựng quy trình sao lưu tự động.",
+            "- Docker & Containerization: Đóng gói và triển khai ứng dụng bằng Docker và Docker Compose trong 2 năm. Xây dựng môi trường phát triển và sản xuất đồng nhất giúp giảm thiểu lỗi phát sinh. Tối ưu hóa dung lượng image và thiết lập mạng container an toàn.",
+            "- Git & CI/CD: Quản lý phiên bản mã nguồn bằng Git và xây dựng quy trình tự động hóa CI/CD trong 3 năm. Tự động hóa kiểm thử mã nguồn, đóng gói và triển khai phần mềm lên máy chủ. Xây dựng quy trình làm việc GitFlow hiệu quả cho đội ngũ phát triển."
         ],
         "languages": [
             {

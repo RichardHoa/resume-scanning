@@ -33,8 +33,8 @@ def parse_args():
     parser.add_argument("--workers", type=int, default=1, help="Number of concurrent worker threads for candidate evaluation (useful with vLLM backend)")
     parser.add_argument("--num-evaluations", "--runs", type=int, default=20, help="Number of evaluation iterations per category to calculate median (default: 20)")
     parser.add_argument("--force-reingest", action="store_true", help="Force re-ingesting HR requirements into RAG vector database")
+    parser.add_argument("--language", type=str, default="vietnamese", choices=["vietnamese", "english"], help="Output language for evaluation reasoning, strengths, and gaps ('vietnamese' or 'english')")
     return parser.parse_args()
-
 
 
 def load_requirements(args):
@@ -112,7 +112,8 @@ def main():
         model_name=args.model_name,
         backend=args.backend,
         vllm_url=args.vllm_url,
-        mock=args.mock
+        mock=args.mock,
+        language=args.language
     )
 
     if args.force_reingest:

@@ -210,3 +210,34 @@
     font-family: var(--font-mono);
 }
 
+/* Extraction Warning Banner */
+.warning-banner {
+    background-color: #FEF3C7;
+    border: 1px solid #F59E0B;
+    border-radius: var(--radius-md);
+    padding: 1rem 1.25rem;
+    margin-top: 1.25rem;
+    color: #92400E;
+    box-shadow: var(--shadow-sm);
+}
+
+.warning-banner-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    margin-bottom: 0.5rem;
+}
+
+.warning-list {
+    margin: 0;
+    padding-left: 1.25rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.warning-list li {
+    margin-bottom: 4px;
+}
+

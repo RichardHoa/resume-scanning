@@ -10,7 +10,7 @@ Backend selection:
     This server defaults to ``--backend vllm`` because the web server
     use-case (concurrent browser requests) is where vLLM's continuous
     batching provides a real throughput advantage.  A running vLLM server
-    must be started first (see ``scripts/start_vllm.sh``).
+    must be started first (see ``scripts/server.sh --start-vllm``).
 
     For simple one-off or batch CLI usage without a web UI, prefer
     running ``step_1_extractor.py`` directly with the default HuggingFace
@@ -18,7 +18,7 @@ Backend selection:
 
 Usage:
     # Start vLLM server first
-    bash scripts/start_vllm.sh
+    ./scripts/server.sh --start-vllm
 
     # Then start this web server
     python src/server.py                            # defaults to vLLM

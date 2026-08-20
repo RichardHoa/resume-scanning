@@ -1,19 +1,21 @@
 {
   "position_applied": {
-    "title": "Job title as written on the resume, or inferred from context if not stated explicitly."
+    "title": "Job title as written on the resume, or inferred from context when unstated."
   },
-  "self_evaluation": "Personal summary or career objective section verbatim. Empty string if not present.",
-  "skills_and_specialties": ["Extract maximum 20 key technical skills, tools, technologies, and competencies. DO NOT generate more than 20 skills. Omit generic buzzwords. Each skill must include experience level formatted in descriptive sentences (not just digits or single words), e.g. 'Python: 3+ years experience building REST APIs with FastAPI' or 'C&B: Hands-on experience managing payroll for 200+ employees'."],
+  "self_evaluation": "Personal summary or career objective section verbatim. Empty string when absent.",
+  "skills_and_specialties": [
+    "Extract key technical skills, tools, technologies, and competencies. Format each item strictly using the format '- skill: detailed explanation' written in the source language of the resume, focusing on capability and expanding into at least 3 sentences detailing practical application, technical depth, and execution."
+  ],
   "languages": [
     {
-      "language": "Language name. Infer language (e.g. English for TOEIC/IELTS, Japanese for JLPT, Chinese for HSK) if listed as a certificate without explicit language label.",
-      "proficiency": "Proficiency level as written. Empty string if not stated.",
+      "language": "Language name. Infer language (e.g. English for TOEIC/IELTS, Japanese for JLPT, Chinese for HSK) when listed as a certificate with implicit language label.",
+      "proficiency": "Proficiency level as written. Empty string when unstated.",
       "certificates": [
         {
           "name": "Certificate name verbatim (e.g. TOEIC, IELTS, TOEFL, JLPT, HSK). ALWAYS extract foreign language certificates, even if listed under general 'Certificate' section.",
-          "score": "Score as written (e.g. '640', '7.5'). Empty string if not stated.",
-          "issuing_organization": "Issuing organization as written. Empty string if not stated.",
-          "duration": "Validity period as written. Empty string if not stated."
+          "score": "Score as written (e.g. '640', '7.5'). Empty string when unstated.",
+          "issuing_organization": "Issuing organization as written. Empty string when unstated.",
+          "duration": "Validity period as written. Empty string when unstated."
         }
       ]
     }
@@ -21,39 +23,39 @@
   "certifications": [
     {
       "name": "Professional certification name (exclude language certificates if already recorded under languages)",
-      "issuing_organization": "Issuing organization as written. Empty string if not stated.",
-      "duration": "Validity period as written. Empty string if not stated."
+      "issuing_organization": "Issuing organization as written. Empty string when unstated.",
+      "duration": "Validity period as written. Empty string when unstated."
     }
   ],
   "work_experience": [
     {
       "company_name": "Company name as written",
-      "company_description": "Company size, industry, client type, etc. as written. Empty string if not stated.",
+      "company_description": "Company size, industry, client type, etc. as written. Empty string when unstated.",
       "position": "Job title at this company as written",
       "duration": "Employment period (start month/year - end month/year) as written. Use the image to correctly match dates to each job in multi-column layouts.",
-      "responsibilities": "All duties, responsibilities, accomplishments, and key achievements verbatim (including achievements listed in separate nearby sections like 'Key Achievements' or 'Thành tích nổi bật'). Extract completely — do not summarize or omit. Use '- ' for main items, '+ ' for sub-items."
+      "responsibilities": "All duties, responsibilities, accomplishments, and key achievements verbatim (including achievements listed in separate nearby sections like 'Key Achievements' or 'Thành tích nổi bật'). Extract completely in full detail, preserving exact text. Use '- ' for main items, '+ ' for sub-items."
     }
   ],
   "basic_information": {
     "email": "Email address as written",
     "phone": "Phone number as written",
-    "location": "Residence or hometown as written. Empty string if not stated.",
-    "other_info": "LinkedIn, website, Skype, GitHub, etc. as written. Empty string if not stated."
+    "location": "Residence or hometown as written. Empty string when unstated.",
+    "other_info": "LinkedIn, website, Skype, GitHub, etc. as written. Empty string when unstated."
   },
   "education_background": [
     {
       "university_name": "Institution name as written",
       "degree": "Degree as written",
-      "field_of_study": "Field of study as written. Empty string if not stated.",
+      "field_of_study": "Field of study as written. Empty string when unstated.",
       "graduation_year": "Graduation year or status as written",
-      "gpa": "GPA or classification as written. Empty string if not stated."
+      "gpa": "GPA or classification as written. Empty string when unstated."
     }
   ],
   "projects": [
     {
       "project_name": "Project name as written",
-      "description": "Description, technologies, results, and role as written. Empty string if not stated.",
-      "duration": "Project period (start month/year - end month/year) as written. Empty string if not stated."
+      "description": "Description, technologies, results, and role as written. Empty string when unstated.",
+      "duration": "Project period (start month/year - end month/year) as written. Empty string when unstated."
     }
   ]
 }

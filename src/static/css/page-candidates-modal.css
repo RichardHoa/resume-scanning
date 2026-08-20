@@ -1,4 +1,43 @@
-/* Candidate Pool (Detail Modal) */
+/* OCR Alert Callout Banner for Modal */
+.modal-ocr-alert-banner {
+    background: #FFFBEB;
+    border: 2px solid #F59E0B;
+    border-radius: var(--radius-md);
+    padding: 1.1rem 1.35rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 2px 6px rgba(245, 158, 11, 0.15);
+}
+
+.modal-ocr-alert-icon {
+    font-size: 1.75rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.modal-ocr-alert-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.modal-ocr-alert-content strong {
+    color: #78350F;
+    font-size: 0.95rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
+}
+
+.modal-ocr-alert-content p {
+    color: #92400E;
+    font-size: 0.88rem;
+    font-weight: 600;
+    line-height: 1.45;
+    margin: 0;
+}
 
 .modal-hero-banner {
     background: #F8FAFC;

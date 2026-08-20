@@ -157,14 +157,18 @@ textarea.form-control {
     font-family: var(--font-mono);
 }
 
-.badge-rec {
-    padding: 4px 10px;
+.match-pill, .badge-rec {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
     border-radius: var(--radius-sm);
     font-size: 0.74rem;
     font-weight: 800;
     font-family: var(--font-mono);
     text-transform: uppercase;
-    letter-spacing: 0.6px;
+    letter-spacing: 0.5px;
+    line-height: 1.2;
+    white-space: nowrap;
 }
 
 .rec-STRONG_MATCH, .match-strong {

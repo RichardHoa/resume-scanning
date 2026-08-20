@@ -175,6 +175,37 @@ def aggregate_evaluation_results(
     any_evaluation_failed = False
     failed_categories = []
 
+    # 1. Identify categories existing vs non-existing in RAG
+    existing_cat_keys = []
+    non_existing_cat_keys = []
+
+    for cat_key in CATEGORY_LABELS.keys():
+        if cat_key in cat_eval_outputs:
+            _, cat_res, retrieved, _ = cat_eval_outputs[cat_key]
+            if retrieved and len(retrieved) > 0:
+                existing_cat_keys.append(cat_key)
+            else:
+                non_existing_cat_keys.append(cat_key)
+        else:
+            non_existing_cat_keys.append(cat_key)
+
+    # 2. Calculate adjusted weights
+    # Divide the percentage sum of non-existing categories equally among existing categories
+    non_existing_weight_sum = sum(DIMENSION_WEIGHTS.get(ck, 0.20) for ck in non_existing_cat_keys)
+
+    adjusted_weights = {}
+    if non_existing_cat_keys and existing_cat_keys:
+        addon = non_existing_weight_sum / len(existing_cat_keys)
+        for ck in CATEGORY_LABELS.keys():
+            if ck in existing_cat_keys:
+                adjusted_weights[ck] = DIMENSION_WEIGHTS.get(ck, 0.20) + addon
+            else:
+                adjusted_weights[ck] = 0.0
+    else:
+        for ck in CATEGORY_LABELS.keys():
+            adjusted_weights[ck] = DIMENSION_WEIGHTS.get(ck, 0.20)
+
+    # 3. Process each category with adjusted weights
     for cat_key, cat_name in CATEGORY_LABELS.items():
         if cat_key in cat_eval_outputs:
             cat_name, cat_res, retrieved, elapsed_cat = cat_eval_outputs[cat_key]
@@ -197,14 +228,20 @@ def aggregate_evaluation_results(
             failed_categories.append(cat_name)
 
         category_timings[cat_key] = round(elapsed_cat, 2)
-        weight = DIMENSION_WEIGHTS.get(cat_key, 0.20)
-        score = cat_res.get("score", FALLBACK_ERROR_SCORE)
+        weight = round(adjusted_weights.get(cat_key, 0.20), 4)
+
+        if cat_key in non_existing_cat_keys:
+            score = 0
+            weighted_score = 0.0
+        else:
+            score = cat_res.get("score", FALLBACK_ERROR_SCORE)
+            weighted_score = round(score * weight, 2)
         
         dimension_results[cat_key] = {
             "category_name": cat_name,
             "weight": weight,
             "score": score,
-            "weighted_score": round(score * weight, 2),
+            "weighted_score": weighted_score,
             "strengths": cat_res.get("strengths", []),
             "gaps": cat_res.get("gaps", []),
             "evidence_quotes": cat_res.get("evidence_quotes", []),
@@ -213,7 +250,7 @@ def aggregate_evaluation_results(
             "processing_time_seconds": round(elapsed_cat, 2),
             "evaluation_runs_count": num_evaluations,
             "all_run_scores": cat_res.get("all_scores", []),
-            "median_score": cat_res.get("median_score", score)
+            "median_score": cat_res.get("median_score", float(score))
         }
         weighted_total += score * weight
 

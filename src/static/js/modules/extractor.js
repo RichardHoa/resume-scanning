@@ -43,6 +43,7 @@ export class ExtractorController {
         this.btnCopy = document.getElementById('btn-copy');
         this.btnDownload = document.getElementById('btn-download');
         this.btnReset = document.getElementById('btn-reset');
+        this.selectLanguage = document.getElementById('select-parse-language');
 
         this.loaderOverlay = document.getElementById('loader-overlay');
         this.loaderTitle = document.getElementById('loader-title');
@@ -169,7 +170,8 @@ export class ExtractorController {
         if (!this.selectedFile) return;
         this.showLoader();
         try {
-            const { data, extractionTime } = await API.extractCv(this.selectedFile);
+            const language = this.selectLanguage ? this.selectLanguage.value : 'vietnamese';
+            const { data, extractionTime } = await API.extractCv(this.selectedFile, language);
             this.extractedJsonData = data;
             this.displayResults(data, extractionTime);
         } catch (err) {
@@ -224,6 +226,24 @@ export class ExtractorController {
         }
 
         this.renderParsedData(data);
+
+        // Render warnings if present
+        const warningBanner = document.getElementById('warning-banner');
+        const warningList = document.getElementById('warning-list');
+        if (warningBanner && warningList) {
+            warningList.innerHTML = '';
+            const warnings = data.warning || [];
+            if (warnings.length > 0) {
+                warnings.forEach(msg => {
+                    const li = document.createElement('li');
+                    li.textContent = msg;
+                    warningList.appendChild(li);
+                });
+                warningBanner.style.display = 'block';
+            } else {
+                warningBanner.style.display = 'none';
+            }
+        }
 
         const badgeTime = document.getElementById('badge-time');
         const valTime = document.getElementById('val-time');

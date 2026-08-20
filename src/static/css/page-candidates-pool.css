@@ -1,46 +1,56 @@
-/* Step 4: Candidate Evaluation Pool Page */
+/* ==============================================================================
+ * Candidate Evaluation Pool Page Styles (Harmonious Executive Light Theme)
+ * ============================================================================== */
 
-/* Stats Grid */
+/* Stats Summary Grid */
 .cand-stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
 }
 
 .stat-box {
     background: #FFFFFF;
-    border: 1px solid var(--border);
+    border: 1.5px solid #CBD5E1;
     border-radius: var(--radius-md);
-    padding: 1.1rem;
+    padding: 1.25rem 1.35rem;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
+    gap: 6px;
     position: relative;
     overflow: hidden;
-    box-shadow: var(--shadow-sm);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+    transition: all var(--transition-fast);
+}
+
+.stat-box:hover {
+    border-color: var(--color-secondary);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
 }
 
 .stat-label {
     font-size: 0.78rem;
-    color: #1E293B; /* High-contrast crisp slate text */
+    color: #334155; /* WCAG AAA high-contrast crisp dark slate */
     font-weight: 800;
     text-transform: uppercase;
     font-family: var(--font-mono);
-    letter-spacing: 0.02em;
+    letter-spacing: 0.03em;
 }
 
 .stat-number {
-    font-size: 1.5rem;
+    font-size: 1.75rem;
     font-weight: 800;
     font-family: var(--font-mono);
-    color: var(--brand-legacy-blue);
+    color: #0F172A;
+    line-height: 1.1;
 }
 
-.stat-strong .stat-number { color: #14532D; } /* Dark green WCAG AAA */
-.stat-potential .stat-number { color: #075985; } /* Dark sky blue WCAG AAA */
-.stat-low .stat-number { color: #92400E; } /* Dark amber WCAG AAA */
-.stat-reject .stat-number { color: #991B1B; } /* Dark red WCAG AAA */
+.stat-strong .stat-number { color: #059669; } /* Emerald green */
+.stat-potential .stat-number { color: #0284C7; } /* Sky blue */
+.stat-low .stat-number { color: #D97706; } /* Warm amber */
+.stat-reject .stat-number { color: #DC2626; } /* Vivid crimson */
 
 /* Toolbar: Search input & filter dropdowns */
 .cand-toolbar {
@@ -48,12 +58,13 @@
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 1rem;
+    gap: 1.25rem;
     background: #F8FAFC;
-    border: 1px solid var(--border);
+    border: 1.5px solid #CBD5E1;
     border-radius: var(--radius-md);
-    padding: 1rem;
-    margin: 1rem 0;
+    padding: 1.15rem 1.35rem;
+    margin: 1.25rem 0 1.75rem 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .search-input-group {
@@ -61,185 +72,364 @@
     align-items: center;
     gap: 8px;
     flex-grow: 1;
-    max-width: 480px;
+    max-width: 520px;
+}
+
+.search-input-group .form-control {
+    font-size: 0.92rem;
+    font-weight: 500;
+    color: #0F172A;
+    background: #FFFFFF;
+    border: 1.5px solid #CBD5E1;
+    padding: 0.65rem 1rem;
+    border-radius: var(--radius-sm);
+    width: 100%;
+}
+
+.search-input-group .form-control:focus {
+    border-color: var(--color-secondary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 .toolbar-select-group {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 1.25rem;
+    flex-wrap: wrap;
 }
 
 .select-wrapper {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.85rem;
+    font-size: 0.88rem;
     font-weight: 700;
     color: #0F172A;
 }
 
-/* Candidate Card Grid */
+.select-wrapper select {
+    background: #FFFFFF;
+    border: 1.5px solid #CBD5E1;
+    color: #0F172A;
+    font-weight: 600;
+    font-size: 0.88rem;
+    padding: 0.55rem 0.85rem;
+    border-radius: var(--radius-sm);
+}
+
+/* Candidate Cards Grid - Wide & Spacious Layout */
 .cand-cards-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-    gap: 1.25rem;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 1.5rem;
 }
 
 .cand-card {
     background: #FFFFFF;
-    border: 1.5px solid var(--border);
+    border: 1.5px solid #CBD5E1;
     border-radius: var(--radius-md);
-    padding: 1.35rem;
+    padding: 1.5rem;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 1.15rem;
+    height: 100%;
     cursor: pointer;
-    transition: all var(--transition-normal);
-    box-shadow: var(--shadow-sm);
+    transition: transform var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
     outline: none;
+    position: relative;
 }
 
 .cand-card:hover {
-    border-color: var(--brand-azure);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
+    border-color: var(--color-secondary);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 24px -4px rgba(37, 99, 235, 0.12), 0 4px 8px -2px rgba(0, 0, 0, 0.04);
 }
 
 .cand-card:focus-visible {
     border-color: var(--color-secondary);
     outline: 3px solid var(--color-secondary);
     outline-offset: 2px;
-    box-shadow: var(--shadow-md);
 }
 
+/* Header Section of Candidate Card */
 .cand-card-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    gap: 1rem;
+}
+
+.cand-info-group {
+    flex: 1;
+    min-width: 0;
 }
 
 .cand-info-group h3 {
-    font-size: 1.1rem;
+    font-size: 1.18rem;
     font-weight: 800;
-    color: #0F172A; /* High-contrast primary heading */
+    color: #0F172A; /* WCAG AAA crisp deep navy */
     letter-spacing: -0.01em;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    line-height: 1.3;
+    margin-bottom: 4px;
 }
 
 .cand-role {
-    font-size: 0.88rem;
-    color: #1E293B; /* Dark slate high contrast */
+    font-size: 0.9rem;
+    color: #334155; /* High contrast dark slate */
     font-weight: 700;
+    display: block;
+    margin-bottom: 8px;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
+/* Candidate Contact Info Chip (Vital Info: Email) */
+.cand-email-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #F1F5F9;
+    border: 1px solid #CBD5E1;
+    color: #1E3A5F;
+    font-size: 0.82rem;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: background-color var(--transition-fast);
+}
+
+.cand-email-chip:hover {
+    background: #E2E8F0;
+    color: var(--color-secondary);
+}
+
+.cand-email-chip svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+    flex-shrink: 0;
+}
+
+/* Score Circle / Badge */
 .cand-score-badge {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    align-items: center;
+    justify-content: center;
+    background: #F8FAFC;
+    border: 1.5px solid #CBD5E1;
+    border-radius: var(--radius-md);
+    padding: 8px 14px;
+    min-width: 72px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
+    flex-shrink: 0;
 }
 
 .cand-score-val {
-    font-size: 1.55rem;
+    font-size: 1.65rem;
     font-weight: 800;
     font-family: var(--font-mono);
+    line-height: 1.1;
 }
 
 .cand-score-lbl {
-    font-size: 0.76rem;
-    color: #334155;
+    font-size: 0.7rem;
+    color: #475569;
     text-transform: uppercase;
     font-family: var(--font-mono);
     font-weight: 800;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.04em;
+    margin-top: 2px;
 }
 
-.cand-filename-tag {
-    font-size: 0.8rem;
-    color: #1E293B; /* High contrast filename font */
+/* Status Pills & Badges */
+.cand-badges-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.match-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.78rem;
+    font-weight: 800;
     font-family: var(--font-mono);
-    font-weight: 700;
-    background-color: #F1F5F9;
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    border: 1px solid #CBD5E1;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
 }
 
-.cand-dimensions-mini {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 6px;
-    background: #F1F5F9;
-    padding: 10px 12px;
-    border-radius: var(--radius-sm);
-    border: 1px solid #94A3B8; /* Higher border contrast */
-    font-size: 0.82rem;
+.match-strong {
+    background: #ECFDF5;
+    color: #047857;
+    border: 1.5px solid #A7F3D0;
 }
 
-.dim-mini-item {
+.match-potential {
+    background: #F0F9FF;
+    color: #0369A1;
+    border: 1.5px solid #BAE6FD;
+}
+
+.match-low {
+    background: #FFFBEB;
+    color: #B45309;
+    border: 1.5px solid #FDE68A;
+}
+
+.match-reject {
+    background: #FEF2F2;
+    color: #B91C1C;
+    border: 1.5px solid #FECACA;
+}
+
+.tier-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 0.76rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
+}
+
+.tier-badge-1 { background: #E0E7FF; color: #3730A3; border: 1px solid #C7D2FE; }
+.tier-badge-2 { background: #E0F2FE; color: #075985; border: 1px solid #BAE6FD; }
+.tier-badge-3 { background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; }
+
+/* Match Score Breakdown Bars (Vital Info) */
+.cand-dimensions-breakdown {
+    background: #F8FAFC;
+    border: 1.5px solid #E2E8F0;
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dim-bar-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.dim-bar-header {
     display: flex;
     justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
 }
 
-.dim-mini-name {
-    color: #0F172A; /* High-contrast label */
+.dim-bar-name {
+    color: #0F172A; /* High contrast label */
     font-weight: 700;
 }
 
-.dim-mini-score {
-    color: #0F172A; /* High-contrast score */
+.dim-bar-val {
+    color: #0F172A;
     font-weight: 800;
     font-family: var(--font-mono);
 }
 
+.dim-progress-track {
+    height: 6px;
+    background: #E2E8F0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.dim-progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease-out;
+}
+
+.fill-emerald { background: #059669; }
+.fill-cyan { background: #0284C7; }
+.fill-amber { background: #D97706; }
+.fill-crimson { background: #DC2626; }
+
+/* Card Footer */
 .cand-card-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-top: 1px solid var(--border);
-    padding-top: 0.75rem;
-    font-size: 0.84rem;
+    border-top: 1.5px solid #E2E8F0;
+    padding-top: 0.85rem;
+    font-size: 0.85rem;
+    margin-top: auto;
+    gap: 0.5rem;
+}
+
+.summary-badges {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 .badge-strength-cnt {
-    color: #14532D; /* High-contrast dark green */
+    color: #047857; /* WCAG AAA high-contrast dark emerald */
     font-weight: 800;
+    font-size: 0.84rem;
 }
 
 .badge-gap-cnt {
-    color: #7F1D1D; /* High-contrast dark red */
+    color: #B91C1C; /* WCAG AAA high-contrast dark red */
     font-weight: 800;
+    font-size: 0.84rem;
 }
 
 .cand-inspect-btn {
-    color: #1E3A5F; /* High-contrast navy action button */
+    color: #1E3A5F;
     font-weight: 800;
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    flex-shrink: 0;
+    font-size: 0.85rem;
 }
 
-/* Separate Tier Block Containers */
+.cand-inspect-btn:hover {
+    color: var(--color-secondary);
+}
+
+/* Tier Block Containers */
 .cand-tier-block {
     background: #FFFFFF;
-    border: 1px solid var(--border);
+    border: 1.5px solid #CBD5E1;
     border-radius: var(--radius-md);
-    padding: 1.35rem;
-    margin-bottom: 1.35rem;
-    box-shadow: var(--shadow-sm);
+    padding: 1.5rem;
+    margin-bottom: 1.75rem;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
 }
 
 .cand-tier-block.tier-1-block {
-    border-left: 5px solid #14532D;
+    border-left: 6px solid #059669;
     background: linear-gradient(180deg, #F0FDF4 0%, #FFFFFF 100%);
 }
 
 .cand-tier-block.tier-2-block {
-    border-left: 5px solid #075985;
-    background: linear-gradient(180deg, #F0F6FD 0%, #FFFFFF 100%);
+    border-left: 6px solid #0284C7;
+    background: linear-gradient(180deg, #F0F9FF 0%, #FFFFFF 100%);
 }
 
 .cand-tier-block.tier-3-block {
-    border-left: 5px solid #334155;
+    border-left: 6px solid #475569;
     background: linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 100%);
 }
 
@@ -247,9 +437,9 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.1rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.85rem;
+    border-bottom: 1.5px solid #CBD5E1;
 }
 
 .cand-tier-title-group {
@@ -259,9 +449,25 @@
 }
 
 .cand-tier-title-group h3 {
-    font-size: 1.15rem;
+    font-size: 1.2rem;
     font-weight: 800;
     color: #0F172A;
     margin: 0;
 }
 
+/* OCR Review Badge */
+.badge-ocr-review {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #FEF3C7;
+    color: #78350F;
+    border: 1.5px solid #F59E0B;
+    border-radius: var(--radius-sm);
+    padding: 4px 10px;
+    font-size: 0.74rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}

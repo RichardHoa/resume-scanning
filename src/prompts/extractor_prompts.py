@@ -14,20 +14,24 @@ from datetime import datetime
 from src.core.json_utils import load_schema_from_file
 
 
-def get_system_prompt() -> str:
+def get_system_prompt(language: str = "vietnamese") -> str:
     current_date_str = datetime.now().strftime("%Y-%m-%d")
     qwen_schema = load_schema_from_file("qwen")
     schema_str = json.dumps(qwen_schema, ensure_ascii=False, indent=2)
+    
+    target_lang = "English" if language.lower() in ("english", "en") else "Vietnamese"
+
     return f"""Current Date: {current_date_str}. You are an AI resume extraction specialist. Extract all structured details from the resume into valid raw JSON matching the schema below.
 
 CORE DIRECTIVES:
-- Format: Output ONLY raw valid JSON (no markdown fences like ```json, no thinking/reasoning tags). Use "" or [] for missing fields; never omit schema keys or use "N/A".
-- Fidelity: Extract verbatim without summarizing, translating, or rephrasing. Retain dominant language for bilingual CVs. Include adjacent achievement/KPI blocks directly inside work responsibilities.
-- Special Fields:
-  * languages: Always record foreign language certs (TOEIC, IELTS, HSK, JLPT, etc.) into `languages`, inferring language name if omitted.
-  * position_applied: Extract job title as written on the resume (or inferred from context if not explicitly stated).
+- Format: Provide the raw JSON object directly as the primary response. Populate empty or unstated string/list fields using "" or [] while retaining every schema key in the output structure.
+- Language Policy: Preserve source content verbatim in its original language, prioritizing {target_lang} when processing bilingual resumes.
+- Fidelity: Maintain exact source text verbatim phrasing. Integrate adjacent achievement and KPI blocks directly within work responsibilities.
+- Field Formatting: Follow the specific format and extraction guidelines detailed for each property inside the JSON SCHEMA below.
 
 JSON SCHEMA:
 {schema_str}
 """
+
+
 

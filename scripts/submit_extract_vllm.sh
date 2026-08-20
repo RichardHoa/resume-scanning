@@ -20,10 +20,7 @@ RAW_OUTPUT_DIR="$3"
 INITIAL_CWD="$(pwd)"
 
 # -----------------------------------------------------------------------------
-# Robust Location of config.sh
-# Under SLURM, scripts are copied to /var/spool/slurmd/jobXXXXX/slurm_script,
-# so BASH_SOURCE[0] points to the spool directory. We locate config.sh via
-# SLURM_SUBMIT_DIR, BASH_SOURCE, or CWD.
+# Robust Location of config.sh and vllm_utils.sh
 # -----------------------------------------------------------------------------
 FIND_CONFIG_DIR=""
 if [ -n "$SLURM_SUBMIT_DIR" ]; then
@@ -58,6 +55,7 @@ fi
 
 SCRIPT_DIR="$FIND_CONFIG_DIR"
 source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/vllm_utils.sh"
 
 if [ -z "$PROJECT_ROOT" ]; then
   echo "[CRITICAL ERROR] PROJECT_ROOT is not set after sourcing config.sh!" >&2
@@ -67,18 +65,8 @@ fi
 # Force execution strictly from project repository root directory
 cd "$PROJECT_ROOT" || exit 1
 
-# Optimization & Threading Environment Variables (Prevent ONNX/PyTorch crashes & RAM OOM)
-export MAX_JOBS=1
-export NVCC_THREADS=1
-export FLASHINFER_BUILD_MAX_JOBS=1
-export OMP_NUM_THREADS=4
-export MKL_NUM_THREADS=4
-export OPENBLAS_NUM_THREADS=4
-export VECLIB_MAXIMUM_THREADS=4
-export NUMEXPR_NUM_THREADS=4
-
-# Disable detailed prompt logging to txt files (keep console logs normal)
-export DISABLE_PROMPT_LOGGING=1
+# Setup optimization & threading environment variables
+setup_vllm_env
 
 # Resolve PDF input directory (Default: Vietnamese-dataset/CnB inside project root)
 if [ -n "$RAW_PDF_DIR" ]; then
@@ -138,25 +126,7 @@ echo "[$(date +'%Y-%m-%d %H:%M:%S')] STEP 3: Inspecting GPU hardware allocation.
 nvidia-smi 2>/dev/null || echo "nvidia-smi not available"
 echo "====================================================================="
 
-# Auto-detect HuggingFace cache location
-if [ -d "/compute_home/$USER/.cache/huggingface" ]; then
-  export HF_HOME="/compute_home/$USER/.cache/huggingface"
-elif [ -d "$HOME/.cache/huggingface" ]; then
-  export HF_HOME="$HOME/.cache/huggingface"
-fi
-
-# Pin Triton kernel cache to a persistent directory
-export TRITON_CACHE_DIR="${HF_HOME:-$HOME/.cache}/triton_cache"
-mkdir -p "$TRITON_CACHE_DIR"
-echo "[$(date +'%H:%M:%S')] Triton Cache: $TRITON_CACHE_DIR"
-
-# Pin FlashInfer autotune cache
-export VLLM_FLASHINFER_AUTOTUNE_CACHE_DIR="${HF_HOME:-$HOME/.cache}/flashinfer_autotune_cache"
-mkdir -p "$VLLM_FLASHINFER_AUTOTUNE_CACHE_DIR"
-echo "[$(date +'%H:%M:%S')] FlashInfer Autotune Cache: $VLLM_FLASHINFER_AUTOTUNE_CACHE_DIR"
-
-# Find an available open port instantly using OS socket binding
-PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('127.0.0.1', 0)); print(s.getsockname()[1]); s.close()" 2>/dev/null || echo 8100)
+PORT=$(find_free_port)
 
 echo "[$(date +'%H:%M:%S')] Project Root: $PROJECT_ROOT"
 echo "[$(date +'%H:%M:%S')] Target PDF Directory: $PDF_DIR"
@@ -170,94 +140,17 @@ if [ ! -d "$PDF_DIR" ]; then
   exit 1
 fi
 
-# Check if vllm python package is installed in environment
-if python3 -c "import vllm" 2>/dev/null; then
-  echo "=== vLLM package detected in environment! Starting vLLM Server ($MODEL) on Port $PORT ==="
-  
-  if command -v vllm &>/dev/null; then
-    VLLM_CMD="vllm serve"
-  elif python3 -c "import vllm.entrypoints.openai.api_server" 2>/dev/null; then
-    VLLM_CMD="python3 -u -m vllm.entrypoints.openai.api_server"
-  elif python3 -c "import vllm.entrypoints.cli.serve" 2>/dev/null; then
-    VLLM_CMD="python3 -u -m vllm.entrypoints.cli.serve"
-  else
-    VLLM_CMD="vllm serve"
-  fi
+start_vllm_server "$MODEL" "$PORT" "$PROJECT_ROOT/logs/vllm_extract.log" || exit 1
 
-  $VLLM_CMD "$MODEL" \
-    --dtype auto \
-    --port "$PORT" \
-    --host 127.0.0.1 \
-    --max-model-len "${VLLM_MAX_MODEL_LEN:-20000}" \
-    --max-num-seqs 256 \
-    --gpu-memory-utilization 0.8 \
-    --trust-remote-code \
-    --enable-prefix-caching \
-    --enable-chunked-prefill \
-    --served-model-name "$MODEL" \
-    > "$PROJECT_ROOT/logs/vllm_extract.log" 2>&1 &
+echo "=== vLLM Server Ready! Starting Batch Extraction ==="
+echo "Processing PDFs from '$PDF_DIR' -> JSONs to '$OUTPUT_DIR' using model '$MODEL'"
 
-  VLLM_PID=$!
-  trap "kill -9 $VLLM_PID 2>/dev/null || true" EXIT INT TERM
+python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
+  --dir "$PDF_DIR" \
+  --output "$OUTPUT_DIR" \
+  --model-name "$MODEL" \
+  --backend vllm \
+  --vllm-url "http://127.0.0.1:$PORT/v1"
 
-  echo "vLLM server launched with PID $VLLM_PID on port $PORT. Waiting for server readiness..."
-
-  READY=0
-  for i in {1..720}; do
-    if ! kill -0 $VLLM_PID 2>/dev/null; then
-      echo "====================================================================="
-      echo "[$(date +'%H:%M:%S')] CRITICAL: vLLM server process (PID $VLLM_PID) exited unexpectedly!"
-      echo "--- Tail of $PROJECT_ROOT/logs/vllm_extract.log ---"
-      tail -n 35 "$PROJECT_ROOT/logs/vllm_extract.log" 2>/dev/null || echo "(No log file found)"
-      echo "====================================================================="
-      break
-    fi
-
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PORT/v1/models" 2>/dev/null || echo "000")
-    if [ "$HTTP_CODE" -eq 200 ]; then
-      READY=1
-      echo "[$(date +'%H:%M:%S')] SUCCESS: vLLM server is READY and responding on port $PORT!"
-      break
-    fi
-
-    if [ $((i % 2)) -eq 0 ]; then
-      ELAPSED=$((i * 5))
-      echo "[$(date +'%H:%M:%S')] Loading vLLM server (Attempt $i/720, elapsed: ${ELAPSED}s)..."
-      LAST_LOG=$(tail -n 2 "$PROJECT_ROOT/logs/vllm_extract.log" 2>/dev/null | tr '\n' ' ')
-      if [ -n "$LAST_LOG" ]; then
-        echo "   └─ vLLM activity: $LAST_LOG"
-      fi
-    fi
-
-    sleep 5
-  done
-
-  if [ $READY -eq 1 ]; then
-    echo "=== vLLM Server Ready! Starting Batch Extraction ==="
-    echo "Processing PDFs from '$PDF_DIR' -> JSONs to '$OUTPUT_DIR' using model '$MODEL'"
-
-    python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
-      --dir "$PDF_DIR" \
-      --output "$OUTPUT_DIR" \
-      --model-name "$MODEL" \
-      --backend vllm \
-      --vllm-url "http://127.0.0.1:$PORT/v1"
-  else
-    echo "====================================================================================="
-    echo "ERROR: vLLM server failed to start within 3600s timeout on port $PORT."
-    echo "--- Full contents / tail of $PROJECT_ROOT/logs/vllm_extract.log ---"
-    tail -n 50 "$PROJECT_ROOT/logs/vllm_extract.log" 2>/dev/null || echo "(No log file found)"
-    echo "====================================================================================="
-  fi
-
-  echo "=== Cleaning up vLLM Server (PID: $VLLM_PID) ==="
-  kill -9 $VLLM_PID 2>/dev/null || true
-  trap - EXIT INT TERM
-else
-  echo "====================================================================================="
-  echo "[ERROR] 'vllm' package is not installed in Conda environment 'resume_env'."
-  echo "To use vLLM backend, run on terminal: pip install vllm"
-  echo "====================================================================================="
-  exit 1
-fi
+stop_vllm_server
 echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Batch Extraction Job Finished ==="

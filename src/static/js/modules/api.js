@@ -21,18 +21,20 @@ export const API = {
     /**
      * Uploads a candidate PDF resume file to start AI layout extraction.
      * @param {File} file - PDF resume file object.
+     * @param {string} [language='vietnamese'] - Target parse language flag ('vietnamese' or 'english').
      * @returns {Promise<{data: Object, extractionTime: string|null}>} Extracted JSON & execution time header.
      */
-    async extractCv(file) {
+    async extractCv(file, language = "vietnamese") {
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('language', language);
         const response = await fetch('/api/extract', {
             method: 'POST',
             body: formData
         });
         if (!response.ok) {
             const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.detail || 'Extraction failed.');
+            throw new Error(errData.error || errData.detail || 'Extraction failed.');
         }
         const data = await response.json();
         const timeHeader = response.headers.get('X-Extraction-Time');

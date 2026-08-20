@@ -111,7 +111,7 @@
                     <!-- Search & Filter Toolbar -->
                     <div class="cand-toolbar">
                         <div class="search-input-group">
-                            <input type="text" id="cand-search-input" class="form-control" placeholder="Search candidate name, title, email, or filename..." aria-label="Search candidate by name, title, email, or filename">
+                            <input type="text" id="cand-search-input" class="form-control" placeholder="Search candidate name, title, or email..." aria-label="Search candidate by name, title, or email">
                         </div>
                         <div class="toolbar-select-group">
                             <div class="select-wrapper">
@@ -148,16 +148,16 @@
     </div>
 
     <!-- Candidate Detail Modal Overlay -->
-    <div class="modal-overlay" id="cand-detail-modal" role="dialog" aria-modal="true" aria-labelledby="modal-cand-name" aria-describedby="modal-cand-file" style="display: none;">
+    <div class="modal-overlay" id="cand-detail-modal" role="dialog" aria-modal="true" aria-labelledby="modal-cand-name" style="display: none;">
         <div class="modal-card">
             <div class="modal-header">
                 <div class="modal-header-info">
                     <h2 id="modal-cand-name">Candidate Name</h2>
-                    <span class="modal-subtext" id="modal-cand-file">resume_evaluation.json</span>
+                    <span class="modal-subtext" id="modal-cand-role">Evaluation Dossier</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <button class="btn btn-secondary btn-sm" id="modal-btn-download" type="button">
-                        <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Download JSON
+                        <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Export JSON
                     </button>
                     <button class="modal-close-btn" id="modal-close-btn" aria-label="Close Candidate Details Modal" type="button">&times;</button>
                 </div>
