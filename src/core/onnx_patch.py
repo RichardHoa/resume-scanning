@@ -51,6 +51,3 @@ def apply_onnx_affinity_patch():
             ort._affinity_patched = True
     except ImportError:
         pass
-
-# Automatically execute when module is imported
-apply_onnx_affinity_patch()

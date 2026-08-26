@@ -16,7 +16,11 @@ from src.core.config import SCHEMAS_DIR
 
 
 def load_schema_from_file(model_name: str = "qwen") -> dict:
-    """Loads the canonical Qwen schema dictionary from the schemas/ directory."""
+    """Loads the canonical Qwen schema dictionary from the schemas/ directory.
+
+    Note: model_name is accepted for API compatibility but currently unused —
+    this project uses a single Qwen-format schema (qwen_schema.json).
+    """
     schema_path = os.path.join(SCHEMAS_DIR, "qwen_schema.json")
     try:
         with open(schema_path, "r", encoding="utf-8") as f:

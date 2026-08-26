@@ -52,25 +52,78 @@ export const API = {
     },
 
     /**
-     * Evaluates candidate resumes against standard & hidden job criteria.
+     * Evaluates candidate resumes against standard & hidden job criteria or verified RAG criteria.
      * @param {string} stdReq - Standard job requirements text.
      * @param {string} hiddenReq - HR hidden / culture fit requirements text.
      * @param {Array<string>} filenames - List of candidate JSON filenames to evaluate.
+     * @param {boolean} [useExistingRag=false] - Whether to use already verified RAG criteria.
      * @returns {Promise<Object>} Batch evaluation leaderboard results.
      */
-    async evaluateBatch(stdReq, hiddenReq, filenames) {
+    async evaluateBatch(stdReq, hiddenReq, filenames, useExistingRag = false) {
         const res = await fetch('/api/evaluate_batch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 standard_requirements: stdReq,
                 hidden_requirements: hiddenReq,
-                resume_filenames: filenames
+                resume_filenames: filenames,
+                use_existing_rag: useExistingRag
             })
         });
         if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.detail || 'Evaluation failed.');
+            const errMsg = errData.detail || errData.error || errData.message || `Server returned HTTP status ${res.status}`;
+            throw new Error(errMsg);
+        }
+        return await res.json();
+    },
+
+    /**
+     * Decomposes HR job requirements into 5 RAG criteria dimensions and hr_rag.txt.
+     * @param {string} stdReq - Standard job requirements text.
+     * @param {string} hiddenReq - HR hidden / culture fit requirements text.
+     * @param {string} [language='vietnamese'] - Output language.
+     * @returns {Promise<Object>} Decomposed categories and hr_rag.txt content.
+     */
+    async decomposeRequirements(stdReq, hiddenReq, language = "vietnamese") {
+        const res = await fetch('/api/rag/decompose', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                standard_requirements: stdReq,
+                hidden_requirements: hiddenReq,
+                language: language
+            })
+        });
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            const errMsg = errData.detail || errData.error || errData.message || `Server returned HTTP status ${res.status}`;
+            throw new Error(errMsg);
+        }
+        return await res.json();
+    },
+
+    /**
+     * Updates persistent RAG database with user-edited criteria across 5 dimensions.
+     * @param {Object} categories - Map of category names to arrays of string criteria items.
+     * @param {string} [stdReq=''] - Standard requirements text.
+     * @param {string} [hiddenReq=''] - Hidden requirements text.
+     * @returns {Promise<Object>} Updated RAG summary.
+     */
+    async updateRagCriteria(categories, stdReq = '', hiddenReq = '') {
+        const res = await fetch('/api/rag/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                categories: categories,
+                standard_requirements: stdReq,
+                hidden_requirements: hiddenReq
+            })
+        });
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            const errMsg = errData.detail || errData.error || errData.message || `Server returned HTTP status ${res.status}`;
+            throw new Error(errMsg);
         }
         return await res.json();
     },

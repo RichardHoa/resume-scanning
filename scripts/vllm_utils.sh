@@ -17,15 +17,19 @@ export PROJECT_ROOT
 # -----------------------------------------------------------------------------
 setup_vllm_env() {
   export PYTHONUNBUFFERED=1
-  export MAX_JOBS=1
+
+  # Parallel compilation with 4 workers (requires ~40-60GB host RAM during nvcc CUTLASS build)
+  export VLLM_USE_DEEP_GEMM=0
+  export VLLM_USE_V1=0
+  export MAX_JOBS=4
   export NVCC_THREADS=1
-  export FLASHINFER_BUILD_MAX_JOBS=1
-  export OMP_NUM_THREADS=4
-  export MKL_NUM_THREADS=4
-  export OPENBLAS_NUM_THREADS=4
-  export VECLIB_MAXIMUM_THREADS=4
-  export NUMEXPR_NUM_THREADS=4
-  export DISABLE_PROMPT_LOGGING=1
+  export FLASHINFER_BUILD_MAX_JOBS=4
+  export OMP_NUM_THREADS=8
+  export MKL_NUM_THREADS=8
+  export OPENBLAS_NUM_THREADS=8
+  export VECLIB_MAXIMUM_THREADS=8
+  export NUMEXPR_NUM_THREADS=8
+  export DISABLE_PROMPT_LOGGING="${DISABLE_PROMPT_LOGGING:-0}"
 
   # Auto-detect HuggingFace cache location
   if [ -d "/compute_home/$USER/.cache/huggingface" ]; then
@@ -57,17 +61,22 @@ find_free_port() {
 VLLM_PID=""
 
 # -----------------------------------------------------------------------------
-# Stop vLLM Server Instance
+# Stop vLLM Server Instance & All Worker Processes
 # -----------------------------------------------------------------------------
 stop_vllm_server() {
   if [ -n "$VLLM_PID" ] && kill -0 "$VLLM_PID" 2>/dev/null; then
-    echo "[vLLM Helper] Cleaning up vLLM Server (PID: $VLLM_PID)..."
+    echo "[vLLM Helper] Cleaning up vLLM Server (PID: $VLLM_PID) and child workers..."
+    # Kill process tree
+    pkill -P "$VLLM_PID" 2>/dev/null || true
     kill "$VLLM_PID" 2>/dev/null || true
     sleep 1
     if kill -0 "$VLLM_PID" 2>/dev/null; then
       kill -9 "$VLLM_PID" 2>/dev/null || true
     fi
   fi
+  # Clean up any orphaned EngineCore or vLLM worker processes
+  pkill -9 -f "vllm.entrypoints" 2>/dev/null || true
+  pkill -9 -f "EngineCore" 2>/dev/null || true
   VLLM_PID=""
   trap - EXIT INT TERM
 }
@@ -77,9 +86,19 @@ stop_vllm_server() {
 # Usage: start_vllm_server <MODEL_NAME> <PORT> [LOG_FILE]
 # -----------------------------------------------------------------------------
 start_vllm_server() {
-  local model="${1:-Qwen/Qwen3.5-35B-A3B}"
+  local model="${1:-Qwen/Qwen3.5-35B-A3B-FP8}"
   local port="${2:-8100}"
   local log_file="${3:-$PROJECT_ROOT/logs/vllm_server.log}"
+
+  # Pre-flight: Clean up any lingering zombie vLLM / EngineCore processes to free VRAM
+  local lingering_pids=$(pgrep -f "(vllm\.entrypoints|vllm serve|EngineCore)" 2>/dev/null | tr '\n' ' ')
+  if [ -n "$lingering_pids" ]; then
+    echo "[vLLM Pre-Flight] Found residual vLLM processes ($lingering_pids). Cleaning up to free GPU VRAM..."
+    pkill -9 -f "vllm.entrypoints" 2>/dev/null || true
+    pkill -9 -f "EngineCore" 2>/dev/null || true
+    pkill -9 -f "vllm serve" 2>/dev/null || true
+    sleep 2
+  fi
 
   # Check if vllm python package is installed in environment
   if ! python3 -c "import vllm" 2>/dev/null; then
@@ -107,9 +126,11 @@ start_vllm_server() {
     --dtype auto \
     --port "$port" \
     --host 127.0.0.1 \
-    --max-model-len "${VLLM_MAX_MODEL_LEN:-20000}" \
+    --max-model-len "${VLLM_MAX_MODEL_LEN:-16384}" \
     --max-num-seqs 256 \
-    --gpu-memory-utilization 0.8 \
+    --enable-prefix-caching \
+    --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.85}" \
+    --enforce-eager \
     --trust-remote-code \
     --served-model-name "$model" \
     > "$log_file" 2>&1 &
@@ -126,7 +147,7 @@ start_vllm_server() {
       echo "====================================================================="
       echo "[$(date +'%H:%M:%S')] CRITICAL: vLLM server process (PID $VLLM_PID) exited unexpectedly!"
       echo "--- Tail of $log_file ---"
-      tail -n 35 "$log_file" 2>/dev/null || echo "(No log file found)"
+      tail -n 120 "$log_file" 2>/dev/null || echo "(No log file found)"
       echo "====================================================================="
       break
     fi

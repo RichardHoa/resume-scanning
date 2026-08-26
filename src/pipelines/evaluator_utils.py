@@ -25,42 +25,92 @@ def clean_and_deduplicate_list(items: Any, max_items: int = 10) -> List[str]:
 
 
 def validate_category_evaluation(parsed: Any) -> Optional[Dict[str, Any]]:
-    """Validates that parsed JSON contains a valid numeric score (0-100) and required output fields."""
+    """
+    Validates that parsed JSON contains valid evaluation data.
+    If criteria_evaluations list is present, computes score deterministically from atomic criteria coverage.
+    Otherwise, validates the numeric score (0-100) and required output fields.
+    """
     if not isinstance(parsed, dict) or not parsed:
         return None
 
-    score_val = parsed.get("score")
-    if score_val is None:
-        return None
+    # 1. Process atomic criteria_evaluations if present for deterministic scoring
+    cleaned_criteria = []
+    deterministic_score: Optional[int] = None
+    raw_criteria = parsed.get("criteria_evaluations")
+    if isinstance(raw_criteria, list) and len(raw_criteria) > 0:
+        total_score_acc = 0.0
+        valid_count = 0
+        for item in raw_criteria:
+            if isinstance(item, dict):
+                crit_text = str(item.get("criterion", "")).strip()
+                verdict = str(item.get("verdict", "")).strip().upper()
+                quote = item.get("evidence_quote")
+                
+                # Filter out null, none, n/a, or empty placeholders
+                quote_str: Optional[str] = None
+                if quote is not None:
+                    raw_q = str(quote).strip()
+                    if raw_q.lower() not in ("null", "none", "n/a", "na", "", "không có", "không", "none.", "nil"):
+                        quote_str = raw_q
 
-    try:
-        score_str = str(score_val).strip()
-        # Reject string placeholders like '<integer>', '<integer 0-100>', or text containing no digits
-        if score_str.startswith("<") or not any(c.isdigit() for c in score_str):
-            return None
-        # Extract digits
-        clean_num = re.sub(r'[^0-9.]', '', score_str)
-        if not clean_num:
-            return None
-        score = int(round(float(clean_num)))
-    except (ValueError, TypeError):
-        return None
+                # Strict discrete verdict scoring mapping based on prompt specification
+                if verdict == "STRONG_EVIDENCE":
+                    s = 1.0
+                elif verdict == "PARTIAL_EVIDENCE":
+                    s = 0.5
+                else:
+                    s = 0.0
 
-    if not (0 <= score <= 100):
+                total_score_acc += s
+                valid_count += 1
+                cleaned_criteria.append({
+                    "criterion": crit_text,
+                    "verdict": verdict if verdict in ("STRONG_EVIDENCE", "PARTIAL_EVIDENCE", "NO_EVIDENCE") else ("STRONG_EVIDENCE" if s >= 0.9 else "PARTIAL_EVIDENCE" if s >= 0.4 else "NO_EVIDENCE"),
+                    "score": round(s, 2),
+                    "evidence_quote": quote_str
+                })
+
+        if valid_count > 0:
+            deterministic_score = int(round((total_score_acc / valid_count) * 100.0))
+
+    # 2. Determine final score (deterministic calculation preferred, fallback to explicit score)
+    score: Optional[int] = None
+    if deterministic_score is not None:
+        score = deterministic_score
+    else:
+        score_val = parsed.get("score")
+        if score_val is not None:
+            try:
+                score_str = str(score_val).strip()
+                if not score_str.startswith("<") and any(c.isdigit() for c in score_str):
+                    clean_num = re.sub(r'[^0-9.]', '', score_str)
+                    if clean_num:
+                        score = int(round(float(clean_num)))
+            except (ValueError, TypeError):
+                score = None
+
+    if score is None or not (0 <= score <= 100):
         return None
 
     strengths = clean_and_deduplicate_list(parsed.get("strengths", []), max_items=10)
     gaps = clean_and_deduplicate_list(parsed.get("gaps", []), max_items=8)
     quotes = clean_and_deduplicate_list(parsed.get("evidence_quotes", []), max_items=6)
+    if not quotes and cleaned_criteria:
+        extracted_quotes = [c["evidence_quote"] for c in cleaned_criteria if c.get("evidence_quote")]
+        quotes = clean_and_deduplicate_list(extracted_quotes, max_items=6)
     reasoning = str(parsed.get("reasoning_summary", "")).strip()
 
-    return {
+    result: Dict[str, Any] = {
         "score": score,
         "strengths": strengths,
         "gaps": gaps,
         "evidence_quotes": quotes,
         "reasoning_summary": reasoning
     }
+    if cleaned_criteria:
+        result["criteria_evaluations"] = cleaned_criteria
+
+    return result
 
 
 def extract_relevant_resume_field(category: str, resume: Dict[str, Any]) -> Dict[str, Any]:
@@ -110,11 +160,24 @@ def extract_relevant_resume_field(category: str, resume: Dict[str, Any]) -> Dict
         summary_lines = []
         for w in work_exp_list:
             if isinstance(w, dict):
-                resp = w.get("responsibilities", "")
-                if resp:
-                    summary_lines.append(str(resp))
+                pos = w.get("position", "")
+                comp = w.get("company_name", "")
+                dur = w.get("duration", "")
+                resp = w.get("responsibilities") or w.get("responsabilities") or w.get("description") or ""
+                if isinstance(resp, list):
+                    resp_str = "\n".join(str(x) for x in resp if x)
+                else:
+                    resp_str = str(resp).strip() if resp else ""
+                header = f"{pos} tại {comp} ({dur})".strip() if (pos or comp) else ""
+                if header and resp_str:
+                    summary_lines.append(f"{header}:\n{resp_str}")
+                elif resp_str:
+                    summary_lines.append(resp_str)
+                elif header:
+                    summary_lines.append(header)
             elif isinstance(w, str):
                 summary_lines.append(w)
+
         basic_info = resume.get("basic_information", {})
         sanitized_basic_info = {}
         if isinstance(basic_info, dict):
@@ -125,7 +188,11 @@ def extract_relevant_resume_field(category: str, resume: Dict[str, Any]) -> Dict
             }
 
         return {
+            "position_applied": resume.get("position_applied", {}),
             "self_evaluation": resume.get("self_evaluation", ""),
             "basic_information": sanitized_basic_info,
-            "work_experience_summary": summary_lines
+            "skills_and_specialties": resume.get("skills_and_specialties", []),
+            "projects": resume.get("projects", []),
+            "work_experience_summary": summary_lines,
+            "work_experience_details": work_exp_list
         }

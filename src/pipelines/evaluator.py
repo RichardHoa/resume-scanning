@@ -101,19 +101,22 @@ class ResumeEvaluator:
         resume_name: str = "candidate", 
         system_prompt: Optional[str] = None, 
         run_index: Optional[int] = None,
-        language: Optional[str] = None
+        language: Optional[str] = None,
+        log_dir: Optional[str] = None
     ) -> str:
         eff_language = language or self.language
-        if self.mock:
-            response = get_mock_category_response(category, language=eff_language)
-            log_llm_call(prompt, response, category, resume_name, run_index=run_index)
-            return response
-
         if system_prompt is None:
             if category == "requirements_decomposition":
                 system_prompt = get_requirements_decomposition_system_prompt()
             else:
                 system_prompt = get_evaluator_system_prompt(language=eff_language)
+
+        full_prompt = f"--- SYSTEM PROMPT ---\n{system_prompt}\n\n--- USER PROMPT ---\n{prompt}" if system_prompt else prompt
+
+        if self.mock:
+            response = get_mock_category_response(category, language=eff_language)
+            log_llm_call(full_prompt, response, category, resume_name, run_index=run_index, log_dir=log_dir)
+            return response
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -127,7 +130,7 @@ class ResumeEvaluator:
         else:
             response_text = ""
 
-        log_llm_call(prompt, response_text, category, resume_name, run_index=run_index)
+        log_llm_call(full_prompt, response_text, category, resume_name, run_index=run_index, log_dir=log_dir)
         return response_text
 
     def _call_transformers_backend(self, prompt: str, messages: List[Dict[str, str]]) -> str:
@@ -140,9 +143,26 @@ class ResumeEvaluator:
         self,
         standard_req: str,
         hidden_req: str,
-        resume_name: str = "job_requirements"
+        resume_name: str = "job_requirements",
+        log_dir: Optional[str] = None
     ) -> Optional[Dict[str, List[str]]]:
-        return decompose_requirements_with_llm(self, standard_req, hidden_req, resume_name)
+        return decompose_requirements_with_llm(self, standard_req, hidden_req, resume_name, log_dir=log_dir)
+
+    def decompose_requirements(
+        self,
+        standard_req: str,
+        hidden_req: str,
+        resume_name: str = "hr_requirements",
+        log_dir: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Decomposes HR requirements using LLM, stores in RAG, exports hr_rag.txt, and returns stored summary.
+        """
+        return self.rag.decompose_only(
+            standard_req,
+            hidden_req,
+            llm_decomposer_func=lambda s, h: self._decompose_requirements_with_llm(s, h, resume_name, log_dir=log_dir)
+        )
 
     def _extract_relevant_resume_field(self, category: str, resume: Dict[str, Any]) -> Dict[str, Any]:
         """Wrapper for resume section extraction utility."""
@@ -157,14 +177,16 @@ class ResumeEvaluator:
         resume_name: str,
         max_retries: int = 30,
         run_index: Optional[int] = None,
-        language: Optional[str] = None
+        language: Optional[str] = None,
+        log_dir: Optional[str] = None
     ) -> Dict[str, Any]:
         eff_language = language or self.language
         resume_snippet = self._extract_relevant_resume_field(category, resume_data)
         prompt = get_category_evaluation_prompt(category_name, self.model_name, retrieved_criteria, resume_snippet)
 
+        raw_out = ""
         for attempt in range(1, max_retries + 1):
-            raw_out = self._call_llm(prompt, category, resume_name, run_index=run_index, language=eff_language)
+            raw_out = self._call_llm(prompt, category, resume_name, run_index=run_index, language=eff_language, log_dir=log_dir)
             parsed = clean_and_parse_json(raw_out)
             validated = validate_category_evaluation(parsed)
 
@@ -173,10 +195,10 @@ class ResumeEvaluator:
                 return validated
 
             print(f"[Eval Retry] Attempt {attempt}/{max_retries} for category '{category}' failed. Retrying...", file=sys.stderr)
-            log_broken_json(prompt, raw_out, category, resume_name, attempt=attempt, error_reason="Invalid numeric score or JSON", run_index=run_index)
+            log_broken_json(prompt, raw_out, category, resume_name, attempt=attempt, error_reason="Invalid numeric score or JSON", run_index=run_index, log_dir=log_dir)
 
         print(f"[FATAL] Category '{category_name}' failed after {max_retries} retries.", file=sys.stderr)
-        log_broken_json(prompt, raw_out, category, resume_name, attempt=max_retries, error_reason=f"Max retries ({max_retries}) reached", run_index=run_index)
+        log_broken_json(prompt, raw_out, category, resume_name, attempt=max_retries, error_reason=f"Max retries ({max_retries}) reached", run_index=run_index, log_dir=log_dir)
         is_en = eff_language.lower() in ("english", "en")
         gap_msg = f"Failed to parse evaluation data from model (Invalid JSON/Score after {max_retries} attempts)" if is_en else f"Không thể phân tích dữ liệu đánh giá từ mô hình (Format JSON/Score không hợp lệ sau {max_retries} lần thử)"
         reason_msg = f"DATA FAILURE: Unable to parse valid JSON after {max_retries} attempts." if is_en else f"THẤT BẠI DỮ LIỆU: Không thể phân tích JSON hợp lệ sau {max_retries} lần thử."
@@ -196,14 +218,14 @@ class ResumeEvaluator:
         resume_data: Dict[str, Any],
         resume_name: str,
         num_evaluations: int,
-        language: Optional[str] = None
+        language: Optional[str] = None,
+        log_dir: Optional[str] = None
     ):
         eff_language = language or self.language
         is_en = eff_language.lower() in ("english", "en")
         t_cat_start = time.time()
         query_context = json.dumps(self._extract_relevant_resume_field(cat_key, resume_data), ensure_ascii=False)
-        top_k = 5 if cat_key == "work_experience" else 3
-        retrieved = self.rag.retrieve(cat_key, query_context, top_k=top_k)
+        retrieved = self.rag.retrieve(cat_key, query_context, top_k=None)
 
         if not retrieved:
             print(f"[Evaluation] Category '{cat_name}' has no criteria in RAG. Setting 0% weight (not applicable).", file=sys.stderr)
@@ -223,14 +245,14 @@ class ResumeEvaluator:
                 from concurrent.futures import ThreadPoolExecutor
                 def _run_single_eval(run_i: int) -> Dict[str, Any]:
                     return self.evaluate_category(
-                        cat_key, cat_name, resume_data, retrieved, resume_name, run_index=run_i, language=eff_language
+                        cat_key, cat_name, resume_data, retrieved, resume_name, run_index=run_i, language=eff_language, log_dir=log_dir
                     )
-                max_workers = min(10, num_evaluations)
+                max_workers = 40
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     eval_runs = list(executor.map(_run_single_eval, range(1, num_evaluations + 1)))
             else:
                 eval_runs = [
-                    self.evaluate_category(cat_key, cat_name, resume_data, retrieved, resume_name, run_index=run_i, language=eff_language)
+                    self.evaluate_category(cat_key, cat_name, resume_data, retrieved, resume_name, run_index=run_i, language=eff_language, log_dir=log_dir)
                     for run_i in range(1, num_evaluations + 1)
                 ]
 
@@ -256,22 +278,25 @@ class ResumeEvaluator:
         resume_data: Dict[str, Any],
         resume_name: str,
         num_evaluations: int,
-        language: Optional[str] = None
+        language: Optional[str] = None,
+        log_dir: Optional[str] = None
     ) -> Dict[str, Any]:
         eff_language = language or self.language
         cat_eval_outputs = {}
-        for cat_key, cat_name in CATEGORY_LABELS.items():
+
+        def _evaluate_dimension_task(item):
+            cat_key, cat_name = item
             try:
                 ck, cn, cat_res, retrieved, elapsed = self._evaluate_single_category(
-                    cat_key, cat_name, resume_data, resume_name, num_evaluations, language=eff_language
+                    cat_key, cat_name, resume_data, resume_name, num_evaluations, language=eff_language, log_dir=log_dir
                 )
-                cat_eval_outputs[ck] = (cn, cat_res, retrieved, elapsed)
+                return ck, (cn, cat_res, retrieved, elapsed)
             except Exception as e:
                 import traceback
                 print(f"[Category Eval Error] Exception during execution for '{cat_name}': {e}\n{traceback.format_exc()}", file=sys.stderr)
                 is_en = eff_language.lower() in ("english", "en")
                 err_gap = f"Evaluation dimension processing error: {e}" if is_en else f"Lỗi xử lý mục đánh giá: {e}"
-                cat_eval_outputs[cat_key] = (
+                return cat_key, (
                     cat_name,
                     {
                         "score": FALLBACK_ERROR_SCORE,
@@ -287,6 +312,13 @@ class ResumeEvaluator:
                     [],
                     0.0
                 )
+
+        from concurrent.futures import ThreadPoolExecutor
+        categories_items = list(CATEGORY_LABELS.items())
+        with ThreadPoolExecutor(max_workers=len(categories_items)) as executor:
+            for ck, res_tuple in executor.map(_evaluate_dimension_task, categories_items):
+                cat_eval_outputs[ck] = res_tuple
+
         return cat_eval_outputs
 
     def _aggregate_evaluation_results(
@@ -314,8 +346,9 @@ class ResumeEvaluator:
         resume_name: str = "candidate",
         output_dir: Optional[str] = None,
         output_path: Optional[str] = None,
-        num_evaluations: int = 20,
-        language: Optional[str] = None
+        num_evaluations: int = 1,
+        language: Optional[str] = None,
+        log_dir: Optional[str] = None
     ) -> Dict[str, Any]:
         eff_language = language or self.language
         start_resume_time = time.time()
@@ -328,13 +361,13 @@ class ResumeEvaluator:
         self.rag.ingest_requirements(
             standard_req,
             hidden_req,
-            llm_decomposer_func=lambda s, h: self._decompose_requirements_with_llm(s, h, resume_name)
+            llm_decomposer_func=lambda s, h: self._decompose_requirements_with_llm(s, h, resume_name, log_dir=log_dir)
         )
         decomp_time = time.time() - t_decomp_start
         print(f"[Timing Log] [{resume_name}] HR Requirement Categorization took: {decomp_time:.2f}s", file=sys.stderr)
 
         # 2. Evaluate each category
-        cat_eval_outputs = self._evaluate_all_categories(resume_data, resume_name, num_evaluations, language=eff_language)
+        cat_eval_outputs = self._evaluate_all_categories(resume_data, resume_name, num_evaluations, language=eff_language, log_dir=log_dir)
 
         # 3. Aggregate results
         dimension_results, category_timings, overall_score, recommendation = self._aggregate_evaluation_results(

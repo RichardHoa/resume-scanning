@@ -7,10 +7,10 @@ An automated system to extract structured information (personal details, skills,
 ## 💡 Our Approach
 
 1. **Layout Extraction**: We use **Docling** to parse the PDF resume into a layout-aware Markdown format.
-2. **Structured JSON Extraction**: We pass the Markdown representation to an LLM (such as `Qwen/Qwen3.5-9B` or `Qwen/Qwen3.5-35B-A3B`) which parses and formats the information according to predefined JSON schemas.
+2. **Structured JSON Extraction**: We pass the Markdown representation to an LLM (such as `Qwen/Qwen3.5-9B` or `Qwen/Qwen3.5-35B-A3B-FP8`) which parses and formats the information according to predefined JSON schemas.
 
 *Recommended models for best extraction performance:*
-- **Qwen/Qwen3.5-35B-A3B**: Best accuracy when GPU memory is available.
+- **Qwen/Qwen3.5-35B-A3B-FP8**: Best accuracy when GPU memory is available.
 - **Qwen/Qwen3.5-9B**: Great balance of performance and lower memory usage.
 
 ---

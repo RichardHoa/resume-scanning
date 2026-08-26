@@ -396,7 +396,7 @@ class ResumeExtractor:
 
         return None, last_raw_result
 
-    def extract(self, pdf_path: str, language: str = "vietnamese", max_retries: int = 5, consensus_runs: int = 5) -> str:
+    def extract(self, pdf_path: str, language: str = "vietnamese", max_retries: int = 5, consensus_runs: int = 1) -> str:
         pdf_warnings = []
         if self.mock:
             resume_text = "Mock resume content converted from PDF."
@@ -417,12 +417,26 @@ class ResumeExtractor:
         last_raw_result = ""
 
         print(f"[Medoid Consensus] Gathering {consensus_runs} extraction candidates (target language: {target_lang_normalized})...", file=sys.stderr)
-        for run_idx in range(1, consensus_runs + 1):
-            parsed_dict, raw_result = self.extract_single_pass(resume_text, pdf_path, language=language, max_retries=max_retries)
-            if raw_result:
-                last_raw_result = raw_result
-            if parsed_dict is not None:
-                candidates.append(parsed_dict)
+        if self.backend == "vllm" and consensus_runs > 1:
+            from concurrent.futures import ThreadPoolExecutor
+            def _run_pass(pass_idx: int):
+                return self.extract_single_pass(resume_text, pdf_path, language=language, max_retries=max_retries)
+
+            with ThreadPoolExecutor(max_workers=min(consensus_runs, 5)) as executor:
+                pass_results = list(executor.map(_run_pass, range(1, consensus_runs + 1)))
+
+            for parsed_dict, raw_result in pass_results:
+                if raw_result:
+                    last_raw_result = raw_result
+                if parsed_dict is not None:
+                    candidates.append(parsed_dict)
+        else:
+            for run_idx in range(1, consensus_runs + 1):
+                parsed_dict, raw_result = self.extract_single_pass(resume_text, pdf_path, language=language, max_retries=max_retries)
+                if raw_result:
+                    last_raw_result = raw_result
+                if parsed_dict is not None:
+                    candidates.append(parsed_dict)
 
         final_dict = None
         consensus_score = 0.0

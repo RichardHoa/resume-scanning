@@ -143,35 +143,16 @@ class LocalCriteriaRAG:
         """Returns a structured summary of all RAG criteria stored in the persistent database."""
         return get_stored_rag_summary(self)
 
-    def ingest_requirements(self, standard_req: str, hidden_req: str, llm_decomposer_func=None, force_reingest: bool = False):
+    def ingest_decomposed_dict(self, decomposed: Dict[str, List[str]], standard_req: str = "", hidden_req: str = ""):
         """
-        Decomposes HR text into atomic criteria chunks with category tags using LLM.
+        Ingests a decomposed dictionary mapping category names to lists of criteria strings directly into RAG.
+        Updates ChromaDB / fallback storage, recomputes vector embeddings, and generates hr_rag.txt.
         """
         with self._lock:
-            standard_req = (standard_req or "").strip()
-            hidden_req = (hidden_req or "").strip()
-
-            if not force_reingest and self.has_stored_rag():
-                print(f"[LocalRAG] Reusing persistent ChromaDB database ({len(self.documents)} items in {self.db_path}). SKIPPING LLM requirement categorization step!", file=sys.stderr)
-                return
-
             self.clear_rag_database()
-
-            if not standard_req and not hidden_req:
-                print("[LocalRAG] No HR requirements or hidden requirements provided. Documents list will be empty.", file=sys.stderr)
+            if not decomposed or not isinstance(decomposed, dict):
+                print("[LocalRAG] Decomposed criteria dictionary is empty.", file=sys.stderr)
                 return
-
-            if llm_decomposer_func is None:
-                raise RuntimeError("[LocalRAG Error] llm_decomposer_func is required for requirement decomposition.")
-
-            print("[LocalRAG] Using LLM requirement decomposer...", file=sys.stderr)
-            try:
-                decomposed = llm_decomposer_func(standard_req, hidden_req)
-            except Exception as e:
-                raise RuntimeError(f"[LocalRAG Error] LLM requirement decomposition failed: {e}") from e
-
-            if decomposed is None or not isinstance(decomposed, dict):
-                raise RuntimeError("[LocalRAG Error] LLM requirement decomposition returned invalid or unparseable result.")
 
             now_str = datetime.now().isoformat()
             ids = []
@@ -236,6 +217,52 @@ class LocalCriteriaRAG:
 
             self.export_hr_rag_file(standard_req, hidden_req, decomposed)
 
+    def ingest_requirements(self, standard_req: str, hidden_req: str, llm_decomposer_func=None, force_reingest: bool = False):
+        """
+        Decomposes HR text into atomic criteria chunks with category tags using LLM.
+        """
+        standard_req = (standard_req or "").strip()
+        hidden_req = (hidden_req or "").strip()
+
+        if not force_reingest and self.has_stored_rag():
+            print(f"[LocalRAG] Reusing persistent ChromaDB database ({len(self.documents)} items in {self.db_path}). SKIPPING LLM requirement categorization step!", file=sys.stderr)
+            return
+
+        if not standard_req and not hidden_req:
+            print("[LocalRAG] No HR requirements or hidden requirements provided. Documents list will be empty.", file=sys.stderr)
+            with self._lock:
+                self.clear_rag_database()
+            return
+
+        if llm_decomposer_func is None:
+            raise RuntimeError("[LocalRAG Error] llm_decomposer_func is required for requirement decomposition.")
+
+        print("[LocalRAG] Using LLM requirement decomposer...", file=sys.stderr)
+        try:
+            decomposed = llm_decomposer_func(standard_req, hidden_req)
+        except Exception as e:
+            raise RuntimeError(f"[LocalRAG Error] LLM requirement decomposition failed: {e}") from e
+
+        if decomposed is None or not isinstance(decomposed, dict):
+            raise RuntimeError("[LocalRAG Error] LLM requirement decomposition returned invalid or unparseable result.")
+
+        self.ingest_decomposed_dict(decomposed, standard_req=standard_req, hidden_req=hidden_req)
+
+    def decompose_only(self, standard_req: str, hidden_req: str, llm_decomposer_func=None) -> Dict[str, Any]:
+        """
+        Decomposes requirements and saves them into RAG store without running candidate evaluation.
+        Returns the structured summary containing categorized items and generated hr_rag.txt.
+        """
+        self.ingest_requirements(standard_req, hidden_req, llm_decomposer_func=llm_decomposer_func, force_reingest=True)
+        return self.get_stored_rag_summary()
+
+    def update_criteria_manually(self, categories: Dict[str, List[str]], standard_req: str = "", hidden_req: str = "") -> Dict[str, Any]:
+        """
+        Updates stored RAG criteria with manual user edits, re-computes embeddings, and updates hr_rag.txt.
+        """
+        self.ingest_decomposed_dict(categories, standard_req=standard_req, hidden_req=hidden_req)
+        return self.get_stored_rag_summary()
+
     def export_hr_rag_file(self, standard_req: str, hidden_req: str, decomposed: Dict[str, List[str]], output_path: str = "hr_rag.txt"):
         """Exports a summary detailing how HR requirements are classified into 5 RAG dimensions."""
         export_hr_rag_file(standard_req, hidden_req, decomposed, output_path)
@@ -252,17 +279,24 @@ class LocalCriteriaRAG:
             except Exception as e:
                 raise RuntimeError(f"[LocalRAG Fatal Error] Embedding computation failed: {e}") from e
 
-    def retrieve(self, category: str, query: str, top_k: int = 3) -> List[str]:
+    def retrieve(self, category: str, query: str = "", top_k: Optional[int] = None) -> List[str]:
         """
         Retrieves criteria items using ChromaDB vector search, dense cosine similarity, or in-memory fallback.
+        If top_k is None, retrieves ALL criteria items belonging to the category without truncation.
         """
         query = query or ""
+        filtered_docs = [doc for doc in self.documents if doc.get("category") == category]
+        if not filtered_docs:
+            return []
+
+        cat_count = len(filtered_docs)
+        effective_k = min(top_k, cat_count) if top_k is not None else cat_count
 
         if self.collection is not None and self.collection.count() > 0:
             try:
                 query_kwargs = {
                     "where": {"category": category},
-                    "n_results": top_k
+                    "n_results": effective_k
                 }
                 if self.model:
                     query_emb = self.model.encode(query)
@@ -278,11 +312,6 @@ class LocalCriteriaRAG:
                         return retrieved_texts
             except Exception as e:
                 print(f"[LocalRAG Warning] ChromaDB vector retrieval failed ({e}). Falling back to in-memory store.", file=sys.stderr)
-
-        filtered_docs = [doc for doc in self.documents if doc.get("category") == category]
-        
-        if not filtered_docs:
-            return []
 
         if self.model:
             try:
@@ -302,9 +331,9 @@ class LocalCriteriaRAG:
                         scores = scores[0]
                     
                     scored_docs = sorted(zip(scores.tolist(), valid_docs), key=lambda x: x[0], reverse=True)
-                    return [doc["text"] for score, doc in scored_docs[:top_k]]
+                    return [doc["text"] for score, doc in scored_docs[:effective_k]]
             except Exception as e:
                 print(f"[LocalRAG Warning] Dense vector similarity calculation failed ({e}). Returning un-scored items.", file=sys.stderr)
 
         # In-memory mock/text fallback
-        return [doc["text"] for doc in filtered_docs[:top_k]]
+        return [doc["text"] for doc in filtered_docs[:effective_k]]

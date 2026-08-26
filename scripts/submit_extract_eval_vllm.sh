@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=extract_eval_vllm
-#SBATCH --partition=researcher
+#SBATCH --partition=student
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
@@ -124,8 +124,8 @@ else
   PDF_DIR="$PROJECT_ROOT/Vietnamese-dataset/CnB"
 fi
 
-# Target Model Name (Default: Qwen/Qwen3.5-35B-A3B)
-MODEL="${RAW_MODEL:-Qwen/Qwen3.5-35B-A3B}"
+# Target Model Name (Default: Qwen/Qwen3.5-35B-A3B-FP8)
+MODEL="${RAW_MODEL:-Qwen/Qwen3.5-35B-A3B-FP8}"
 
 # Target Extraction Output Directory (Default: output_jsons inside project root)
 if [ -n "$RAW_OUTPUT_DIR" ]; then
@@ -251,7 +251,8 @@ python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
   --output "$OUTPUT_DIR" \
   --model-name "$MODEL" \
   --backend vllm \
-  --vllm-url "http://127.0.0.1:$PORT/v1" 2>&1 | tee "$EXTRACT_LOG" | tee -a "$JOB_LOG"
+  --vllm-url "http://127.0.0.1:$PORT/v1" \
+  --workers 6 2>&1 | tee "$EXTRACT_LOG" | tee -a "$JOB_LOG"
 
 EXTRACT_STATUS=${PIPESTATUS[0]}
 if [ "$EXTRACT_STATUS" -ne 0 ]; then

@@ -1,7 +1,7 @@
 #!/bin/bash
 # -----------------------------------------------------------------------------
 # Modular Web Server & vLLM Engine Manager
-# Model: Qwen/Qwen3.5-35B-A3B
+# Model: Qwen/Qwen3.5-35B-A3B-FP8
 #
 # Usage:
 #   ./scripts/server.sh                 -> Starts both vLLM + FastAPI web server
@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/vllm_utils.sh"
 
-MODEL="Qwen/Qwen3.5-35B-A3B"
+MODEL="Qwen/Qwen3.5-35B-A3B-FP8"
 DEFAULT_VLLM_PORT=8100
 WEB_PORT=8005
 
@@ -39,6 +39,7 @@ DAEMON_LOG_FILE="logs/server.txt"
 # --- HELPER: Setup Environment ---
 setup_environment() {
   setup_vllm_env
+  export DISABLE_PROMPT_LOGGING=0
   mkdir -p logs temp_uploads static
 
   module load miniconda3 2>/dev/null || true
@@ -84,7 +85,7 @@ find_vllm_pids() {
   if [ -f "$VLLM_PID_FILE" ]; then
     pids=$(cat "$VLLM_PID_FILE" 2>/dev/null)
   fi
-  local pgrep_pids=$(pgrep -f "vllm.*$MODEL" 2>/dev/null)
+  local pgrep_pids=$(pgrep -f "(vllm.*$MODEL|vllm\.entrypoints|EngineCore)" 2>/dev/null)
   echo "$pids $pgrep_pids" | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs
 }
 

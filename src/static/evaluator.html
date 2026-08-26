@@ -74,84 +74,157 @@
                 <div class="process-step active" id="step-nav-1" aria-current="step">
                     <span class="step-num">1</span>
                     <div class="step-text">
-                        <span class="step-title">Criteria & Setup</span>
-                        <span class="step-sub">Requirements & Candidates</span>
+                        <span class="step-title">1. Job Criteria</span>
+                        <span class="step-sub">Standard & Hidden Rules</span>
                     </div>
                 </div>
                 <div class="step-divider"></div>
                 <div class="process-step" id="step-nav-2">
                     <span class="step-num">2</span>
                     <div class="step-text">
-                        <span class="step-title">AI Batch Evaluation</span>
-                        <span class="step-sub">5 Vector Dimensions</span>
+                        <span class="step-title">2. Verify RAG Criteria</span>
+                        <span class="step-sub">5 Dimensions & hr_rag.txt</span>
                     </div>
                 </div>
                 <div class="step-divider"></div>
                 <div class="process-step" id="step-nav-3">
                     <span class="step-num">3</span>
                     <div class="step-text">
-                        <span class="step-title">Executive Insights</span>
-                        <span class="step-sub">Full Dossier Inspection</span>
+                        <span class="step-title">3. Select & Evaluate</span>
+                        <span class="step-sub">Candidate CV Selection</span>
+                    </div>
+                </div>
+                <div class="step-divider"></div>
+                <div class="process-step" id="step-nav-4">
+                    <span class="step-num">4</span>
+                    <div class="step-text">
+                        <span class="step-title">4. Executive Insights</span>
+                        <span class="step-sub">Leaderboard & Dossiers</span>
                     </div>
                 </div>
             </div>
 
             <div class="page-view active" id="page-evaluator">
-                <!-- SETUP STAGE (Criteria Input & Candidate Selection) -->
-                <div class="eval-setup-container" id="eval-setup-stage">
-                    <div class="eval-layout">
-                        <!-- Left Column: HR Criteria Input Panel -->
-                        <div class="eval-column">
-                            <div class="panel">
-                                <div class="panel-header">
-                                    <h2>1. HR Job Criteria Setup</h2>
-                                    <p>Specify standard role requirements and confidential internal guidelines.</p>
-                                </div>
-                                <div class="form-group">
-                                    <label for="hr-std-req">Standard Job Requirements</label>
-                                    <textarea id="hr-std-req" rows="5" class="form-control" placeholder="e.g. Position: Senior Backend Engineer&#10;Required Skills: Python, FastAPI, PostgreSQL, Microservices&#10;Experience: > 4 years"></textarea>
-                                </div>
-                                <div class="form-group" style="margin-top: 0.85rem;">
-                                    <label for="hr-hidden-req">HR Hidden Requirements (Culture Fit / Unstated Rules)</label>
-                                    <textarea id="hr-hidden-req" rows="4" class="form-control form-control-hidden" placeholder="e.g. Prefer candidates with startup experience. Proactive communication. No job hopping under 8 months."></textarea>
-                                </div>
+                <!-- STEP 1: HR REQUIREMENTS INPUT STAGE -->
+                <div class="eval-stage-container" id="eval-req-stage">
+                    <div class="panel" style="max-width: 900px; margin: 0 auto;">
+                        <div class="panel-header">
+                            <h2>1. HR Job Requirements Input</h2>
+                            <p>Enter the standard role specifications and internal culture/unwritten rules to decompose into RAG criteria.</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="hr-std-req">Standard Job Requirements (Kỹ năng, Kinh nghiệm, Học vấn)</label>
+                            <textarea id="hr-std-req" rows="6" class="form-control" placeholder="e.g. Position: Senior Backend Engineer&#10;Required Skills: Python, FastAPI, PostgreSQL, Microservices&#10;Experience: > 4 years&#10;Education: Bachelor in Computer Science"></textarea>
+                        </div>
+                        <div class="form-group" style="margin-top: 1rem;">
+                            <label for="hr-hidden-req">HR Hidden Requirements (Culture Fit / Tiêu chí mềm)</label>
+                            <textarea id="hr-hidden-req" rows="4" class="form-control form-control-hidden" placeholder="e.g. Prefer candidates with startup experience. Proactive communication. Stability in previous roles."></textarea>
+                        </div>
+
+                        <div style="display: flex; gap: 12px; margin-top: 1.5rem; justify-content: flex-end; align-items: center;">
+                            <button class="btn btn-secondary" id="btn-use-existing-rag" type="button" style="display: none;">
+                                Use Existing RAG & Skip to Candidates →
+                            </button>
+                            <button class="btn btn-primary" id="btn-decompose-reqs" type="button">
+                                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.78c0-2.33 4.67-3.5 7-3.5s7 1.17 7 3.5V19z"/></svg> Decompose Requirements & Categorize (Step 2A)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STEP 2: RAG CATEGORIZATION REVIEW & CRITERIA EDITOR STAGE -->
+                <div class="eval-stage-container" id="eval-rag-verify-stage" style="display: none;">
+                    <div class="panel">
+                        <div class="rag-verify-header">
+                            <div>
+                                <h2 style="color: var(--brand-legacy-blue); font-size: 1.3rem;">2. Verify & Adjust RAG Categorization</h2>
+                                <p>Inspect exactly how the system categorized your requirements into 5 dimensions. Add, edit, or remove criteria as needed before evaluating candidates.</p>
+                            </div>
+                            <div class="rag-preview-tabs">
+                                <button class="rag-tab-btn active" id="tab-btn-categories" type="button">5 Dimensions Editor</button>
+                                <button class="rag-tab-btn" id="tab-btn-raw-file" type="button">hr_rag.txt Preview</button>
                             </div>
                         </div>
 
-                        <!-- Right Column: Scanned Candidate Selection Panel -->
-                        <div class="eval-column">
-                            <div class="panel">
-                                <div class="panel-header-split">
-                                    <div>
-                                        <h2>2. Select Candidate CVs</h2>
-                                        <p>Select candidates to analyze in batch evaluation.</p>
-                                    </div>
-                                    <button class="btn btn-sm btn-secondary" id="btn-refresh-resumes" type="button">
-                                        <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Refresh List
-                                    </button>
-                                </div>
+                        <!-- Tab Pane 1: Interactive 5-Dimension Criteria Cards -->
+                        <div id="pane-categories-editor">
+                            <div class="criteria-editor-grid" id="criteria-editor-container">
+                                <div class="loading-state">Loading categorization...</div>
+                            </div>
+                        </div>
 
-                                <div class="batch-select-bar">
-                                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600;">
-                                        <input type="checkbox" id="chk-select-all"> Select All Candidates
-                                    </label>
-                                    <span class="selected-count" id="selected-count-badge">0 selected</span>
-                                </div>
+                        <!-- Tab Pane 2: hr_rag.txt Live Code View -->
+                        <div id="pane-raw-file" style="display: none; margin-bottom: 1.5rem;">
+                            <div class="logs-content-pane">
+                                <pre><code id="hr-rag-preview-text">Generating hr_rag.txt content...</code></pre>
+                            </div>
+                        </div>
 
-                                <!-- Filter Search Bar -->
-                                <div class="eval-search-box" style="margin-top: 0.5rem;">
-                                    <input type="text" id="eval-cand-search" class="form-control" placeholder="Search candidates by name or email..." aria-label="Search candidates by name or email" style="font-size:0.85rem;">
-                                </div>
-
-                                <!-- List of Scanned Candidates (Grouped into Tiers) -->
-                                <div class="scanned-resumes-list" id="scanned-resumes-container">
-                                    <div class="loading-state">Loading scanned resumes...</div>
-                                </div>
-
-                                <button class="btn btn-primary btn-block" id="btn-run-eval" style="margin-top: 1rem;" disabled>
-                                    <svg class="icon-svg" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg> Run AI Batch Resume Evaluation
+                        <!-- Bottom Controls -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 1rem; border-top: 1px solid var(--border);">
+                            <button class="btn btn-secondary" id="btn-back-to-requirements" type="button">
+                                ← Back to Edit Requirements
+                            </button>
+                            <div style="display: flex; gap: 10px;">
+                                <button class="btn btn-secondary" id="btn-save-criteria-changes" type="button">
+                                    <svg class="icon-svg" viewBox="0 0 24 24"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg> Save Changes to RAG
+                                </button>
+                                <button class="btn btn-primary" id="btn-proceed-to-candidates" type="button">
+                                    Confirm Criteria & Proceed to Candidate Selection →
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STEP 3: CANDIDATE SELECTION & EVALUATION STAGE -->
+                <div class="eval-stage-container" id="eval-candidates-stage" style="display: none;">
+                    <!-- Active Criteria Summary Banner -->
+                    <div class="active-rag-banner" id="active-rag-banner">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <svg class="icon-svg" style="fill: #15803D;" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                            <span id="active-rag-banner-text"><strong>RAG Criteria Verified:</strong> 5 dimensions active and stored in ChromaDB vector store.</span>
+                        </div>
+                        <button class="btn btn-sm btn-secondary" id="btn-back-to-rag-verify" type="button">
+                            Review / Adjust Criteria
+                        </button>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-header-split">
+                            <div>
+                                <h2>3. Select Candidate CVs for AI Evaluation</h2>
+                                <p>Select candidate resumes to evaluate against verified RAG criteria.</p>
+                            </div>
+                            <button class="btn btn-sm btn-secondary" id="btn-refresh-resumes" type="button">
+                                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Refresh List
+                            </button>
+                        </div>
+
+                        <div class="batch-select-bar">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600;">
+                                <input type="checkbox" id="chk-select-all"> Select All Candidates
+                            </label>
+                            <span class="selected-count" id="selected-count-badge">0 selected</span>
+                        </div>
+
+                        <!-- Filter Search Bar -->
+                        <div class="eval-search-box" style="margin-top: 0.5rem;">
+                            <input type="text" id="eval-cand-search" class="form-control" placeholder="Search candidates by name or email..." aria-label="Search candidates by name or email" style="font-size:0.85rem;">
+                        </div>
+
+                        <!-- List of Scanned Candidates (Grouped into Tiers) -->
+                        <div class="scanned-resumes-list" id="scanned-resumes-container">
+                            <div class="loading-state">Loading scanned resumes...</div>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                            <button class="btn btn-secondary" id="btn-back-to-criteria-step" type="button">
+                                ← Back to Criteria
+                            </button>
+                            <button class="btn btn-primary" id="btn-run-eval" disabled style="min-width: 250px;">
+                                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg> Run AI Resume Evaluation
+                            </button>
                         </div>
                     </div>
                 </div>

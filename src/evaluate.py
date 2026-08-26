@@ -11,7 +11,7 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from src.metrics.embedding import HAS_TORCH_TRANSFORMERS, mean_pooling, EmbeddingEvaluator, LexicalEvaluator
+from src.metrics.embedding import HAS_TORCH_TRANSFORMERS, EmbeddingEvaluator, LexicalEvaluator
 from src.metrics.lexical import (
     cosine_similarity,
     normalize_email,

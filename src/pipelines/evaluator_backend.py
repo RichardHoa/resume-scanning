@@ -53,10 +53,10 @@ def call_transformers_backend(evaluator_inst: Any, prompt: str, messages: List[D
         outputs = evaluator_inst.model.generate(
             **inputs,
             max_new_tokens=MAX_NEW_TOKENS,
-            temperature=0.2,
+            temperature=0.0,
             top_p=0.95,
             repetition_penalty=1.05,
-            do_sample=True
+            do_sample=False
         )
     input_len = inputs["input_ids"].shape[1]
     generated_tokens = outputs[0][input_len:]
@@ -71,7 +71,7 @@ def call_vllm_backend(evaluator_inst: Any, category: str, messages: List[Dict[st
     payload = {
         "model": evaluator_inst.model_name,
         "messages": messages,
-        "temperature": 0.2,
+        "temperature": 0.0,
         "top_p": 0.95,
         "repetition_penalty": 1.05,
         "max_tokens": MAX_NEW_TOKENS,
@@ -109,7 +109,7 @@ def call_vllm_backend(evaluator_inst: Any, category: str, messages: List[Dict[st
     except Exception as e:
         print(f"[vLLM Call Error] Failed to call vLLM server at {url}: {e}", file=sys.stderr)
         if evaluator_inst.mock:
-            return get_mock_category_response(category)
+            return get_mock_category_response(category, language=getattr(evaluator_inst, 'language', 'vietnamese'))
         raise RuntimeError(f"[vLLM Call Fatal Error] Connection to vLLM server at {url} failed: {e}") from e
 
 
@@ -117,7 +117,8 @@ def decompose_requirements_with_llm(
     evaluator_inst: Any,
     standard_req: str,
     hidden_req: str,
-    resume_name: str = "job_requirements"
+    resume_name: str = "job_requirements",
+    log_dir: Optional[str] = None
 ) -> Optional[Dict[str, List[str]]]:
     """Helper to decompose HR standard & hidden requirements into 5 dimension categories."""
     categories = list(CATEGORY_LABELS.keys())
@@ -131,7 +132,7 @@ def decompose_requirements_with_llm(
         return get_mock_decomposed_requirements(standard_req, hidden_req)
 
     prompt = get_requirements_decomposition_prompt(standard_req, hidden_req, evaluator_inst.model_name)
-    raw_out = evaluator_inst._call_llm(prompt, "requirements_decomposition", resume_name)
+    raw_out = evaluator_inst._call_llm(prompt, "requirements_decomposition", resume_name, log_dir=log_dir)
     parsed = clean_and_parse_json(raw_out)
 
     if parsed and isinstance(parsed, dict):
@@ -143,7 +144,7 @@ def decompose_requirements_with_llm(
     # Fallback text parsing for header-formatted responses
     if raw_out and any(cat in raw_out for cat in categories):
         print("[LocalRAG Warning] JSON parse failed, parsing text headers from LLM output...", file=sys.stderr)
-        log_broken_json(prompt, raw_out, "requirements_decomposition", resume_name, attempt=1, error_reason="Decomposition JSON parse failed, header fallback used")
+        log_broken_json(prompt, raw_out, "requirements_decomposition", resume_name, attempt=1, error_reason="Decomposition JSON parse failed, header fallback used", log_dir=log_dir)
         fallback_dict = {cat: [] for cat in categories}
         current_cat = None
         for line in raw_out.split('\n'):
@@ -159,7 +160,7 @@ def decompose_requirements_with_llm(
         if any(fallback_dict.values()):
             return fallback_dict
 
-    log_broken_json(prompt, raw_out, "requirements_decomposition", resume_name, attempt=1, error_reason="Decomposition JSON parse failed completely")
+    log_broken_json(prompt, raw_out, "requirements_decomposition", resume_name, attempt=1, error_reason="Decomposition JSON parse failed completely", log_dir=log_dir)
     return None
 
 
@@ -256,25 +257,30 @@ def aggregate_evaluation_results(
 
     if any_evaluation_failed:
         failed_cats_str = ", ".join(failed_categories)
-        print(f"[FATAL FAILURE] Evaluation failed for resume '{resume_name}' in categories: [{failed_cats_str}]. Resetting scores to 0.", file=sys.stderr)
-        for cat_key in dimension_results:
-            dimension_results[cat_key]["score"] = 0
-            dimension_results[cat_key]["weighted_score"] = 0.0
-            dimension_results[cat_key]["median_score"] = 0.0
-            dimension_results[cat_key]["all_run_scores"] = [0] * num_evaluations
-            dimension_results[cat_key]["reasoning_summary"] = f"EVALUATION FAILED: Category parse failed in '{failed_cats_str}'."
-        overall_score = 0.0
-        recommendation = "REJECT"
+        print(f"[PARTIAL FAILURE] Evaluation failed in categories: [{failed_cats_str}] for resume '{resume_name}'. Failed categories zeroed; others preserved.", file=sys.stderr)
+        for cat_key, cat_data in dimension_results.items():
+            if cat_data.get("score") == FALLBACK_ERROR_SCORE and cat_key in [
+                ck for ck, cn in CATEGORY_LABELS.items() if cn in failed_categories
+            ]:
+                dimension_results[cat_key]["score"] = 0
+                dimension_results[cat_key]["weighted_score"] = 0.0
+                dimension_results[cat_key]["median_score"] = 0.0
+                dimension_results[cat_key]["all_run_scores"] = []
+
+    # Recompute weighted_total from final dimension scores (post-failure adjustment)
+    weighted_total = sum(
+        d["score"] * d["weight"] for d in dimension_results.values()
+    )
+
+    overall_score = round(weighted_total, 1)
+    if overall_score >= MATCH_THRESHOLDS["STRONG"]:
+        recommendation = "STRONG_MATCH"
+    elif overall_score >= MATCH_THRESHOLDS["POTENTIAL"]:
+        recommendation = "POTENTIAL_MATCH"
+    elif overall_score >= MATCH_THRESHOLDS["LOW"]:
+        recommendation = "LOW_MATCH"
     else:
-        overall_score = round(weighted_total, 1)
-        if overall_score >= MATCH_THRESHOLDS["STRONG"]:
-            recommendation = "STRONG_MATCH"
-        elif overall_score >= MATCH_THRESHOLDS["POTENTIAL"]:
-            recommendation = "POTENTIAL_MATCH"
-        elif overall_score >= MATCH_THRESHOLDS["LOW"]:
-            recommendation = "LOW_MATCH"
-        else:
-            recommendation = "REJECT"
+        recommendation = "REJECT"
 
     return dimension_results, category_timings, overall_score, recommendation
 

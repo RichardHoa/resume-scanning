@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=extract_vllm
-#SBATCH --partition=researcher
+#SBATCH --partition=student
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+#SBATCH --mem=32G
 #SBATCH --gres=gpu:1
-#SBATCH --time=12:00:00
+#SBATCH --time=4:00:00
 #SBATCH --output=logging/slurm_extract_%j.out
 #SBATCH --error=logging/slurm_extract_%j.err
 
@@ -81,8 +81,8 @@ else
   PDF_DIR="$PROJECT_ROOT/Vietnamese-dataset/CnB"
 fi
 
-# Target Model Name (Default: Qwen/Qwen3.5-35B-A3B)
-MODEL="${RAW_MODEL:-Qwen/Qwen3.5-35B-A3B}"
+# Target Model Name (Default: Qwen/Qwen3.5-35B-A3B-FP8)
+MODEL="${RAW_MODEL:-Qwen/Qwen3.5-35B-A3B-FP8}"
 
 # Target Output Directory (Default: output_jsons inside project root)
 if [ -n "$RAW_OUTPUT_DIR" ]; then
@@ -150,7 +150,8 @@ python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
   --output "$OUTPUT_DIR" \
   --model-name "$MODEL" \
   --backend vllm \
-  --vllm-url "http://127.0.0.1:$PORT/v1"
+  --vllm-url "http://127.0.0.1:$PORT/v1" \
+  --workers 6
 
 stop_vllm_server
 echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Batch Extraction Job Finished ==="

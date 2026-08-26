@@ -31,7 +31,7 @@ def parse_args():
     parser.add_argument("--output", type=str, help="Path to save evaluation JSON result (file path or output directory for batch mode)")
     parser.add_argument("--arr", type=str, help="Comma-separated list of resume numbers to process (e.g., --arr=6,7,8)")
     parser.add_argument("--workers", type=int, default=1, help="Number of concurrent worker threads for candidate evaluation (useful with vLLM backend)")
-    parser.add_argument("--num-evaluations", "--runs", type=int, default=20, help="Number of evaluation iterations per category to calculate median (default: 20)")
+    parser.add_argument("--num-evaluations", "--runs", type=int, default=1, help="Number of evaluation iterations per category to calculate median (default: 1)")
     parser.add_argument("--force-reingest", action="store_true", help="Force re-ingesting HR requirements into RAG vector database")
     parser.add_argument("--language", type=str, default="vietnamese", choices=["vietnamese", "english"], help="Output language for evaluation reasoning, strengths, and gaps ('vietnamese' or 'english')")
     return parser.parse_args()

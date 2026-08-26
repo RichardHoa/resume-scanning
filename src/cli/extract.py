@@ -35,6 +35,8 @@ def parse_args():
                         help="Base URL of the vLLM OpenAI-compatible server (only used with --backend vllm)")
     parser.add_argument("--language", type=str, default="vietnamese", choices=["vietnamese", "english"],
                         help="Target parse language: 'vietnamese' (default) or 'english'")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="Number of concurrent worker threads for batch extraction (vLLM recommended: 4-8)")
     return parser.parse_args()
 
 
@@ -130,25 +132,37 @@ def main():
         pdf_files.sort()
         print(f"Found {len(pdf_files)} PDF files in {args.dir}. Starting batch processing...", file=sys.stderr)
 
-        for idx, filename in enumerate(pdf_files, start=1):
+        def _process_single_pdf(item: tuple[int, str]) -> None:
+            idx, filename = item
             pdf_path = os.path.join(args.dir, filename)
             output_filename = os.path.splitext(filename)[0] + ".json"
             output_path = os.path.join(args.output, output_filename)
 
-            print(f"\n[{idx}/{len(pdf_files)}] Processing {filename}...", file=sys.stderr)
+            print(f"[{idx}/{len(pdf_files)}] Processing {filename}...", file=sys.stderr)
             start_time = time.time()
             try:
                 formatted_json = extractor.extract(pdf_path, language=args.language)
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write(formatted_json)
                 elapsed = time.time() - start_time
-                print(f"  Successfully saved JSON extraction to {output_path} (took {elapsed:.2f} seconds)", file=sys.stderr)
-
+                print(f"[{idx}/{len(pdf_files)}] Successfully saved JSON extraction to {output_path} (took {elapsed:.2f} seconds)", file=sys.stderr)
             except Exception as e:
                 elapsed = time.time() - start_time
-                print(f"  Error processing {filename} (failed after {elapsed:.2f} seconds): {e}", file=sys.stderr)
+                print(f"[{idx}/{len(pdf_files)}] Error processing {filename} (failed after {elapsed:.2f} seconds): {e}", file=sys.stderr)
 
-        print("\nBatch processing completed.", file=sys.stderr)
+        batch_start = time.time()
+        workers = max(1, args.workers)
+        if workers > 1:
+            from concurrent.futures import ThreadPoolExecutor
+            print(f"Executing batch extraction with {workers} parallel worker threads...", file=sys.stderr)
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                list(executor.map(_process_single_pdf, list(enumerate(pdf_files, start=1))))
+        else:
+            for item in enumerate(pdf_files, start=1):
+                _process_single_pdf(item)
+
+        total_batch_time = time.time() - batch_start
+        print(f"\nBatch processing completed in {total_batch_time:.2f} seconds. Output folder: {args.output}", file=sys.stderr)
 
 
 if __name__ == "__main__":

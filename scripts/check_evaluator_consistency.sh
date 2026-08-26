@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=eval_consistency
-#SBATCH --partition=researcher
+#SBATCH --partition=student
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
@@ -103,7 +103,7 @@ nvidia-smi 2>/dev/null || echo "nvidia-smi not available"
 echo "====================================================================="
 
 PORT=$(find_free_port)
-MODEL="${RAW_MODEL:-Qwen/Qwen3.5-35B-A3B}"
+MODEL="${RAW_MODEL:-Qwen/Qwen3.5-35B-A3B-FP8}"
 
 echo "[$(date +'%H:%M:%S')] Project Root: $PROJECT_ROOT"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL"

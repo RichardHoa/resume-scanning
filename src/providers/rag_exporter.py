@@ -93,10 +93,7 @@ def get_stored_rag_summary(rag_inst: Any) -> Dict[str, Any]:
                 "type": doc.get("type", "standard")
             })
         else:
-            categories_dict["technical_skills"].append({
-                "text": doc.get("text"),
-                "type": doc.get("type", "standard")
-            })
+            print(f"[RAG Summary Warning] Document with unknown category '{raw_cat}' skipped from summary (id={doc.get('id', 'unknown')}).", file=sys.stderr)
 
     hr_rag_content = ""
     hr_rag_path = os.path.join(ROOT_DIR, "hr_rag.txt")

@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=eval_transformer
-#SBATCH --partition=researcher
+#SBATCH --partition=student
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
@@ -76,7 +76,7 @@ source activate resume_env 2>/dev/null || conda activate resume_env 2>/dev/null 
 # Ensure output & log directories exist at project root
 mkdir -p "$PROJECT_ROOT/evaluation_json" "$PROJECT_ROOT/logging" "$PROJECT_ROOT/output_jsons" "$PROJECT_ROOT/pdfs" "$PROJECT_ROOT/logs"
 
-MODEL="${RAW_MODEL:-Qwen/Qwen3.5-35B-A3B}"
+MODEL="${RAW_MODEL:-Qwen/Qwen3.5-35B-A3B-FP8}"
 
 # Print GPU info on compute node
 echo "=== Node & GPU Allocation Info ==="

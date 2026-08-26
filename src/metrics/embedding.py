@@ -68,7 +68,7 @@ class EmbeddingEvaluator:
 class LexicalEvaluator:
     def __init__(self):
         print("Warning: torch or transformers not found locally. Falling back to LexicalEvaluator (difflib SequenceMatcher).", file=sys.stderr)
-        self.device = torch.device("cpu") if HAS_TORCH_TRANSFORMERS else "cpu"
+        self.device = "cpu"  # No torch model — plain string; consistent with no-torch fallback
 
     def get_embeddings(self, texts):
         return []

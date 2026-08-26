@@ -23,7 +23,7 @@ PDF_DIR = os.path.join(ROOT_DIR, "pdfs")
 EXTRACTION_MARKDOWN_DIR = os.path.join(ROOT_DIR, "extraction_markdown")
 
 # Ensure required directories exist
-for d in [LOGGING_DIR, BROKEN_JSON_DIR, EVAL_RESULTS_DIR, EVALUATION_JSON_DIR, RAG_DIR, EXTRACTION_MARKDOWN_DIR]:
+for d in [LOGGING_DIR, BROKEN_JSON_DIR, EVAL_RESULTS_DIR, EVALUATION_JSON_DIR, RAG_DIR, EXTRACTION_MARKDOWN_DIR, APPROVED_DIR]:
     os.makedirs(d, exist_ok=True)
 
 # Weight distribution for 5 evaluation dimensions
@@ -46,12 +46,12 @@ MATCH_THRESHOLDS = {
 }
 
 # Token & Context Window Limits
-VLLM_MAX_MODEL_LEN = 20000  # Total vLLM model context length limit (--max-model-len)
-MAX_NEW_TOKENS = 10000      # Output new tokens limit
-MAX_INPUT_TOKENS = 10000    # Input prompt tokens capacity (VLLM_MAX_MODEL_LEN - MAX_NEW_TOKENS)
+VLLM_MAX_MODEL_LEN = 40000 # Total vLLM model context length limit (--max-model-len)
+MAX_NEW_TOKENS = 8096     # Output new tokens limit
+DSPY_MAX_TOKENS = 4048    # DSPy prompt optimization output token limit
 
 # Default model defaults
-DEFAULT_LLM_MODEL = "Qwen/Qwen3.5-9B"
+DEFAULT_LLM_MODEL = "Qwen/Qwen3.5-35B-A3B-FP8"
 DEFAULT_EMBEDDING_MODEL = "AITeamVN/Vietnamese_Embedding"
 DEFAULT_VLLM_URL = "http://127.0.0.1:8100/v1"
 VLLM_REQUEST_TIMEOUT = 1800

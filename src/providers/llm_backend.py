@@ -82,8 +82,8 @@ def run_local_inference(resume_text: str, model: Any, tokenizer: Any, language: 
     generated_ids = model.generate(
         **filtered_inputs,
         max_new_tokens=MAX_NEW_TOKENS,
-        do_sample=True,
-        temperature=0.2,
+        do_sample=False,
+        temperature=0.0,
         repetition_penalty=1.05,
         pad_token_id=tokenizer.eos_token_id
     )
@@ -132,7 +132,7 @@ def vllm_chat_request(vllm_url: str, model_name: Optional[str], messages: list) 
     payload = json.dumps({
         "model": model_name,
         "messages": messages,
-        "temperature": 0.2,
+        "temperature": 0.0,
         "repetition_penalty": 1.05,
         "max_tokens": MAX_NEW_TOKENS,
         "guided_json": schema,

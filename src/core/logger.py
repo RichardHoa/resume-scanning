@@ -23,10 +23,12 @@ def log_llm_call(
     response_text: str,
     category: str,
     resume_name: str = "resume",
-    run_index: Optional[int] = None
+    run_index: Optional[int] = None,
+    log_dir: Optional[str] = None
 ) -> str:
     """
     Dumps the full raw context prompt and model output to a .txt file in logging/<resume_name>/<category>/
+    or a custom structured log directory.
     """
     if os.getenv("DISABLE_PROMPT_LOGGING", "0").lower() in ("1", "true", "yes"):
         return ""
@@ -35,26 +37,23 @@ def log_llm_call(
     safe_resume_name = re.sub(r'[^a-zA-Z0-9_-]', '_', resume_name or "resume")
     safe_category = re.sub(r'[^a-zA-Z0-9_-]', '_', category or "general")
 
-    candidate_cat_dir = os.path.join(LOGGING_DIR, safe_resume_name, safe_category)
-    os.makedirs(candidate_cat_dir, exist_ok=True)
+    target_dirs = []
+    if log_dir:
+        if os.path.basename(os.path.normpath(log_dir)) == safe_resume_name:
+            target_dirs.append(os.path.join(log_dir, safe_category))
+        else:
+            target_dirs.append(os.path.join(log_dir, safe_resume_name, safe_category))
 
-    if run_index is not None:
-        filename = f"{run_index}.txt"
-    else:
-        existing_files = [f for f in os.listdir(candidate_cat_dir) if f.endswith('.txt')]
-        filename = f"{len(existing_files) + 1}.txt"
+    default_cat_dir = os.path.join(LOGGING_DIR, safe_resume_name, safe_category)
+    if default_cat_dir not in target_dirs:
+        target_dirs.append(default_cat_dir)
 
-    filepath = os.path.join(candidate_cat_dir, filename)
-
-    content = [
+    log_content = "\n".join([
         "=" * 80,
         f"TIMESTAMP: {datetime.now().isoformat()}",
         f"RESUME: {resume_name}",
         f"CATEGORY: {category}",
-    ]
-    if run_index is not None:
-        content.append(f"RUN INDEX: {run_index}")
-    content.extend([
+        *( [f"RUN INDEX: {run_index}"] if run_index is not None else [] ),
         "=" * 80,
         "\n--- FULL LLM INPUT PROMPT CONTEXT ---\n",
         str(prompt_text or ""),
@@ -64,14 +63,27 @@ def log_llm_call(
         "\n" + "=" * 80 + "\n"
     ])
 
-    try:
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write("\n".join(content))
-        print(f"[Logging] Saved model prompt context to {filepath}", file=sys.stderr)
-    except Exception as e:
-        print(f"[Logging Error] Failed to write log file {filepath}: {e}", file=sys.stderr)
+    primary_filepath = ""
+    for candidate_cat_dir in target_dirs:
+        os.makedirs(candidate_cat_dir, exist_ok=True)
+        if run_index is not None:
+            filename = f"{run_index}.txt"
+        else:
+            existing_files = [f for f in os.listdir(candidate_cat_dir) if f.endswith('.txt')]
+            filename = f"{len(existing_files) + 1}.txt"
 
-    return filepath
+        filepath = os.path.join(candidate_cat_dir, filename)
+        if not primary_filepath:
+            primary_filepath = filepath
+
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(log_content)
+            print(f"[Logging] Saved model prompt context to {filepath}", file=sys.stderr)
+        except Exception as e:
+            print(f"[Logging Error] Failed to write log file {filepath}: {e}", file=sys.stderr)
+
+    return primary_filepath
 
 
 def log_broken_json(
@@ -81,17 +93,25 @@ def log_broken_json(
     resume_name: str = "resume",
     attempt: int = 1,
     error_reason: str = "",
-    run_index: Optional[int] = None
+    run_index: Optional[int] = None,
+    log_dir: Optional[str] = None
 ) -> str:
     """
     Specifically dumps raw prompt contexts and unparsable model responses to broken-json/<resume_name>/<category>/
-    for error tracking and dataset improvement.
+    or structured log directory for error tracking and dataset improvement.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     safe_resume_name = re.sub(r'[^a-zA-Z0-9_-]', '_', resume_name or "resume")
     safe_category = re.sub(r'[^a-zA-Z0-9_-]', '_', category or "general")
 
-    candidate_cat_dir = os.path.join(BROKEN_JSON_DIR, safe_resume_name, safe_category)
+    if log_dir:
+        if os.path.basename(os.path.normpath(log_dir)) == safe_resume_name:
+            candidate_cat_dir = os.path.join(log_dir, "broken_json", safe_category)
+        else:
+            candidate_cat_dir = os.path.join(log_dir, safe_resume_name, "broken_json", safe_category)
+    else:
+        candidate_cat_dir = os.path.join(BROKEN_JSON_DIR, safe_resume_name, safe_category)
+
     os.makedirs(candidate_cat_dir, exist_ok=True)
 
     if run_index is not None:

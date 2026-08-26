@@ -1,0 +1,333 @@
+{
+  "dataset_info": {
+    "name": "CnB Candidate Ground Truth Dataset",
+    "total_candidates": 38,
+    "description": "Ground truth labeling for HR candidate matching across 3 tiers (Highly Match, Potential Match, Low Match) based on HR email mappings.",
+    "tier_definitions": {
+      "tier_1": {
+        "label": "Highly Match",
+        "category": "STRONG_MATCH",
+        "score_range": [85, 100],
+        "description": "Candidates with full alignment to HR standard and hidden criteria."
+      },
+      "tier_2": {
+        "label": "Potential Match",
+        "category": "POTENTIAL_MATCH",
+        "score_range": [70, 84],
+        "description": "Candidates with core competencies and minor development gaps."
+      },
+      "tier_3": {
+        "label": "Low Match",
+        "category": "LOW_MATCH",
+        "score_range": [0, 69],
+        "description": "Candidates with significant gaps or initial alignment stage."
+      }
+    }
+  },
+  "candidates": [
+    {
+      "email": "vananhbui061@gmail.com",
+      "filename": "CnB - BUI THI VAN ANH.pdf",
+      "tier": 1,
+      "target_category": "STRONG_MATCH",
+      "target_label": "Highly Match",
+      "score_range": [85, 100]
+    },
+    {
+      "email": "tranthiquynhhungueh@gmail.com",
+      "filename": "CnB - TRAN THI QUYNH HUNG.pdf",
+      "tier": 1,
+      "target_category": "STRONG_MATCH",
+      "target_label": "Highly Match",
+      "score_range": [85, 100]
+    },
+    {
+      "email": "tranngocthientrang121020@gmail.com",
+      "filename": "CnB - Tran Ngoc Thien Trang.pdf",
+      "tier": 1,
+      "target_category": "STRONG_MATCH",
+      "target_label": "Highly Match",
+      "score_range": [85, 100]
+    },
+    {
+      "email": "tgiang250693@gmail.com",
+      "filename": "CnB - Thai Thanh Giang.pdf",
+      "tier": 1,
+      "target_category": "STRONG_MATCH",
+      "target_label": "Highly Match",
+      "score_range": [85, 100]
+    },
+    {
+      "email": "nlmailinh98@gmail.com",
+      "filename": "CnB - NGUYỄN LÊ MAI LINH.pdf",
+      "tier": 1,
+      "target_category": "STRONG_MATCH",
+      "target_label": "Highly Match",
+      "score_range": [85, 100]
+    },
+    {
+      "email": "nguyenanhthu21101997@gmail.com",
+      "filename": "CnB - Nguyen Anh Thu.pdf",
+      "tier": 1,
+      "target_category": "STRONG_MATCH",
+      "target_label": "Highly Match",
+      "score_range": [85, 100]
+    },
+    {
+      "email": "taihtt13@gmail.com",
+      "filename": "CnB - Hoang Tan Tai.pdf",
+      "tier": 1,
+      "target_category": "STRONG_MATCH",
+      "target_label": "Highly Match",
+      "score_range": [85, 100]
+    },
+    {
+      "email": "doannguyentruonggiang@gmail.com",
+      "filename": "CnB - DOAN NGUYEN TRUONG GIANG.pdf",
+      "tier": 1,
+      "target_category": "STRONG_MATCH",
+      "target_label": "Highly Match",
+      "score_range": [85, 100]
+    },
+    {
+      "email": "maitqkcptclkh@gmail.com",
+      "filename": "CnB - PHAM THI TUYET MAI.pdf",
+      "tier": 1,
+      "target_category": "STRONG_MATCH",
+      "target_label": "Highly Match",
+      "score_range": [85, 100]
+    },
+    {
+      "email": "tranthanhdanh101122@gmail.com",
+      "filename": "CnB - Tran Nu Thanh Danh.pdf",
+      "tier": 2,
+      "target_category": "POTENTIAL_MATCH",
+      "target_label": "Potential Match",
+      "score_range": [70, 84]
+    },
+    {
+      "email": "tramhng109@gmail.com",
+      "filename": "CnB - Pham Truong Hoai Tram.pdf",
+      "tier": 2,
+      "target_category": "POTENTIAL_MATCH",
+      "target_label": "Potential Match",
+      "score_range": [70, 84]
+    },
+    {
+      "email": "thudtm55@gmail.com",
+      "filename": "CnB - Do Thi Minh Thu.pdf",
+      "tier": 2,
+      "target_category": "POTENTIAL_MATCH",
+      "target_label": "Potential Match",
+      "score_range": [70, 84]
+    },
+    {
+      "email": "chauhuynh091@gmail.com",
+      "filename": "CnB - HUYNH NGOC CHAU.pdf",
+      "tier": 2,
+      "target_category": "POTENTIAL_MATCH",
+      "target_label": "Potential Match",
+      "score_range": [70, 84]
+    },
+    {
+      "email": "phamtram1606@gmail.com",
+      "filename": "CnB - Nguyen Tram.pdf",
+      "tier": 2,
+      "target_category": "POTENTIAL_MATCH",
+      "target_label": "Potential Match",
+      "score_range": [70, 84]
+    },
+    {
+      "email": "thaikimhoang93@gmail.com",
+      "filename": "CnB - THÁI KIM HOÀNG.pdf",
+      "tier": 2,
+      "target_category": "POTENTIAL_MATCH",
+      "target_label": "Potential Match",
+      "score_range": [70, 84]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Bui Thi Thanh Tuyen.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Bui Thi Xuan Hoa.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Dang Thai Hai Tram.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Doan Thi Anh Tuyet.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - LE THI BICH PHUONG.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Le Ba Thuy Hang.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - NGUYEN NGOC THANH TRANG.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - NGUYEN THANH TRUNG.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Nguyen Duc Nham.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Nguyen Ho Mi Sa.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Nguyen Thi Bich Phuong.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Nguyen Thi Thu Lieu.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Nguyen Thuy.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Nguyen Yen Minh.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - PHAN THI THUY LIEU.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Phung Thi Kim Chi.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - TRAN THI TUYET TRINH.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Thai Thi Ny Na.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Tran Ngo Minh The.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - VO THI HONG TUYET.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - Vo Thu Kien Tran - 20241031.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "CnB - VÕ THỊ PHƯƠNG KHÁNH.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    },
+    {
+      "email": null,
+      "filename": "HR - Pham Thi Khanh Ly.pdf",
+      "tier": 3,
+      "target_category": "LOW_MATCH",
+      "target_label": "Low Match",
+      "score_range": [0, 69]
+    }
+  ]
+}
