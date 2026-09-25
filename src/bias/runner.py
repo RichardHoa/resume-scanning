@@ -28,19 +28,32 @@ DEFAULT_CONCURRENCY: int = int(os.environ.get("CONCURRENCY", "70"))
 MAX_EVAL_PER_SHUFFLE_KIND: Optional[int] = int(os.environ.get("MAX_EVAL_PER_SHUFFLE_KIND", "100"))
 NUM_TEST_ITERATIONS: int = 5
 
-CSV_FIELDS: List[str] = [
-    "iteration_number",
-    "run_index",
-    "experiment_type",
-    "condition",
-    "order",
-    "criterion_score",
-    "criterion_verdict",
-    "baseline_score",
-    "criterion_delta",
-    "is_affected",
-    "elapsed_seconds",
-]
+def get_csv_fieldnames(num_criteria: int) -> List[str]:
+    """
+    Generates wide-format CSV column names with overall metrics and per-criterion metrics (C1..Cn).
+    Each row represents exactly 1 execution run.
+    """
+    fields = [
+        "iteration_number",
+        "run_index",
+        "experiment_type",
+        "condition",
+        "order",
+        "overall_score",
+        "baseline_score",
+        "delta_from_baseline",
+        "num_criteria_affected",
+        "affected_criteria",
+        "is_valid",
+        "elapsed_seconds",
+    ]
+    for i in range(1, num_criteria + 1):
+        fields.extend([
+            f"c{i}_score",
+            f"c{i}_verdict",
+            f"c{i}_delta",
+        ])
+    return fields
 
 
 def get_criterion_prompt_positions(user_prompt: str, criteria_list: List[str]) -> Dict[str, int]:
@@ -253,7 +266,6 @@ def run_single_category_bias_test(
     cat_log_dir = os.path.join(project_root, "logging", "bias_prompts", category_key)
     os.makedirs(cat_log_dir, exist_ok=True)
     out_csv = os.path.join(bias_result_dir, f"bias_detection_{category_key}.csv")
-    out_json = os.path.join(bias_result_dir, f"bias_detection_{category_key}.json")
 
     # Group counts
     group_counts: Dict[str, int] = {}
@@ -300,7 +312,6 @@ def run_single_category_bias_test(
     all_results_matrix: List[Dict[str, Any]] = []
     details_list: List[Dict[str, Any]] = []
     start_total = time.time()
-    print_lock = threading.Lock()
     file_lock = threading.Lock()
 
     def evaluate_task(task_args: Tuple[int, str, str, Any, int]) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Dict[str, Any]], str]:
@@ -394,17 +405,15 @@ def run_single_category_bias_test(
 
         return row, detail, matched_crit, order_meta
 
+    csv_fieldnames = get_csv_fieldnames(len(criteria_list))
+
     # Initialize single CSV file with header
     with open(out_csv, "w", newline="", encoding="utf-8") as f_csv_init:
-        writer_init = csv.DictWriter(f_csv_init, fieldnames=CSV_FIELDS)
+        writer_init = csv.DictWriter(f_csv_init, fieldnames=csv_fieldnames)
         writer_init.writeheader()
 
     # Loop through test iterations (1..num_iterations)
     for iter_num in range(1, num_iterations + 1):
-        print(f"\n" + "=" * 86, file=sys.stderr)
-        print(f" 🚀 STARTING TEST ITERATION [{iter_num}/{num_iterations}] for '{category_key}'", file=sys.stderr)
-        print("=" * 86, file=sys.stderr)
-
         # 1. Run Baseline first for this iteration
         base_row, base_detail, base_matched_crit, base_order = evaluate_task(
             (1, experiments[0][0], experiments[0][1], experiments[0][2], iter_num)
@@ -420,43 +429,41 @@ def run_single_category_bias_test(
         base_detail["num_criteria_affected"] = 0
         base_detail["affected_criteria"] = "None"
 
-        base_criteria_rows = []
-        for i, _ in enumerate(criteria_list, start=1):
+        base_csv_row = {
+            "iteration_number": iter_num,
+            "run_index": 1,
+            "experiment_type": base_row["experiment_type"],
+            "condition": base_row["condition"],
+            "order": base_order,
+            "overall_score": base_row["score"],
+            "baseline_score": baseline_score,
+            "delta_from_baseline": 0,
+            "num_criteria_affected": 0,
+            "affected_criteria": "None",
+            "is_valid": 1 if base_row["is_valid"] else 0,
+            "elapsed_seconds": base_row["elapsed_seconds"],
+        }
+        for i in range(1, len(criteria_list) + 1):
             c_id = f"C{i}"
-            crit_score = base_matched_crit[c_id]["score"]
-            crit_verdict = base_matched_crit[c_id]["verdict"]
-            base_criteria_rows.append({
-                "iteration_number": iter_num,
-                "run_index": 1,
-                "experiment_type": base_row["experiment_type"],
-                "condition": base_row["condition"],
-                "order": base_order,
-                "criterion_score": crit_score,
-                "criterion_verdict": crit_verdict,
-                "baseline_score": crit_score,
-                "criterion_delta": 0.0,
-                "is_affected": 0,
-                "elapsed_seconds": base_row["elapsed_seconds"]
-            })
+            c_info = base_matched_crit.get(c_id, {"score": 0.0, "verdict": "NO_EVIDENCE"})
+            base_csv_row[f"c{i}_score"] = c_info["score"]
+            base_csv_row[f"c{i}_verdict"] = c_info["verdict"]
+            base_csv_row[f"c{i}_delta"] = 0.0
 
         all_results_matrix.append(base_row)
-        all_csv_rows.extend(base_criteria_rows)
+        all_csv_rows.append(base_csv_row)
         details_list.append(base_detail)
 
-        # Flush baseline rows immediately
+        # Flush baseline row immediately
         with file_lock:
             with open(out_csv, "a", newline="", encoding="utf-8") as f_csv:
-                writer = csv.DictWriter(f_csv, fieldnames=CSV_FIELDS)
-                writer.writerows(base_criteria_rows)
+                writer = csv.DictWriter(f_csv, fieldnames=csv_fieldnames)
+                writer.writerow(base_csv_row)
                 f_csv.flush()
-
-        status_flag = "✅ Baseline " if base_row["is_valid"] else "❌ PARSE_ERR"
-        print(f"  [{category_key}][Iter {iter_num}/{num_iterations}] [0001/{total_runs_per_iter:04d}] {experiments[0][1]:28s} -> Score: {baseline_score:3d} (  0 pts) [{status_flag}] ({base_row['elapsed_seconds']}s) [Flushed to CSV]", file=sys.stderr)
 
         # 2. Run remaining experiments concurrently with incremental CSV flushing
         remaining_tasks = [(i, exp[0], exp[1], exp[2], iter_num) for i, exp in enumerate(experiments[1:], start=2)]
         effective_concurrency = min(concurrency, total_runs_per_iter)
-        completed_count = 1
         unflushed_rows: List[Dict[str, Any]] = []
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=effective_concurrency) as executor:
@@ -469,71 +476,58 @@ def run_single_category_bias_test(
 
                 # Compute criterion-level metrics
                 affected_cids = []
-                task_criteria_rows = []
+                task_csv_row = {
+                    "iteration_number": iter_num,
+                    "run_index": row["index"],
+                    "experiment_type": row["experiment_type"],
+                    "condition": row["condition"],
+                    "order": order_meta,
+                    "overall_score": row["score"],
+                    "baseline_score": baseline_score,
+                    "delta_from_baseline": diff,
+                    "is_valid": 1 if row["is_valid"] else 0,
+                    "elapsed_seconds": row["elapsed_seconds"],
+                }
+
                 for i, _ in enumerate(criteria_list, start=1):
                     c_id = f"C{i}"
-                    c_score = matched_crit[c_id]["score"]
-                    c_verdict = matched_crit[c_id]["verdict"]
+                    c_score = matched_crit.get(c_id, {}).get("score", 0.0)
+                    c_verdict = matched_crit.get(c_id, {}).get("verdict", "NO_EVIDENCE")
                     b_score = baseline_crit_eval.get(c_id, {}).get("score", 0.0)
                     c_delta = round(c_score - b_score, 2)
-                    is_aff = 1 if abs(c_delta) > 1e-4 else 0
-                    if is_aff:
+                    if abs(c_delta) > 1e-4:
                         affected_cids.append(c_id)
 
-                    task_criteria_rows.append({
-                        "iteration_number": iter_num,
-                        "run_index": row["index"],
-                        "experiment_type": row["experiment_type"],
-                        "condition": row["condition"],
-                        "order": order_meta,
-                        "criterion_score": c_score,
-                        "criterion_verdict": c_verdict,
-                        "baseline_score": b_score,
-                        "criterion_delta": c_delta,
-                        "is_affected": is_aff,
-                        "elapsed_seconds": row["elapsed_seconds"]
-                    })
+                    task_csv_row[f"c{i}_score"] = c_score
+                    task_csv_row[f"c{i}_verdict"] = c_verdict
+                    task_csv_row[f"c{i}_delta"] = c_delta
 
                 row["num_criteria_affected"] = len(affected_cids)
                 row["affected_criteria"] = ", ".join(affected_cids) if affected_cids else "None"
                 detail["num_criteria_affected"] = len(affected_cids)
                 detail["affected_criteria"] = ", ".join(affected_cids) if affected_cids else "None"
+                task_csv_row["num_criteria_affected"] = len(affected_cids)
+                task_csv_row["affected_criteria"] = row["affected_criteria"]
 
                 all_results_matrix.append(row)
-                all_csv_rows.extend(task_criteria_rows)
+                all_csv_rows.append(task_csv_row)
                 details_list.append(detail)
-                unflushed_rows.extend(task_criteria_rows)
-                completed_count += 1
-
-                diff_str = f"({diff:+d} pts)" if diff != 0 else "(  0 pts)"
-                aff_str = f" [Affected: {row['affected_criteria']}]" if row['num_criteria_affected'] > 0 else ""
-                if not row["is_valid"]:
-                    s_flag = "❌ PARSE_ERR"
-                elif diff != 0 or row["num_criteria_affected"] > 0:
-                    s_flag = "⚠️ SHIFT    "
-                else:
-                    s_flag = "✅ Same     "
+                unflushed_rows.append(task_csv_row)
 
                 # Flush to CSV every 10 completed runs
-                flushed_msg = ""
-                if len(unflushed_rows) >= 10 * len(criteria_list):
+                if len(unflushed_rows) >= 10:
                     with file_lock:
                         with open(out_csv, "a", newline="", encoding="utf-8") as f_csv:
-                            writer = csv.DictWriter(f_csv, fieldnames=CSV_FIELDS)
+                            writer = csv.DictWriter(f_csv, fieldnames=csv_fieldnames)
                             writer.writerows(unflushed_rows)
                             f_csv.flush()
-
-                    flushed_msg = f" [CSV Flushed {len(unflushed_rows)} rows]"
                     unflushed_rows.clear()
-
-                with print_lock:
-                    print(f"  [{category_key}][Iter {iter_num}/{num_iterations}] [{row['index']:04d}/{total_runs_per_iter:04d}] {row['condition']:28s} -> Score: {row['score']:3d} {diff_str}{aff_str} [{s_flag}] ({row['elapsed_seconds']}s) [Progress: {completed_count}/{total_runs_per_iter}]{flushed_msg}", file=sys.stderr)
 
         # Flush any remaining rows for this iteration
         if unflushed_rows:
             with file_lock:
                 with open(out_csv, "a", newline="", encoding="utf-8") as f_csv:
-                    writer = csv.DictWriter(f_csv, fieldnames=CSV_FIELDS)
+                    writer = csv.DictWriter(f_csv, fieldnames=csv_fieldnames)
                     writer.writerows(unflushed_rows)
                     f_csv.flush()
             unflushed_rows.clear()
@@ -545,7 +539,7 @@ def run_single_category_bias_test(
 
     # Overwrite CSV with full cleanly ordered rows
     with open(out_csv, "w", newline="", encoding="utf-8") as f_csv:
-        writer = csv.DictWriter(f_csv, fieldnames=CSV_FIELDS)
+        writer = csv.DictWriter(f_csv, fieldnames=csv_fieldnames)
         writer.writeheader()
         writer.writerows(all_csv_rows)
 
@@ -569,13 +563,16 @@ def run_single_category_bias_test(
                 "count": len(scs)
             }
 
-    # Save JSON details (only log variations that deviate from baseline in score or criteria)
+    # Summary dictionary (in-memory for multi-category suite report)
     deviated_variations = [d for d in details_list if d.get("delta_from_baseline", 0) != 0 or d.get("num_criteria_affected", 0) != 0]
+    criteria_map = {f"C{i}": crit for i, crit in enumerate(criteria_list, start=1)}
     summary_data = {
         "target_category": category_key,
         "category_name": category_name,
         "candidate_resume": resume_name,
         "candidate_path": resume_path,
+        "criteria_list": criteria_map,
+        "baseline_score": all_results_matrix[0]["score"] if all_results_matrix else 0,
         "num_test_iterations": num_iterations,
         "total_iterations": total_total_runs,
         "valid_iterations": len(valid_scores),
@@ -586,8 +583,6 @@ def run_single_category_bias_test(
         "group_spreads": group_spreads,
         "variations": deviated_variations
     }
-    with open(out_json, "w", encoding="utf-8") as f_json:
-        json.dump(summary_data, f_json, ensure_ascii=False, indent=2)
 
     total_time = round(time.time() - start_total, 2)
     invalid_count = total_total_runs - len(valid_scores)
@@ -609,7 +604,6 @@ def run_single_category_bias_test(
     print(f" Total Execution Time:               {total_time}s", file=sys.stderr)
     print(f" Prompts Logged to:                  {cat_log_dir}/", file=sys.stderr)
     print(f" Consolidated Output CSV:            {out_csv}", file=sys.stderr)
-    print(f" JSON Details:                       {out_json}", file=sys.stderr)
     print("=" * 86, file=sys.stderr)
 
     return summary_data
