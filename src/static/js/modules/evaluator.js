@@ -28,6 +28,10 @@ export class EvaluatorController {
         };
         this.currentHrRagText = '';
 
+        // Tracks the exact requirement text last sent to /api/rag/scrutinize, so "Decompose"
+        // only re-runs scrutiny when the requirements actually changed since the last pass.
+        this.lastScrutinizedText = null;
+
         this.initDOMElements();
         this.initEvents();
         this.checkExistingRag();
@@ -48,6 +52,14 @@ export class EvaluatorController {
         this.hrHiddenReqInput = document.getElementById('hr-hidden-req');
         this.btnDecomposeReqs = document.getElementById('btn-decompose-reqs');
         this.btnUseExistingRag = document.getElementById('btn-use-existing-rag');
+
+        // Step 1: Clarification Questions panel (Implicit Assumption scrutiny)
+        this.scrutinyPanel = document.getElementById('scrutiny-panel');
+        this.scrutinyGroupStandard = document.getElementById('scrutiny-group-standard');
+        this.scrutinyGroupHidden = document.getElementById('scrutiny-group-hidden');
+        this.scrutinyListStandard = document.getElementById('scrutiny-list-standard');
+        this.scrutinyListHidden = document.getElementById('scrutiny-list-hidden');
+        this.btnProceedDecompose = document.getElementById('btn-proceed-decompose');
 
         // Step 2: RAG Verification & Editor
         this.criteriaEditorContainer = document.getElementById('criteria-editor-container');
@@ -101,7 +113,10 @@ export class EvaluatorController {
     initEvents() {
         // Step 1 triggers
         if (this.btnDecomposeReqs) {
-            this.btnDecomposeReqs.addEventListener('click', () => this.decomposeRequirements());
+            this.btnDecomposeReqs.addEventListener('click', () => this.handleDecomposeClick());
+        }
+        if (this.btnProceedDecompose) {
+            this.btnProceedDecompose.addEventListener('click', () => this.handleDecomposeClick());
         }
         if (this.btnUseExistingRag) {
             this.btnUseExistingRag.addEventListener('click', () => this.useExistingRagAndProceed());
@@ -233,11 +248,93 @@ export class EvaluatorController {
     }
 
     /**
-     * Step 1 -> Step 2: Decomposes requirements using LLM and populates the editor.
+     * Entry point for the "Decompose" / "Proceed to Decompose" buttons. Runs the Implicit
+     * Assumption scrutiny pass first, showing Clarification Questions inline if any are found;
+     * only calls through to decomposeRequirements() once the current text has already been
+     * scrutinized with no unaddressed re-scrutiny needed.
      */
-    async decomposeRequirements() {
+    async handleDecomposeClick() {
         const stdReq = (this.hrStdReqInput ? this.hrStdReqInput.value : '').trim();
         const hiddenReq = (this.hrHiddenReqInput ? this.hrHiddenReqInput.value : '').trim();
+
+        if (!stdReq && !hiddenReq) {
+            alert('Please enter Standard Job Requirements or Hidden Requirements before decomposing.');
+            return;
+        }
+
+        const textUnchanged = this.lastScrutinizedText
+            && this.lastScrutinizedText.std === stdReq
+            && this.lastScrutinizedText.hidden === hiddenReq;
+
+        if (textUnchanged) {
+            this.hideScrutinyPanel();
+            await this.decomposeRequirements(stdReq, hiddenReq);
+            return;
+        }
+
+        if (this.loaderOverlay) {
+            this.loaderTitle.textContent = 'Checking Requirements for Ambiguity...';
+            this.loaderDesc.textContent = 'Scanning for unstated assumptions before categorization...';
+            this.loaderOverlay.style.display = 'flex';
+        }
+
+        try {
+            const result = await API.scrutinizeRequirements(stdReq, hiddenReq);
+            this.lastScrutinizedText = { std: stdReq, hidden: hiddenReq };
+
+            const stdFindings = result.standard_requirements || [];
+            const hiddenFindings = result.hidden_requirements || [];
+
+            if (stdFindings.length === 0 && hiddenFindings.length === 0) {
+                this.hideScrutinyPanel();
+                await this.decomposeRequirements(stdReq, hiddenReq);
+                return;
+            }
+
+            this.renderScrutinyPanel(stdFindings, hiddenFindings);
+        } catch (err) {
+            // Fail closed: a broken scrutiny call likely means decomposition would fail too.
+            alert('Requirement Scrutiny Error: ' + err.message);
+        } finally {
+            if (this.loaderOverlay) this.loaderOverlay.style.display = 'none';
+        }
+    }
+
+    /**
+     * Renders the Clarification Questions panel grouped by source field.
+     */
+    renderScrutinyPanel(stdFindings, hiddenFindings) {
+        if (!this.scrutinyPanel) return;
+
+        const renderList = (listEl, findings) => {
+            if (!listEl) return;
+            listEl.innerHTML = findings.map(f => `
+                <div class="scrutiny-question-item">
+                    <div class="scrutiny-assumption">Assumption: ${this.escapeHtml(f.assumption)}</div>
+                    <div class="scrutiny-question">${this.escapeHtml(f.question)}</div>
+                </div>
+            `).join('');
+        };
+
+        if (this.scrutinyGroupStandard) this.scrutinyGroupStandard.style.display = stdFindings.length > 0 ? 'block' : 'none';
+        if (this.scrutinyGroupHidden) this.scrutinyGroupHidden.style.display = hiddenFindings.length > 0 ? 'block' : 'none';
+        renderList(this.scrutinyListStandard, stdFindings);
+        renderList(this.scrutinyListHidden, hiddenFindings);
+
+        this.scrutinyPanel.style.display = 'block';
+        this.scrutinyPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    hideScrutinyPanel() {
+        if (this.scrutinyPanel) this.scrutinyPanel.style.display = 'none';
+    }
+
+    /**
+     * Step 1 -> Step 2: Decomposes requirements using LLM and populates the editor.
+     */
+    async decomposeRequirements(stdReq, hiddenReq) {
+        stdReq = stdReq !== undefined ? stdReq : (this.hrStdReqInput ? this.hrStdReqInput.value : '').trim();
+        hiddenReq = hiddenReq !== undefined ? hiddenReq : (this.hrHiddenReqInput ? this.hrHiddenReqInput.value : '').trim();
 
         if (!stdReq && !hiddenReq) {
             alert('Please enter Standard Job Requirements or Hidden Requirements before decomposing.');

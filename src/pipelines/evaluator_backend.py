@@ -8,16 +8,19 @@ import re
 from typing import Dict, List, Any, Optional
 
 from src.core.config import (
-    DIMENSION_WEIGHTS, VLLM_REQUEST_TIMEOUT, FALLBACK_ERROR_SCORE, MATCH_THRESHOLDS, MAX_NEW_TOKENS
+    DIMENSION_WEIGHTS, VLLM_REQUEST_TIMEOUT, FALLBACK_ERROR_SCORE, MATCH_THRESHOLDS, MAX_NEW_TOKENS,
+    SCRUTINY_TEMPERATURE, SCRUTINY_MAX_QUESTIONS_PER_FIELD
 )
 from src.core.logger import log_broken_json
 from src.core.json_utils import clean_and_parse_json
 from src.prompts.evaluator_prompts import (
-    get_requirements_decomposition_prompt
+    get_requirements_decomposition_prompt,
+    get_requirements_scrutiny_prompt
 )
 from src.pipelines.evaluator_mocks import (
     get_mock_category_response,
-    get_mock_decomposed_requirements
+    get_mock_decomposed_requirements,
+    get_mock_scrutiny_response
 )
 
 CATEGORY_LABELS = {
@@ -29,7 +32,7 @@ CATEGORY_LABELS = {
 }
 
 
-def call_transformers_backend(evaluator_inst: Any, prompt: str, messages: List[Dict[str, str]]) -> str:
+def call_transformers_backend(evaluator_inst: Any, prompt: str, messages: List[Dict[str, str]], temperature: float = 0.0) -> str:
     """Helper to call HuggingFace transformers model backend."""
     import torch
     if evaluator_inst.model is None or evaluator_inst.tokenizer is None:
@@ -48,22 +51,22 @@ def call_transformers_backend(evaluator_inst: Any, prompt: str, messages: List[D
     inputs = evaluator_inst.tokenizer(formatted_prompt, return_tensors="pt")
     target_device = evaluator_inst.model.device if hasattr(evaluator_inst.model, "device") else ("cuda" if torch.cuda.is_available() else "cpu")
     inputs = {k: v.to(target_device) for k, v in inputs.items()}
-    
+
     with evaluator_inst._llm_lock, torch.no_grad():
         outputs = evaluator_inst.model.generate(
             **inputs,
             max_new_tokens=MAX_NEW_TOKENS,
-            temperature=0.0,
+            temperature=temperature,
             top_p=0.95,
             repetition_penalty=1.05,
-            do_sample=False
+            do_sample=temperature > 0.0
         )
     input_len = inputs["input_ids"].shape[1]
     generated_tokens = outputs[0][input_len:]
     return evaluator_inst.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
 
 
-def call_vllm_backend(evaluator_inst: Any, category: str, messages: List[Dict[str, str]]) -> str:
+def call_vllm_backend(evaluator_inst: Any, category: str, messages: List[Dict[str, str]], temperature: float = 0.0) -> str:
     """Helper to call vLLM HTTP server backend."""
     import urllib.request
     import urllib.error
@@ -71,7 +74,7 @@ def call_vllm_backend(evaluator_inst: Any, category: str, messages: List[Dict[st
     payload = {
         "model": evaluator_inst.model_name,
         "messages": messages,
-        "temperature": 0.0,
+        "temperature": temperature,
         "top_p": 0.95,
         "repetition_penalty": 1.05,
         "max_tokens": MAX_NEW_TOKENS,
@@ -162,6 +165,78 @@ def decompose_requirements_with_llm(
 
     log_broken_json(prompt, raw_out, "requirements_decomposition", resume_name, attempt=1, error_reason="Decomposition JSON parse failed completely", log_dir=log_dir)
     return None
+
+
+def _validate_scrutiny_response(parsed: Any, max_questions: int) -> Optional[Dict[str, List[Dict[str, str]]]]:
+    """Validates and truncates a parsed scrutiny response to the {standard_requirements, hidden_requirements} shape."""
+    if not isinstance(parsed, dict):
+        return None
+
+    result: Dict[str, List[Dict[str, str]]] = {}
+    for field in ("standard_requirements", "hidden_requirements"):
+        if field not in parsed:
+            # A missing key is a malformed response, not "no assumptions found" — treat it as a
+            # parse failure so the caller retries instead of silently under-reporting to HR.
+            return None
+        items = parsed[field]
+        if not isinstance(items, list):
+            return None
+        cleaned = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            assumption = str(item.get("assumption", "")).strip()
+            question = str(item.get("question", "")).strip()
+            if assumption and question:
+                cleaned.append({"assumption": assumption, "question": question})
+        result[field] = cleaned[:max_questions]
+    return result
+
+
+def scrutinize_requirements_with_llm(
+    evaluator_inst: Any,
+    standard_req: str,
+    hidden_req: str,
+    resume_name: str = "hr_requirements",
+    language: Optional[str] = None,
+    max_questions: int = SCRUTINY_MAX_QUESTIONS_PER_FIELD,
+    max_retries: int = 5,
+    log_dir: Optional[str] = None
+) -> Dict[str, List[Dict[str, str]]]:
+    """
+    Scrutinizes HR standard & hidden requirements for Implicit Assumptions, returning up to
+    `max_questions` Clarification Questions per field. Fails closed: raises RuntimeError if a
+    valid response can't be parsed after `max_retries` attempts, rather than silently returning
+    an empty (falsely reassuring) result.
+    """
+    standard_req = (standard_req or "").strip()
+    hidden_req = (hidden_req or "").strip()
+    eff_language = language or getattr(evaluator_inst, "language", "vietnamese")
+
+    if not standard_req and not hidden_req:
+        return {"standard_requirements": [], "hidden_requirements": []}
+
+    if evaluator_inst.mock:
+        return get_mock_scrutiny_response(standard_req, hidden_req, language=eff_language, max_questions=max_questions)
+
+    prompt = get_requirements_scrutiny_prompt(standard_req, hidden_req, evaluator_inst.model_name, language=eff_language)
+
+    raw_out = ""
+    for attempt in range(1, max_retries + 1):
+        raw_out = evaluator_inst._call_llm(
+            prompt, "requirements_scrutiny", resume_name,
+            language=eff_language, temperature=SCRUTINY_TEMPERATURE, log_dir=log_dir
+        )
+        parsed = clean_and_parse_json(raw_out)
+        validated = _validate_scrutiny_response(parsed, max_questions)
+        if validated is not None:
+            return validated
+
+        print(f"[Scrutiny Retry] Attempt {attempt}/{max_retries} failed to parse. Retrying...", file=sys.stderr)
+        log_broken_json(prompt, raw_out, "requirements_scrutiny", resume_name, attempt=attempt, error_reason="Scrutiny JSON parse failed", log_dir=log_dir)
+
+    log_broken_json(prompt, raw_out, "requirements_scrutiny", resume_name, attempt=max_retries, error_reason=f"Max retries ({max_retries}) reached", log_dir=log_dir)
+    raise RuntimeError(f"Requirement scrutiny failed to produce valid output after {max_retries} attempts.")
 
 
 def aggregate_evaluation_results(

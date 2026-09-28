@@ -104,6 +104,33 @@ export const API = {
     },
 
     /**
+     * Scrutinizes HR requirements for Implicit Assumptions, returning Clarification Questions
+     * grouped by source field ('standard_requirements', 'hidden_requirements'). Ephemeral —
+     * does not touch the RAG store.
+     * @param {string} stdReq - Standard job requirements text.
+     * @param {string} hiddenReq - HR hidden / culture fit requirements text.
+     * @param {string} [language='vietnamese'] - Output language for clarification questions.
+     * @returns {Promise<Object>} { standard_requirements: [{assumption, question}], hidden_requirements: [...] }
+     */
+    async scrutinizeRequirements(stdReq, hiddenReq, language = "vietnamese") {
+        const res = await fetch('/api/rag/scrutinize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                standard_requirements: stdReq,
+                hidden_requirements: hiddenReq,
+                language: language
+            })
+        });
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            const errMsg = errData.detail || errData.error || errData.message || `Server returned HTTP status ${res.status}`;
+            throw new Error(errMsg);
+        }
+        return await res.json();
+    },
+
+    /**
      * Updates persistent RAG database with user-edited criteria across 5 dimensions.
      * @param {Object} categories - Map of category names to arrays of string criteria items.
      * @param {string} [stdReq=''] - Standard requirements text.

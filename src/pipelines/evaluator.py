@@ -25,6 +25,7 @@ from src.providers.rag_engine import LocalCriteriaRAG
 from src.prompts.evaluator_prompts import (
     get_evaluator_system_prompt,
     get_requirements_decomposition_system_prompt,
+    get_requirements_scrutiny_system_prompt,
     get_category_evaluation_prompt
 )
 from src.pipelines.evaluator_mocks import (
@@ -40,6 +41,7 @@ from src.pipelines.evaluator_backend import (
     call_transformers_backend,
     call_vllm_backend,
     decompose_requirements_with_llm,
+    scrutinize_requirements_with_llm,
     aggregate_evaluation_results,
     save_evaluation_report
 )
@@ -95,19 +97,22 @@ class ResumeEvaluator:
             print(f"[ResumeEvaluator] Using vLLM server backend at {self.vllm_url}", file=sys.stderr)
 
     def _call_llm(
-        self, 
-        prompt: str, 
-        category: str, 
-        resume_name: str = "candidate", 
-        system_prompt: Optional[str] = None, 
+        self,
+        prompt: str,
+        category: str,
+        resume_name: str = "candidate",
+        system_prompt: Optional[str] = None,
         run_index: Optional[int] = None,
         language: Optional[str] = None,
+        temperature: float = 0.0,
         log_dir: Optional[str] = None
     ) -> str:
         eff_language = language or self.language
         if system_prompt is None:
             if category == "requirements_decomposition":
                 system_prompt = get_requirements_decomposition_system_prompt()
+            elif category == "requirements_scrutiny":
+                system_prompt = get_requirements_scrutiny_system_prompt()
             else:
                 system_prompt = get_evaluator_system_prompt(language=eff_language)
 
@@ -124,20 +129,20 @@ class ResumeEvaluator:
         ]
 
         if self.backend == "transformers":
-            response_text = self._call_transformers_backend(prompt, messages)
+            response_text = self._call_transformers_backend(prompt, messages, temperature=temperature)
         elif self.backend == "vllm":
-            response_text = self._call_vllm_backend(category, messages)
+            response_text = self._call_vllm_backend(category, messages, temperature=temperature)
         else:
             response_text = ""
 
         log_llm_call(full_prompt, response_text, category, resume_name, run_index=run_index, log_dir=log_dir)
         return response_text
 
-    def _call_transformers_backend(self, prompt: str, messages: List[Dict[str, str]]) -> str:
-        return call_transformers_backend(self, prompt, messages)
+    def _call_transformers_backend(self, prompt: str, messages: List[Dict[str, str]], temperature: float = 0.0) -> str:
+        return call_transformers_backend(self, prompt, messages, temperature=temperature)
 
-    def _call_vllm_backend(self, category: str, messages: List[Dict[str, str]]) -> str:
-        return call_vllm_backend(self, category, messages)
+    def _call_vllm_backend(self, category: str, messages: List[Dict[str, str]], temperature: float = 0.0) -> str:
+        return call_vllm_backend(self, category, messages, temperature=temperature)
 
     def _decompose_requirements_with_llm(
         self,
@@ -163,6 +168,21 @@ class ResumeEvaluator:
             hidden_req,
             llm_decomposer_func=lambda s, h: self._decompose_requirements_with_llm(s, h, resume_name, log_dir=log_dir)
         )
+
+    def scrutinize_requirements(
+        self,
+        standard_req: str,
+        hidden_req: str,
+        resume_name: str = "hr_requirements",
+        language: Optional[str] = None,
+        log_dir: Optional[str] = None
+    ) -> Dict[str, List[Dict[str, str]]]:
+        """
+        Scrutinizes HR standard & hidden requirements for Implicit Assumptions, returning
+        {"standard_requirements": [...], "hidden_requirements": [...]} Clarification Questions.
+        Ephemeral: does not touch the RAG store. Raises on failure (fails closed).
+        """
+        return scrutinize_requirements_with_llm(self, standard_req, hidden_req, resume_name, language=language, log_dir=log_dir)
 
     def _extract_relevant_resume_field(self, category: str, resume: Dict[str, Any]) -> Dict[str, Any]:
         """Wrapper for resume section extraction utility."""

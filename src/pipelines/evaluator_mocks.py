@@ -101,6 +101,36 @@ def get_mock_category_response(category: str, language: str = "vietnamese") -> s
     return json.dumps(mock_data.get(category, default_resp), ensure_ascii=False)
 
 
+def get_mock_scrutiny_response(standard_req: str, hidden_req: str, language: str = "vietnamese", max_questions: int = 5) -> Dict[str, List[Dict[str, str]]]:
+    """Generates a mock Implicit Assumption / Clarification Question response via simple keyword heuristics."""
+    is_english = language.lower() in ("english", "en")
+    vague_terms = ["senior", "junior", "good", "strong", "fast-paced", "flexible", "team player", "cấp cao", "tốt", "linh hoạt"]
+
+    def _find_assumptions(text: str) -> List[Dict[str, str]]:
+        text_low = (text or "").lower()
+        found = []
+        for term in vague_terms:
+            if term in text_low:
+                if is_english:
+                    found.append({
+                        "assumption": f"The term '{term}' is not defined with a concrete threshold or example.",
+                        "question": f"What specifically does '{term}' mean for this role?"
+                    })
+                else:
+                    found.append({
+                        "assumption": f"Thuật ngữ '{term}' chưa được định nghĩa cụ thể.",
+                        "question": f"'{term}' cụ thể được hiểu như thế nào cho vị trí này?"
+                    })
+            if len(found) >= max_questions:
+                break
+        return found[:max_questions]
+
+    return {
+        "standard_requirements": _find_assumptions(standard_req),
+        "hidden_requirements": _find_assumptions(hidden_req)
+    }
+
+
 def get_mock_decomposed_requirements(standard_req: str, hidden_req: str) -> Dict[str, List[str]]:
     """Generates mock decomposed requirements dict based on heuristic keyword matching."""
     lines_std = [l.strip() for l in (standard_req or "").split('\n') if l.strip()]

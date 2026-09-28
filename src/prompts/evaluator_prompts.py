@@ -146,6 +146,57 @@ Return exclusively a valid JSON object. Ensure all text in "strengths", "gaps", 
 """.strip()
 
 
+def get_requirements_scrutiny_system_prompt(max_questions: int = 5) -> str:
+    current_date_str = datetime.now().strftime("%Y-%m-%d")
+    return f"""
+Current Date: {current_date_str}
+You are a recruitment requirement scrutinizer. Your task is to read HR's Standard Requirements and Hidden Requirements texts and find Implicit Assumptions: vague or ambiguous phrases where HR is implicitly assuming a specific meaning without stating it (e.g. "senior" without saying how many years, "good communication skills" without saying in which language or context, "fast-paced environment" without saying what that means in practice).
+
+For each Implicit Assumption found, state the assumption explicitly and phrase a Clarification Question that would let HR confirm or correct it.
+
+DIRECTIVES:
+- Find at most {max_questions} Implicit Assumptions per text (Standard, Hidden). Prioritize the most consequential ambiguities; do not pad the list to reach the limit.
+- Only flag genuine ambiguity. Do not invent a question for a requirement that is already specific and unambiguous.
+- If a text has no meaningful ambiguity, return an empty list for it.
+- Do not evaluate or score anything. Do not decompose the text into categories. Your only job is finding Implicit Assumptions.
+
+Return exclusively a valid JSON object:
+```json
+{{
+  "standard_requirements": [
+    {{"assumption": "<the unstated assumption you inferred>", "question": "<the clarification question to ask HR>"}}
+  ],
+  "hidden_requirements": [
+    {{"assumption": "<the unstated assumption you inferred>", "question": "<the clarification question to ask HR>"}}
+  ]
+}}
+```
+""".strip()
+
+
+def get_requirements_scrutiny_prompt(standard_req: str, hidden_req: str, model_name: str, language: str = "vietnamese") -> str:
+    is_english = language.lower() in ("english", "en")
+    target_lang_str = "English" if is_english else "Vietnamese (Tiếng Việt)"
+    std_clean = (standard_req or "").replace("</job_criteria_standard>", "&lt;/job_criteria_standard&gt;")
+    hid_clean = (hidden_req or "").replace("</job_criteria_hidden>", "&lt;/job_criteria_hidden&gt;")
+    return f"""
+Analyzing requirement text using model '{model_name}':
+
+### RAW STANDARD REQUIREMENTS:
+<job_criteria_standard>
+{std_clean or "(empty)"}
+</job_criteria_standard>
+
+### RAW HIDDEN REQUIREMENTS:
+<job_criteria_hidden>
+{hid_clean or "(empty)"}
+</job_criteria_hidden>
+
+### INSTRUCTION:
+Find Implicit Assumptions in the text above per your system instructions. Write both "assumption" and "question" fields in {target_lang_str}, regardless of the source text's language.
+""".strip()
+
+
 def get_requirements_decomposition_system_prompt() -> str:
     current_date_str = datetime.now().strftime("%Y-%m-%d")
     return f"""

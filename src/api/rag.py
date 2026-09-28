@@ -13,6 +13,12 @@ class DecomposeRequirementsRequest(BaseModel):
     language: Optional[str] = Field(default="vietnamese", description="Output language ('vietnamese' or 'english')")
 
 
+class ScrutinizeRequirementsRequest(BaseModel):
+    standard_requirements: Optional[str] = Field(default="", description="Standard Job Requirements text")
+    hidden_requirements: Optional[str] = Field(default="", description="Hidden Job Requirements text")
+    language: Optional[str] = Field(default="vietnamese", description="Output language for clarification questions ('vietnamese' or 'english')")
+
+
 class UpdateRagCriteriaRequest(BaseModel):
     categories: Dict[str, List[str]] = Field(..., description="Map of dimension categories to lists of criteria strings")
     standard_requirements: Optional[str] = Field(default="", description="Raw standard requirements text")
@@ -57,6 +63,38 @@ async def decompose_requirements_endpoint(payload: DecomposeRequirementsRequest)
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Requirement categorization failed: {str(e)}")
+
+
+@router.post("/rag/scrutinize")
+async def scrutinize_requirements_endpoint(payload: ScrutinizeRequirementsRequest):
+    """
+    Scrutinizes HR requirements for Implicit Assumptions and returns Clarification Questions,
+    grouped by source field, without touching the RAG store. Web-only, ephemeral, fails closed:
+    an LLM/parse failure raises a 500 rather than silently returning an empty (falsely
+    reassuring) result.
+    """
+    if not state.evaluator:
+        raise HTTPException(status_code=500, detail="Resume Evaluator model is not initialized on the server.")
+
+    std_req = (payload.standard_requirements or "").strip()
+    hidden_req = (payload.hidden_requirements or "").strip()
+
+    if not std_req and not hidden_req:
+        raise HTTPException(status_code=400, detail="Please provide Standard Job Requirements or Hidden Requirements.")
+
+    try:
+        result = await asyncio.to_thread(
+            state.evaluator.scrutinize_requirements,
+            std_req,
+            hidden_req,
+            "hr_requirements",
+            payload.language
+        )
+        return {"success": True, **result}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Requirement scrutiny failed: {str(e)}")
 
 
 @router.post("/rag/update")

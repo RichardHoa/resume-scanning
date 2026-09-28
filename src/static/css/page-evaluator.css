@@ -551,6 +551,66 @@
     box-shadow: var(--shadow-sm);
 }
 
+.scrutiny-panel {
+    margin-top: 1.5rem;
+    padding: 1.15rem;
+    background: #FFFBEB;
+    border: 1px solid #FCD34D;
+    border-radius: var(--radius-md);
+}
+
+.scrutiny-panel-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-weight: 700;
+    color: #B45309;
+    margin-bottom: 1rem;
+    font-size: 0.95rem;
+}
+
+.scrutiny-panel-sub {
+    font-weight: 400;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.scrutiny-field-group {
+    margin-bottom: 1rem;
+}
+
+.scrutiny-field-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--brand-legacy-blue);
+    margin-bottom: 6px;
+}
+
+.scrutiny-questions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.scrutiny-question-item {
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    font-size: 0.82rem;
+}
+
+.scrutiny-question-item .scrutiny-assumption {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.scrutiny-question-item .scrutiny-question {
+    color: var(--text-main);
+    font-weight: 600;
+    margin-top: 4px;
+}
+
 .criteria-editor-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));

@@ -50,6 +50,11 @@ VLLM_MAX_MODEL_LEN = 40000 # Total vLLM model context length limit (--max-model-
 MAX_NEW_TOKENS = 8096     # Output new tokens limit
 DSPY_MAX_TOKENS = 4048    # DSPy prompt optimization output token limit
 
+# Requirement-scrutiny step (web-only; surfaces Implicit Assumptions as Clarification Questions
+# before decomposition). Uses a non-zero temperature deliberately — see docs/adr/0001-nondeterministic-temperature-for-scrutiny-step.md
+SCRUTINY_TEMPERATURE = 0.7
+SCRUTINY_MAX_QUESTIONS_PER_FIELD = 5
+
 # Default model defaults
 DEFAULT_LLM_MODEL = "Qwen/Qwen3.5-35B-A3B-FP8"
 DEFAULT_EMBEDDING_MODEL = "AITeamVN/Vietnamese_Embedding"
