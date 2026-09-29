@@ -26,11 +26,16 @@
     font-family: var(--font-mono);
 }
 
-.rag-categories-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 1.25rem;
+.rag-categories-editor {
     margin-top: 1rem;
+    margin-bottom: 1rem;
+}
+
+.rag-save-bar {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
 }
 
 .rag-category-card {

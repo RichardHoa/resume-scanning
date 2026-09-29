@@ -17,7 +17,7 @@ An unstated premise the LLM infers behind a vague phrase in HR's Standard or Hid
 _Avoid_: hidden assumption (collides with Hidden Requirements)
 
 **Clarification Question**:
-A question shown to HR naming an Implicit Assumption and asking HR to confirm or correct it. Up to 5 are generated per field (Standard, Hidden). Non-blocking: HR may ignore them entirely and edit the free-text request directly instead of answering.
+A question shown to HR naming an Implicit Assumption and asking HR to confirm or correct it. Up to 5 are generated per field (Standard, Hidden). Non-blocking: HR may ignore them entirely and edit the free-text request directly instead of answering. Asked once per pass through requirement intake: after they are shown, HR's next action is decomposition, with no second check. The check runs again only if HR returns from Category review and changes the requirement text.
 _Avoid_: assumption question
 
 **Category** (also **Dimension**):

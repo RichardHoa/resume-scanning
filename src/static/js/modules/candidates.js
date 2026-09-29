@@ -8,6 +8,7 @@
  */
 
 import { API } from './api.js';
+import { CATEGORY_NAMES } from './criteria-editor.js';
 
 export class CandidatePoolController {
     constructor() {
@@ -76,7 +77,7 @@ export class CandidatePoolController {
      */
     async loadCandidatePool() {
         if (!this.candCardsGrid) return;
-        this.candCardsGrid.innerHTML = '<div class="loading-state">Loading candidate evaluations...</div>';
+        this.candCardsGrid.innerHTML = '<div class="loading-state">Đang tải kết quả đánh giá ứng viên...</div>';
 
         try {
             const data = await API.getEvalResults();
@@ -84,7 +85,7 @@ export class CandidatePoolController {
             this.updateSummaryStats(this.allCandidatesData);
             this.applyCandidateFiltersAndSort();
         } catch (err) {
-            this.candCardsGrid.innerHTML = `<div class="error-state">Failed to load candidates: ${err.message}</div>`;
+            this.candCardsGrid.innerHTML = `<div class="error-state">Không tải được danh sách ứng viên: ${this.escapeHtml(err.message)}</div>`;
         }
     }
 
@@ -188,8 +189,8 @@ export class CandidatePoolController {
             this.candCardsGrid.innerHTML = `
                 <div class="empty-state" style="grid-column: 1 / -1; padding: 3rem 1rem; text-align: center;">
                     <div class="empty-icon" style="font-size: 2.5rem; margin-bottom: 1rem;">🔍</div>
-                    <h3 style="color: #0F172A; font-weight: 800;">No Candidates Match Search</h3>
-                    <p style="color: #334155;">Try adjusting your search criteria or status filter.</p>
+                    <h3 style="color: #0F172A; font-weight: 800;">Không có ứng viên phù hợp</h3>
+                    <p style="color: #334155;">Hãy thử đổi từ khóa tìm kiếm hoặc bộ lọc trạng thái.</p>
                 </div>
             `;
             return;
@@ -199,9 +200,9 @@ export class CandidatePoolController {
 
         if (sortBy === 'evaluation_order') {
             const tiers = {
-                1: { title: 'Resume Tier 1 (Priority Candidates)', badgeClass: 'tier-badge-1', blockClass: 'tier-1-block', items: [] },
-                2: { title: 'Resume Tier 2 (Secondary Candidates)', badgeClass: 'tier-badge-2', blockClass: 'tier-2-block', items: [] },
-                3: { title: 'Resume Tier 3 (General Pool)', badgeClass: 'tier-badge-3', blockClass: 'tier-3-block', items: [] }
+                1: { title: 'Nhóm CV 1 (Ứng viên ưu tiên)', badgeClass: 'tier-badge-1', blockClass: 'tier-1-block', items: [] },
+                2: { title: 'Nhóm CV 2 (Ứng viên thứ cấp)', badgeClass: 'tier-badge-2', blockClass: 'tier-2-block', items: [] },
+                3: { title: 'Nhóm CV 3 (Ứng viên ngoài danh sách)', badgeClass: 'tier-badge-3', blockClass: 'tier-3-block', items: [] }
             };
 
             candidates.forEach(c => {
@@ -222,9 +223,9 @@ export class CandidatePoolController {
                     <div class="cand-tier-header">
                         <div class="cand-tier-title-group">
                             <h3>${group.title}</h3>
-                            <span class="tier-badge ${group.badgeClass}">Tier ${tNum}</span>
+                            <span class="tier-badge ${group.badgeClass}">Nhóm ${tNum}</span>
                         </div>
-                        <span style="font-size: 0.88rem; font-weight: 700; color: #334155;">${group.items.length} Candidate(s)</span>
+                        <span style="font-size: 0.88rem; font-weight: 700; color: #334155;">${group.items.length} ứng viên</span>
                     </div>
                     <div class="tier-grid cand-cards-grid"></div>
                 `;
@@ -244,35 +245,35 @@ export class CandidatePoolController {
         card.setAttribute('tabindex', '0');
         card.setAttribute('role', 'button');
 
-        const name = cand.candidate_identifier || cand.candidate_name || cand.resume_name || 'Candidate';
-        const title = cand.title || 'Candidate Dossier';
+        const name = cand.candidate_identifier || cand.candidate_name || cand.resume_name || 'Ứng viên';
+        const title = cand.title || 'Hồ sơ ứng viên';
         const email = cand.candidate_email || cand.email || (cand.candidate_identifier && cand.candidate_identifier.includes('@') ? cand.candidate_identifier : '');
         const numScore = parseFloat(cand.overall_score !== undefined ? cand.overall_score : 0) || 0;
         const score = numScore.toFixed(1);
         const rec = cand.match_recommendation || (numScore >= 85 ? 'STRONG_MATCH' : (numScore >= 70 ? 'POTENTIAL_MATCH' : (numScore >= 55 ? 'LOW_MATCH' : 'REJECT')));
 
         let recClass = 'match-potential';
-        let recText = 'POTENTIAL MATCH';
-        if (rec === 'STRONG_MATCH' || numScore >= 85) { recClass = 'match-strong'; recText = 'STRONG MATCH'; }
-        else if (rec === 'POTENTIAL_MATCH' || numScore >= 70) { recClass = 'match-potential'; recText = 'POTENTIAL MATCH'; }
-        else if (rec === 'LOW_MATCH' || numScore >= 55) { recClass = 'match-low'; recText = 'LOW MATCH'; }
-        else { recClass = 'match-reject'; recText = 'REJECT'; }
+        let recText = 'CÓ TIỀM NĂNG';
+        if (rec === 'STRONG_MATCH' || numScore >= 85) { recClass = 'match-strong'; recText = 'PHÙ HỢP CAO'; }
+        else if (rec === 'POTENTIAL_MATCH' || numScore >= 70) { recClass = 'match-potential'; recText = 'CÓ TIỀM NĂNG'; }
+        else if (rec === 'LOW_MATCH' || numScore >= 55) { recClass = 'match-low'; recText = 'PHÙ HỢP THẤP'; }
+        else { recClass = 'match-reject'; recText = 'LOẠI'; }
 
         const tierBadgeClass = cand.tier === 1 ? 'tier-badge-1' : (cand.tier === 2 ? 'tier-badge-2' : 'tier-badge-3');
-        const tierLabel = cand.tier ? `Tier ${cand.tier}` : 'Tier 3';
+        const tierLabel = cand.tier ? `Nhóm ${cand.tier}` : 'Nhóm 3';
 
-        card.setAttribute('aria-label', `Candidate: ${name}, Role: ${title}, Email: ${email || 'N/A'}, Score: ${score}/100, ${recText}`);
+        card.setAttribute('aria-label', `Ứng viên: ${name}, Vị trí: ${title}, Email: ${email || 'Không có'}, Điểm: ${score}/100, ${recText}`);
 
         // Vital Info: Breakdown of Match Score Progress Bars
         const dims = cand.dimension_scores || {};
         let dimsBreakdownHtml = '';
         const dimKeys = ['technical_skills', 'work_experience', 'seniority_title', 'education_certifications', 'hidden_culture'];
         const dimShortNames = {
-            'technical_skills': 'Tech Skills',
-            'work_experience': 'Work Experience',
-            'seniority_title': 'Seniority Level',
-            'education_certifications': 'Education & Certs',
-            'hidden_culture': 'Culture & Soft Skills'
+            'technical_skills': 'Kỹ năng chuyên môn',
+            'work_experience': 'Kinh nghiệm làm việc',
+            'seniority_title': 'Cấp bậc',
+            'education_certifications': 'Học vấn & Chứng chỉ',
+            'hidden_culture': 'Văn hóa & Kỹ năng mềm'
         };
 
         dimKeys.forEach(k => {
@@ -299,10 +300,10 @@ export class CandidatePoolController {
         });
 
         const isOcrReview = cand.ocr_applied || cand.intensive_hr_review_required || (Array.isArray(cand.warning) && cand.warning.some(w => typeof w === 'string' && w.includes('OCR')));
-        const ocrPillHtml = isOcrReview ? `<span class="badge-ocr-review" title="No text layer found in PDF. OCR was used for text extraction. High-level manual HR review required.">⚠️ INTENSIVE HR REVIEW (OCR)</span>` : '';
+        const ocrPillHtml = isOcrReview ? `<span class="badge-ocr-review" title="PDF không có lớp văn bản. Đã dùng OCR để trích xuất văn bản. Cần HR kiểm tra thủ công kỹ lưỡng.">⚠️ CẦN HR KIỂM TRA KỸ (OCR)</span>` : '';
 
         const emailChipHtml = email ? `
-            <a href="mailto:${this.escapeHtml(email)}" class="cand-email-chip" onclick="event.stopPropagation()" title="Send email to ${this.escapeHtml(email)}">
+            <a href="mailto:${this.escapeHtml(email)}" class="cand-email-chip" onclick="event.stopPropagation()" title="Gửi email tới ${this.escapeHtml(email)}">
                 <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
                 ${this.escapeHtml(email)}
             </a>
@@ -317,7 +318,7 @@ export class CandidatePoolController {
                 </div>
                 <div class="cand-score-badge">
                     <span class="cand-score-val" style="color: ${numScore >= 85 ? '#059669' : numScore >= 70 ? '#0284C7' : numScore >= 55 ? '#D97706' : '#DC2626'};">${score}</span>
-                    <span class="cand-score-lbl">Score</span>
+                    <span class="cand-score-lbl">Điểm</span>
                 </div>
             </div>
 
@@ -331,10 +332,10 @@ export class CandidatePoolController {
 
             <div class="cand-card-footer">
                 <div class="summary-badges">
-                    <span class="badge-strength-cnt">✓ ${cand.summary?.total_strengths || 0} Strengths</span>
-                    <span class="badge-gap-cnt">⚠ ${cand.summary?.total_gaps || 0} Gaps</span>
+                    <span class="badge-strength-cnt">✓ ${cand.summary?.total_strengths || 0} điểm mạnh</span>
+                    <span class="badge-gap-cnt">⚠ ${cand.summary?.total_gaps || 0} thiếu sót</span>
                 </div>
-                <button class="btn btn-sm btn-secondary cand-inspect-btn" type="button" tabindex="-1">Inspect Dossier →</button>
+                <button class="btn btn-sm btn-secondary cand-inspect-btn" type="button" tabindex="-1">Xem hồ sơ →</button>
             </div>
         `;
 
@@ -360,8 +361,8 @@ export class CandidatePoolController {
         this.currentModalCandidate = cand;
         if (!this.candModal || !this.modalCandBody) return;
 
-        const name = cand.candidate_identifier || cand.candidate_name || cand.resume_name || 'Candidate';
-        const title = cand.title || 'Candidate Dossier';
+        const name = cand.candidate_identifier || cand.candidate_name || cand.resume_name || 'Ứng viên';
+        const title = cand.title || 'Hồ sơ ứng viên';
         const email = cand.candidate_email || cand.email || (cand.candidate_identifier && cand.candidate_identifier.includes('@') ? cand.candidate_identifier : '');
         const numScore = parseFloat(cand.overall_score || 0);
         const score = numScore.toFixed(1);
@@ -371,18 +372,18 @@ export class CandidatePoolController {
         if (this.modalCandRole) this.modalCandRole.textContent = email ? `${title} • ${email}` : title;
 
         let recClass = 'match-potential';
-        let recText = 'POTENTIAL MATCH';
-        if (rec === 'STRONG_MATCH' || numScore >= 85) { recClass = 'match-strong'; recText = 'STRONG MATCH'; }
-        else if (rec === 'POTENTIAL_MATCH' || numScore >= 70) { recClass = 'match-potential'; recText = 'POTENTIAL MATCH'; }
-        else if (rec === 'LOW_MATCH' || numScore >= 55) { recClass = 'match-low'; recText = 'LOW MATCH'; }
-        else { recClass = 'match-reject'; recText = 'REJECT'; }
+        let recText = 'CÓ TIỀM NĂNG';
+        if (rec === 'STRONG_MATCH' || numScore >= 85) { recClass = 'match-strong'; recText = 'PHÙ HỢP CAO'; }
+        else if (rec === 'POTENTIAL_MATCH' || numScore >= 70) { recClass = 'match-potential'; recText = 'CÓ TIỀM NĂNG'; }
+        else if (rec === 'LOW_MATCH' || numScore >= 55) { recClass = 'match-low'; recText = 'PHÙ HỢP THẤP'; }
+        else { recClass = 'match-reject'; recText = 'LOẠI'; }
 
         const dims = cand.dimension_scores || {};
         let dimCardsHtml = '';
 
         Object.keys(dims).forEach(catKey => {
             const d = dims[catKey];
-            const catName = d.category_name || catKey;
+            const catName = CATEGORY_NAMES[catKey] || d.category_name || catKey;
             const catWeight = ((d.weight || 0.2) * 100).toFixed(0);
             const dScore = (d.score || 0).toFixed(1);
 
@@ -402,7 +403,7 @@ export class CandidatePoolController {
                     <div class="modal-dim-header">
                         <div class="modal-dim-title">
                             ${this.escapeHtml(catName)}
-                            <span class="modal-dim-weight">Weight: ${catWeight}%</span>
+                            <span class="modal-dim-weight">Trọng số: ${catWeight}%</span>
                         </div>
                         <div>
                             <span class="dim-score-pill">${dScore} / 100</span>
@@ -411,10 +412,10 @@ export class CandidatePoolController {
                     <div class="modal-dim-progress">
                         <div class="modal-dim-progress-fill ${fillClass}" style="width: ${Math.min(100, Math.max(5, d.score))}%;"></div>
                     </div>
-                    ${reasoningText ? `<div class="modal-reasoning-title">🧠 AI Reasoning (Lập luận đánh giá):</div><div class="modal-reasoning-box">${reasoningText}</div>` : ''}
-                    ${strengthsList ? `<div class="modal-section-title">Key Strengths:</div><ul class="modal-bullets strengths">${strengthsList}</ul>` : ''}
-                    ${gapsList ? `<div class="modal-section-title">Identified Gaps:</div><ul class="modal-bullets gaps">${gapsList}</ul>` : ''}
-                    ${quotesList ? `<div class="modal-section-title">Evidence Quotes:</div>${quotesList}` : ''}
+                    ${reasoningText ? `<div class="modal-reasoning-title">🧠 Lập luận đánh giá của AI:</div><div class="modal-reasoning-box">${reasoningText}</div>` : ''}
+                    ${strengthsList ? `<div class="modal-section-title">Điểm mạnh chính:</div><ul class="modal-bullets strengths">${strengthsList}</ul>` : ''}
+                    ${gapsList ? `<div class="modal-section-title">Thiếu sót đã xác định:</div><ul class="modal-bullets gaps">${gapsList}</ul>` : ''}
+                    ${quotesList ? `<div class="modal-section-title">Trích dẫn bằng chứng:</div>${quotesList}` : ''}
                 </div>
             `;
         });
@@ -424,8 +425,8 @@ export class CandidatePoolController {
             <div class="modal-ocr-alert-banner">
                 <div class="modal-ocr-alert-icon">⚠️</div>
                 <div class="modal-ocr-alert-content">
-                    <strong>INTENSIVE HR REVIEW REQUIRED (OCR APPLIED)</strong>
-                    <p>This resume contained no native text layer (scanned or image PDF). Optical Character Recognition (OCR) was used to extract candidate information. Please perform thorough manual HR verification of extracted details.</p>
+                    <strong>CẦN HR KIỂM TRA KỸ (ĐÃ DÙNG OCR)</strong>
+                    <p>CV này không có lớp văn bản gốc (PDF scan hoặc ảnh). Hệ thống đã dùng nhận dạng ký tự quang học (OCR) để trích xuất thông tin ứng viên. Vui lòng kiểm tra thủ công kỹ các thông tin đã trích xuất.</p>
                 </div>
             </div>
         ` : '';
@@ -437,11 +438,11 @@ export class CandidatePoolController {
             <div class="modal-hero-banner">
                 <div>
                     <h2>${this.escapeHtml(name)} <span class="match-pill ${recClass}">${recText}</span></h2>
-                    <p>${this.escapeHtml(title)} ${emailLink ? `• ${emailLink}` : ''} • Evaluated on ${cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleString() : 'N/A'}</p>
+                    <p>${this.escapeHtml(title)} ${emailLink ? `• ${emailLink}` : ''} • Đánh giá lúc ${cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleString('vi-VN') : 'Không có'}</p>
                 </div>
                 <div class="modal-score-box">
                     <span class="modal-score-number" style="color: ${numScore >= 85 ? '#059669' : numScore >= 70 ? '#0284C7' : numScore >= 55 ? '#D97706' : '#DC2626'};">${score}</span>
-                    <span style="font-size:0.82rem; color:#334155; font-weight:800; text-transform:uppercase; font-family:var(--font-mono);">Overall Score</span>
+                    <span style="font-size:0.82rem; color:#334155; font-weight:800; text-transform:uppercase; font-family:var(--font-mono);">Tổng điểm</span>
                 </div>
             </div>
             <div class="modal-dim-grid">${dimCardsHtml}</div>

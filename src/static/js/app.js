@@ -55,16 +55,16 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const data = await API.fetchConfig();
             const modelParts = (data.model || '').split('/');
-            const shortModelName = modelParts[modelParts.length - 1] || 'Default Model';
+            const shortModelName = modelParts[modelParts.length - 1] || 'Mô hình mặc định';
 
             const elModel = document.getElementById('val-model');
             if (elModel) {
-                elModel.textContent = shortModelName + (data.mock ? ' (Mock Mode)' : '');
+                elModel.textContent = shortModelName + (data.mock ? ' (Chế độ giả lập)' : '');
             }
 
             const elMode = document.getElementById('val-mode');
             if (elMode) {
-                elMode.textContent = data.image_mode ? 'Vision Mode' : 'Text Mode';
+                elMode.textContent = data.image_mode ? 'Chế độ hình ảnh' : 'Chế độ văn bản';
             }
         } catch (e) {
             console.error('[App] Failed to load server configuration:', e);

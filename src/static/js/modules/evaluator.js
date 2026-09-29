@@ -8,10 +8,23 @@
  *              3. Candidate selection with live filtering & secret tier ordering
  *              4. AI batch evaluation against verified RAG criteria, KPI statistics,
  *                 and full-width dossier inspector.
- * Line Count: ~450 lines (Strict Limit: < 500 lines)
+ * Line Count: ~860 lines (Strict Limit: < 500 lines)
  */
 
 import { API } from './api.js';
+import { CriteriaEditor, CATEGORY_NAMES } from './criteria-editor.js';
+import { WaitingScreen } from './waiting-screen.js';
+
+// How often the batch-evaluation job status is polled while the waiting screen shows.
+const EVAL_JOB_POLL_MS = 1500;
+
+// Display text for the match_recommendation keys; the keys themselves stay as CSS class suffixes.
+const RECOMMENDATION_LABELS = {
+    STRONG_MATCH: 'PHÙ HỢP CAO',
+    POTENTIAL_MATCH: 'CÓ TIỀM NĂNG',
+    LOW_MATCH: 'PHÙ HỢP THẤP',
+    REJECT: 'LOẠI'
+};
 
 export class EvaluatorController {
     constructor() {
@@ -19,20 +32,22 @@ export class EvaluatorController {
         this.selectedResumesSet = new Set();
         this.lastResults = [];
         this.searchTerm = '';
-        this.currentCategories = {
-            seniority_title: [],
-            technical_skills: [],
-            work_experience: [],
-            education_certifications: [],
-            hidden_culture: []
-        };
         this.currentHrRagText = '';
+        this.currentStage = 1;
 
-        // Tracks the exact requirement text last sent to /api/rag/scrutinize, so "Decompose"
-        // only re-runs scrutiny when the requirements actually changed since the last pass.
-        this.lastScrutinizedText = null;
+        // Number of Criteria stored in the RAG; the "Use Active RAG" skip button only shows when > 0.
+        this.storedRagItemCount = 0;
+
+        // Clarify-once intake state. Clarification Questions are asked once per pass through
+        // requirement intake; a pass starts on page load and on each return to Step 1.
+        //   checkedText      - the {std, hidden} text the last clarification check ran on (kept across passes)
+        //   checkedThisPass  - whether a check has already run in the current pass
+        //   questionsShowing - Clarification Questions are on screen; only the panel's button decomposes
+        this.intake = { checkedText: null, checkedThisPass: false, questionsShowing: false };
 
         this.initDOMElements();
+        this.criteriaEditor = new CriteriaEditor(this.criteriaEditorContainer);
+        this.waitingScreen = new WaitingScreen();
         this.initEvents();
         this.checkExistingRag();
     }
@@ -53,10 +68,9 @@ export class EvaluatorController {
         this.btnDecomposeReqs = document.getElementById('btn-decompose-reqs');
         this.btnUseExistingRag = document.getElementById('btn-use-existing-rag');
 
-        // Step 1: Clarification Questions panel (Implicit Assumption scrutiny)
+        // Step 1: Clarification Questions (Implicit Assumption scrutiny), shown beside each field
+        this.intakePanel = document.getElementById('intake-panel');
         this.scrutinyPanel = document.getElementById('scrutiny-panel');
-        this.scrutinyGroupStandard = document.getElementById('scrutiny-group-standard');
-        this.scrutinyGroupHidden = document.getElementById('scrutiny-group-hidden');
         this.scrutinyListStandard = document.getElementById('scrutiny-list-standard');
         this.scrutinyListHidden = document.getElementById('scrutiny-list-hidden');
         this.btnProceedDecompose = document.getElementById('btn-proceed-decompose');
@@ -100,11 +114,6 @@ export class EvaluatorController {
         this.stepNav2 = document.getElementById('step-nav-2');
         this.stepNav3 = document.getElementById('step-nav-3');
         this.stepNav4 = document.getElementById('step-nav-4');
-
-        // Loader Overlay
-        this.loaderOverlay = document.getElementById('loader-overlay');
-        this.loaderTitle = document.getElementById('loader-title');
-        this.loaderDesc = document.getElementById('loader-desc');
     }
 
     /**
@@ -116,11 +125,14 @@ export class EvaluatorController {
             this.btnDecomposeReqs.addEventListener('click', () => this.handleDecomposeClick());
         }
         if (this.btnProceedDecompose) {
-            this.btnProceedDecompose.addEventListener('click', () => this.handleDecomposeClick());
+            this.btnProceedDecompose.addEventListener('click', () => this.decomposeFromQuestionsPanel());
         }
         if (this.btnUseExistingRag) {
             this.btnUseExistingRag.addEventListener('click', () => this.useExistingRagAndProceed());
         }
+        [this.hrStdReqInput, this.hrHiddenReqInput].forEach(input => {
+            if (input) input.addEventListener('input', () => this.updateUseExistingRagVisibility());
+        });
 
         // Step 2 triggers (RAG Verification & Tabs)
         if (this.tabBtnCategories && this.tabBtnRawFile) {
@@ -135,8 +147,8 @@ export class EvaluatorController {
         }
         if (this.btnProceedToCandidates) {
             this.btnProceedToCandidates.addEventListener('click', async () => {
-                await this.saveModifiedCriteria(false);
-                this.goToStage(3);
+                // Stay on the Verify step when the save fails; saveModifiedCriteria shows the error.
+                if (await this.saveModifiedCriteria(false)) this.goToStage(3);
             });
         }
 
@@ -183,21 +195,50 @@ export class EvaluatorController {
     async checkExistingRag() {
         try {
             const ragData = await API.getRagInfo();
-            if (ragData && ragData.has_stored_rag && ragData.total_items > 0) {
-                if (this.btnUseExistingRag) {
-                    this.btnUseExistingRag.style.display = 'inline-flex';
-                    this.btnUseExistingRag.textContent = `Use Active RAG (${ragData.total_items} items) & Skip →`;
-                }
-            }
+            this.setStoredRagItemCount(ragData);
         } catch (e) {
             console.warn('Could not check RAG status:', e);
         }
     }
 
     /**
+     * Records how many Criteria the RAG holds, from any RAG summary response.
+     */
+    setStoredRagItemCount(summary) {
+        this.storedRagItemCount = summary && summary.has_stored_rag ? (summary.total_items || 0) : 0;
+        this.updateUseExistingRagVisibility();
+    }
+
+    /**
+     * "Use Active RAG & Skip" shows only when the RAG has stored Criteria and both requirement
+     * textareas are empty, so HR can't throw away new requirements they are typing.
+     */
+    updateUseExistingRagVisibility() {
+        if (!this.btnUseExistingRag) return;
+        const { stdReq, hiddenReq } = this.readRequirementText();
+        const visible = this.storedRagItemCount > 0 && !stdReq && !hiddenReq;
+        this.btnUseExistingRag.style.display = visible ? 'inline-flex' : 'none';
+        if (visible) {
+            this.btnUseExistingRag.textContent = `Dùng RAG đang hoạt động (${this.storedRagItemCount} tiêu chí) & Bỏ qua →`;
+        }
+    }
+
+    readRequirementText() {
+        return {
+            stdReq: (this.hrStdReqInput ? this.hrStdReqInput.value : '').trim(),
+            hiddenReq: (this.hrHiddenReqInput ? this.hrHiddenReqInput.value : '').trim()
+        };
+    }
+
+    /**
      * Navigates between workflow stages (1: Requirements, 2: RAG Verify, 3: Candidates, 4: Results).
      */
     goToStage(stepNum) {
+        if (stepNum === 1 && this.currentStage !== 1) {
+            this.startNewIntakePass();
+        }
+        this.currentStage = stepNum;
+
         if (this.stageReq) this.stageReq.style.display = stepNum === 1 ? 'block' : 'none';
         if (this.stageRagVerify) this.stageRagVerify.style.display = stepNum === 2 ? 'block' : 'none';
         if (this.stageCandidates) this.stageCandidates.style.display = stepNum === 3 ? 'block' : 'none';
@@ -211,6 +252,20 @@ export class EvaluatorController {
         if (stepNum === 3) {
             this.updateActiveRagBanner();
         }
+        if (stepNum === 2) {
+            // Criterion textareas can only measure their height once the stage is visible.
+            this.criteriaEditor.resizeAll();
+        }
+    }
+
+    /**
+     * Returning to requirement intake starts a new pass: questions are cleared and the next
+     * Decompose re-checks only if the text differs from what was last checked.
+     */
+    startNewIntakePass() {
+        this.intake.checkedThisPass = false;
+        this.hideScrutinyPanel();
+        this.updateUseExistingRagVisibility();
     }
 
     /**
@@ -239,6 +294,7 @@ export class EvaluatorController {
             if (this.tabBtnRawFile) this.tabBtnRawFile.classList.remove('active');
             if (this.paneCategoriesEditor) this.paneCategoriesEditor.style.display = 'block';
             if (this.paneRawFile) this.paneRawFile.style.display = 'none';
+            this.criteriaEditor.resizeAll();
         } else {
             if (this.tabBtnCategories) this.tabBtnCategories.classList.remove('active');
             if (this.tabBtnRawFile) this.tabBtnRawFile.classList.add('active');
@@ -248,113 +304,125 @@ export class EvaluatorController {
     }
 
     /**
-     * Entry point for the "Decompose" / "Proceed to Decompose" buttons. Runs the Implicit
-     * Assumption scrutiny pass first, showing Clarification Questions inline if any are found;
-     * only calls through to decomposeRequirements() once the current text has already been
-     * scrutinized with no unaddressed re-scrutiny needed.
+     * Main "Decompose" button. Runs the Implicit Assumption clarification check once per pass:
+     * on the first Decompose of a pass, or after returning from Category review with changed
+     * text. Decomposes directly otherwise, or when the check finds no Implicit Assumptions.
      */
     async handleDecomposeClick() {
-        const stdReq = (this.hrStdReqInput ? this.hrStdReqInput.value : '').trim();
-        const hiddenReq = (this.hrHiddenReqInput ? this.hrHiddenReqInput.value : '').trim();
+        const { stdReq, hiddenReq } = this.readRequirementText();
 
         if (!stdReq && !hiddenReq) {
-            alert('Please enter Standard Job Requirements or Hidden Requirements before decomposing.');
+            alert('Vui lòng nhập Yêu cầu công việc tiêu chuẩn hoặc Yêu cầu ẩn trước khi phân rã.');
             return;
         }
 
-        const textUnchanged = this.lastScrutinizedText
-            && this.lastScrutinizedText.std === stdReq
-            && this.lastScrutinizedText.hidden === hiddenReq;
+        const checked = this.intake.checkedText;
+        const textChanged = !checked || checked.std !== stdReq || checked.hidden !== hiddenReq;
+        const needsCheck = !checked || (!this.intake.checkedThisPass && textChanged);
 
-        if (textUnchanged) {
-            this.hideScrutinyPanel();
+        if (!needsCheck) {
             await this.decomposeRequirements(stdReq, hiddenReq);
             return;
         }
 
-        if (this.loaderOverlay) {
-            this.loaderTitle.textContent = 'Checking Requirements for Ambiguity...';
-            this.loaderDesc.textContent = 'Scanning for unstated assumptions before categorization...';
-            this.loaderOverlay.style.display = 'flex';
-        }
-
+        let stdFindings;
+        let hiddenFindings;
         try {
-            const result = await API.scrutinizeRequirements(stdReq, hiddenReq);
-            this.lastScrutinizedText = { std: stdReq, hidden: hiddenReq };
-
-            const stdFindings = result.standard_requirements || [];
-            const hiddenFindings = result.hidden_requirements || [];
-
-            if (stdFindings.length === 0 && hiddenFindings.length === 0) {
-                this.hideScrutinyPanel();
-                await this.decomposeRequirements(stdReq, hiddenReq);
-                return;
-            }
-
-            this.renderScrutinyPanel(stdFindings, hiddenFindings);
+            const result = await this.waitingScreen.run(
+                'scrutiny',
+                'Đang kiểm tra yêu cầu...',
+                'Đang tìm các giả định chưa được nêu rõ trước khi phân loại...',
+                () => API.scrutinizeRequirements(stdReq, hiddenReq, 'vietnamese')
+            );
+            this.intake.checkedText = { std: stdReq, hidden: hiddenReq };
+            this.intake.checkedThisPass = true;
+            stdFindings = result.standard_requirements || [];
+            hiddenFindings = result.hidden_requirements || [];
         } catch (err) {
             // Fail closed: a broken scrutiny call likely means decomposition would fail too.
-            alert('Requirement Scrutiny Error: ' + err.message);
-        } finally {
-            if (this.loaderOverlay) this.loaderOverlay.style.display = 'none';
+            alert('Lỗi khi kiểm tra yêu cầu: ' + err.message);
+            return;
         }
+
+        if (stdFindings.length === 0 && hiddenFindings.length === 0) {
+            await this.decomposeRequirements(stdReq, hiddenReq);
+            return;
+        }
+
+        this.renderScrutinyPanel(stdFindings, hiddenFindings);
     }
 
     /**
-     * Renders the Clarification Questions panel grouped by source field.
+     * The Decompose button shown alongside Clarification Questions: always decomposes the
+     * current text directly, whatever HR edited, without a second check.
+     */
+    async decomposeFromQuestionsPanel() {
+        const { stdReq, hiddenReq } = this.readRequirementText();
+        // HR's edits made while reading the questions count as addressed, so returning from
+        // Category review with this same text goes straight to decomposition.
+        this.intake.checkedText = { std: stdReq, hidden: hiddenReq };
+        await this.decomposeRequirements(stdReq, hiddenReq);
+    }
+
+    /**
+     * Shows Clarification Questions beside the field they refer to and swaps the main
+     * Decompose button for the panel's own.
      */
     renderScrutinyPanel(stdFindings, hiddenFindings) {
-        if (!this.scrutinyPanel) return;
-
         const renderList = (listEl, findings) => {
             if (!listEl) return;
-            listEl.innerHTML = findings.map(f => `
-                <div class="scrutiny-question-item">
-                    <div class="scrutiny-assumption">Assumption: ${this.escapeHtml(f.assumption)}</div>
-                    <div class="scrutiny-question">${this.escapeHtml(f.question)}</div>
-                </div>
-            `).join('');
+            listEl.innerHTML = findings.length > 0
+                ? findings.map(f => `
+                    <div class="scrutiny-question-item">
+                        <div class="scrutiny-assumption">Giả định: ${this.escapeHtml(f.assumption)}</div>
+                        <div class="scrutiny-question">${this.escapeHtml(f.question)}</div>
+                    </div>
+                `).join('')
+                : '<div class="scrutiny-empty-note">Không có câu hỏi</div>';
         };
 
-        if (this.scrutinyGroupStandard) this.scrutinyGroupStandard.style.display = stdFindings.length > 0 ? 'block' : 'none';
-        if (this.scrutinyGroupHidden) this.scrutinyGroupHidden.style.display = hiddenFindings.length > 0 ? 'block' : 'none';
         renderList(this.scrutinyListStandard, stdFindings);
         renderList(this.scrutinyListHidden, hiddenFindings);
 
-        this.scrutinyPanel.style.display = 'block';
-        this.scrutinyPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        this.intake.questionsShowing = true;
+        if (this.intakePanel) this.intakePanel.classList.add('has-questions');
+        if (this.scrutinyPanel) this.scrutinyPanel.style.display = 'block';
+        if (this.btnDecomposeReqs) this.btnDecomposeReqs.style.display = 'none';
+        if (this.btnProceedDecompose) this.btnProceedDecompose.style.display = 'inline-flex';
+        if (this.intakePanel) this.intakePanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     hideScrutinyPanel() {
+        this.intake.questionsShowing = false;
+        if (this.intakePanel) this.intakePanel.classList.remove('has-questions');
         if (this.scrutinyPanel) this.scrutinyPanel.style.display = 'none';
+        if (this.scrutinyListStandard) this.scrutinyListStandard.innerHTML = '';
+        if (this.scrutinyListHidden) this.scrutinyListHidden.innerHTML = '';
+        if (this.btnProceedDecompose) this.btnProceedDecompose.style.display = 'none';
+        if (this.btnDecomposeReqs) this.btnDecomposeReqs.style.display = '';
     }
 
     /**
      * Step 1 -> Step 2: Decomposes requirements using LLM and populates the editor.
      */
     async decomposeRequirements(stdReq, hiddenReq) {
-        stdReq = stdReq !== undefined ? stdReq : (this.hrStdReqInput ? this.hrStdReqInput.value : '').trim();
-        hiddenReq = hiddenReq !== undefined ? hiddenReq : (this.hrHiddenReqInput ? this.hrHiddenReqInput.value : '').trim();
-
         if (!stdReq && !hiddenReq) {
-            alert('Please enter Standard Job Requirements or Hidden Requirements before decomposing.');
+            alert('Vui lòng nhập Yêu cầu công việc tiêu chuẩn hoặc Yêu cầu ẩn trước khi phân rã.');
             return;
         }
 
-        if (this.loaderOverlay) {
-            this.loaderTitle.textContent = 'Decomposing HR Requirements...';
-            this.loaderDesc.textContent = 'Extracting atomic criteria across 5 dimensions using LLM and vector embeddings...';
-            this.loaderOverlay.style.display = 'flex';
-        }
-
         try {
-            const data = await API.decomposeRequirements(stdReq, hiddenReq);
+            const data = await this.waitingScreen.run(
+                'decompose',
+                'Đang phân rã yêu cầu...',
+                'Đang tách các tiêu chí đơn lẻ theo 5 chiều bằng LLM và vector embedding...',
+                () => API.decomposeRequirements(stdReq, hiddenReq, 'vietnamese')
+            );
             this.processRagSummaryData(data);
+            this.setStoredRagItemCount(data);
             this.goToStage(2);
         } catch (err) {
-            alert('Requirement Categorization Error: ' + err.message);
-        } finally {
-            if (this.loaderOverlay) this.loaderOverlay.style.display = 'none';
+            alert('Lỗi khi phân loại yêu cầu: ' + err.message);
         }
     }
 
@@ -367,156 +435,52 @@ export class EvaluatorController {
             this.processRagSummaryData(data);
             this.goToStage(3);
         } catch (err) {
-            alert('Failed to load active RAG: ' + err.message);
+            alert('Không tải được RAG đang hoạt động: ' + err.message);
         }
     }
 
     /**
-     * Ingests summary data into controller state and renders the interactive editor.
+     * Ingests summary data into controller state and renders the shared Criteria editor.
      */
     processRagSummaryData(data) {
         this.currentHrRagText = data.hr_rag_text || '';
         if (this.hrRagPreviewText) {
-            this.hrRagPreviewText.textContent = this.currentHrRagText || 'No hr_rag.txt file generated.';
+            this.hrRagPreviewText.textContent = this.currentHrRagText || 'Chưa tạo tệp hr_rag.txt.';
         }
-
-        const rawCats = data.categories || {};
-        this.currentCategories = {
-            seniority_title: [],
-            technical_skills: [],
-            work_experience: [],
-            education_certifications: [],
-            hidden_culture: []
-        };
-
-        Object.keys(this.currentCategories).forEach(k => {
-            const items = rawCats[k] || [];
-            this.currentCategories[k] = items.map(it => (typeof it === 'object' && it.text ? it.text : String(it)));
-        });
-
-        this.renderCriteriaEditor();
-    }
-
-    /**
-     * Renders 5-dimension category cards with live editable text inputs and add/remove controls.
-     */
-    renderCriteriaEditor() {
-        if (!this.criteriaEditorContainer) return;
-        this.criteriaEditorContainer.innerHTML = '';
-
-        const catLabels = {
-            seniority_title: '1. Seniority & Title (Vị trí & Số năm kinh nghiệm)',
-            technical_skills: '2. Technical Skills (Kỹ năng, Công cụ & Chuyên môn)',
-            work_experience: '3. Work Experience (Dự án & Trách nhiệm)',
-            education_certifications: '4. Education & Certifications (Bằng cấp & Chứng chỉ)',
-            hidden_culture: '5. Hidden & Culture Fit (Yêu cầu ẩn & Văn hóa)'
-        };
-
-        Object.keys(catLabels).forEach(catKey => {
-            const items = this.currentCategories[catKey] || [];
-            const card = document.createElement('div');
-            card.className = 'criteria-category-card';
-            card.setAttribute('data-cat', catKey);
-
-            card.innerHTML = `
-                <div class="criteria-card-header">
-                    <span class="criteria-card-title">${catLabels[catKey]}</span>
-                    <span class="badge-success cat-count-badge" style="font-size:0.75rem;">${items.length} items</span>
-                </div>
-                <div class="criteria-items-list" id="list-${catKey}"></div>
-                <div class="criteria-add-box">
-                    <input type="text" class="criteria-add-input" placeholder="+ Add new criterion for this dimension...">
-                    <button class="btn btn-sm btn-secondary criteria-add-btn" type="button">Add</button>
-                </div>
-            `;
-
-            const listEl = card.querySelector('.criteria-items-list');
-            this.renderCategoryItemList(listEl, catKey);
-
-            // Add new criterion handler
-            const addInput = card.querySelector('.criteria-add-input');
-            const addBtn = card.querySelector('.criteria-add-btn');
-            const handleAdd = () => {
-                const val = addInput.value.trim();
-                if (val) {
-                    this.currentCategories[catKey].push(val);
-                    this.renderCategoryItemList(listEl, catKey);
-                    card.querySelector('.cat-count-badge').textContent = `${this.currentCategories[catKey].length} items`;
-                    addInput.value = '';
-                }
-            };
-
-            addBtn.addEventListener('click', handleAdd);
-            addInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAdd();
-                }
-            });
-
-            this.criteriaEditorContainer.appendChild(card);
-        });
-    }
-
-    /**
-     * Renders item rows inside a category card.
-     */
-    renderCategoryItemList(listEl, catKey) {
-        listEl.innerHTML = '';
-        const items = this.currentCategories[catKey] || [];
-
-        if (items.length === 0) {
-            listEl.innerHTML = '<div style="font-size:0.8rem; color:var(--text-muted); font-style:italic; padding:6px 0;">No criteria items in this category.</div>';
-            return;
-        }
-
-        items.forEach((itemText, idx) => {
-            const row = document.createElement('div');
-            row.className = 'criteria-item-row';
-            row.innerHTML = `
-                <span style="font-size:0.75rem; font-weight:700; color:var(--brand-legacy-blue); width:18px;">${idx + 1}.</span>
-                <input type="text" class="criteria-item-text" value="${this.escapeHtml(itemText)}" />
-                <button class="criteria-item-del-btn" title="Delete criterion" type="button">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-                </button>
-            `;
-
-            const textInput = row.querySelector('.criteria-item-text');
-            textInput.addEventListener('input', (e) => {
-                this.currentCategories[catKey][idx] = e.target.value;
-            });
-
-            const delBtn = row.querySelector('.criteria-item-del-btn');
-            delBtn.addEventListener('click', () => {
-                this.currentCategories[catKey].splice(idx, 1);
-                this.renderCategoryItemList(listEl, catKey);
-                const countBadge = listEl.closest('.criteria-category-card')?.querySelector('.cat-count-badge');
-                if (countBadge) countBadge.textContent = `${this.currentCategories[catKey].length} items`;
-            });
-
-            listEl.appendChild(row);
-        });
+        this.criteriaEditor.setCategories(data.categories || {});
     }
 
     /**
      * Saves user modifications back to backend vector store & updates hr_rag.txt.
      */
     async saveModifiedCriteria(showSuccessAlert = true) {
-        const stdReq = (this.hrStdReqInput ? this.hrStdReqInput.value : '').trim();
-        const hiddenReq = (this.hrHiddenReqInput ? this.hrHiddenReqInput.value : '').trim();
+        const { stdReq, hiddenReq } = this.readRequirementText();
+        // With both textareas empty (HR came in through "Use Active RAG"), omit the text so the
+        // server keeps the stored original requirements in hr_rag.txt.
+        const hasText = Boolean(stdReq || hiddenReq);
 
         try {
-            const updated = await API.updateRagCriteria(this.currentCategories, stdReq, hiddenReq);
+            const updated = await this.waitingScreen.run(
+                'save_criteria',
+                'Đang lưu tiêu chí...',
+                'Đang embedding lại các tiêu chí vào kho vector RAG và cập nhật hr_rag.txt...',
+                () => API.updateRagCriteria(
+                    this.criteriaEditor.getCategories(),
+                    hasText ? stdReq : null,
+                    hasText ? hiddenReq : null
+                )
+            );
+            this.setStoredRagItemCount(updated);
             this.currentHrRagText = updated.hr_rag_text || '';
             if (this.hrRagPreviewText) {
                 this.hrRagPreviewText.textContent = this.currentHrRagText;
             }
             if (showSuccessAlert) {
-                alert('✓ Changes successfully saved to persistent RAG vector store and hr_rag.txt!');
+                alert('✓ Đã lưu thay đổi vào kho vector RAG và hr_rag.txt!');
             }
             return true;
         } catch (err) {
-            alert('Failed to save criteria changes: ' + err.message);
+            alert('Không lưu được thay đổi tiêu chí: ' + err.message);
             return false;
         }
     }
@@ -526,8 +490,8 @@ export class EvaluatorController {
      */
     updateActiveRagBanner() {
         if (!this.activeRagBannerText) return;
-        const totalItems = Object.values(this.currentCategories).reduce((acc, curr) => acc + (curr ? curr.length : 0), 0);
-        this.activeRagBannerText.innerHTML = `<strong>RAG Criteria Active & Verified:</strong> ${totalItems} criteria across 5 dimensions stored in ChromaDB vector store.`;
+        const totalItems = this.criteriaEditor.totalCount();
+        this.activeRagBannerText.innerHTML = `<strong>Tiêu chí RAG đã xác minh và đang hoạt động:</strong> ${totalItems} tiêu chí thuộc 5 chiều được lưu trong kho vector ChromaDB.`;
     }
 
     /**
@@ -548,7 +512,7 @@ export class EvaluatorController {
      */
     async loadScannedResumes() {
         if (!this.scannedContainer) return;
-        this.scannedContainer.innerHTML = '<div class="loading-state">Loading scanned resumes...</div>';
+        this.scannedContainer.innerHTML = '<div class="loading-state">Đang tải danh sách CV đã quét...</div>';
         this.selectedResumesSet.clear();
         if (this.chkSelectAll) this.chkSelectAll.checked = false;
         this.updateSelectedCount();
@@ -562,12 +526,12 @@ export class EvaluatorController {
             this.tier2Count = data.tier2_count || 0;
 
             if (this.scannedResumes.length === 0) {
-                this.scannedContainer.innerHTML = '<div class="empty-state" style="padding: 1.5rem 0;">No scanned resumes found. Upload PDF resumes in Step 1 first.</div>';
+                this.scannedContainer.innerHTML = '<div class="empty-state" style="padding: 1.5rem 0;">Chưa có CV nào được quét. Hãy tải CV PDF lên ở Bước 1 trước.</div>';
                 return;
             }
             this.renderScannedList();
         } catch (err) {
-            this.scannedContainer.innerHTML = `<div class="error-state">Failed to load resumes: ${err.message}</div>`;
+            this.scannedContainer.innerHTML = `<div class="error-state">Không tải được danh sách CV: ${this.escapeHtml(err.message)}</div>`;
         }
     }
 
@@ -579,7 +543,7 @@ export class EvaluatorController {
 
         const resumes = this.getFilteredResumes();
         if (resumes.length === 0) {
-            this.scannedContainer.innerHTML = '<div class="empty-state" style="padding: 1rem 0; font-size: 0.85rem;">No candidates match your search filter.</div>';
+            this.scannedContainer.innerHTML = '<div class="empty-state" style="padding: 1rem 0; font-size: 0.85rem;">Không có ứng viên nào khớp với từ khóa tìm kiếm.</div>';
             return;
         }
 
@@ -590,19 +554,19 @@ export class EvaluatorController {
             banner.style.background = '#DCFCE7';
             banner.style.border = '1px solid #86EFAC';
             banner.style.color = '#15803D';
-            banner.innerHTML = `<span>🔒 Secret Order: Active</span><span style="font-size:0.72rem; opacity:0.9;">Tier 1: ${this.tier1Count} • Tier 2: ${this.tier2Count}</span>`;
+            banner.innerHTML = `<span>🔒 Thứ tự bí mật: Đang áp dụng</span><span style="font-size:0.72rem; opacity:0.9;">Nhóm 1: ${this.tier1Count} • Nhóm 2: ${this.tier2Count}</span>`;
         } else {
             banner.style.background = '#FFFBEB';
             banner.style.border = '1px solid #FCD34D';
             banner.style.color = '#B45309';
-            banner.innerHTML = `<span>⚠️ Secret Order: File Not Found</span><span style="font-size:0.72rem;">evaluation_order.txt</span>`;
+            banner.innerHTML = `<span>⚠️ Thứ tự bí mật: Không tìm thấy tệp</span><span style="font-size:0.72rem;">evaluation_order.txt</span>`;
         }
         this.scannedContainer.appendChild(banner);
 
         const tiers = {
-            1: { title: 'Resume Tier 1 (Priority)', badgeClass: 'tier-badge-1', items: [] },
-            2: { title: 'Resume Tier 2 (Secondary)', badgeClass: 'tier-badge-2', items: [] },
-            3: { title: 'Resume Tier 3 (Unlisted)', badgeClass: 'tier-badge-3', items: [] }
+            1: { title: 'Nhóm CV 1 (Ưu tiên)', badgeClass: 'tier-badge-1', items: [] },
+            2: { title: 'Nhóm CV 2 (Thứ cấp)', badgeClass: 'tier-badge-2', items: [] },
+            3: { title: 'Nhóm CV 3 (Ứng viên ngoài danh sách)', badgeClass: 'tier-badge-3', items: [] }
         };
 
         resumes.forEach(r => {
@@ -621,7 +585,7 @@ export class EvaluatorController {
             block.innerHTML = `
                 <div class="panel-header-split" style="margin-bottom: 8px;">
                     <span style="font-weight: 700; font-size: 0.88rem; color: var(--brand-legacy-blue);">${group.title}</span>
-                    <span class="tier-badge ${group.badgeClass}">${group.items.length} candidate(s)</span>
+                    <span class="tier-badge ${group.badgeClass}">${group.items.length} ứng viên</span>
                 </div>
                 <div class="tier-items-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
             `;
@@ -662,7 +626,7 @@ export class EvaluatorController {
 
     updateSelectedCount() {
         if (this.selectedCountBadge) {
-            this.selectedCountBadge.textContent = `${this.selectedResumesSet.size} selected`;
+            this.selectedCountBadge.textContent = `Đã chọn ${this.selectedResumesSet.size}`;
         }
         if (this.btnRunEval) {
             this.btnRunEval.disabled = this.selectedResumesSet.size === 0;
@@ -678,32 +642,57 @@ export class EvaluatorController {
         const filenames = Array.from(this.selectedResumesSet);
 
         if (filenames.length === 0) {
-            alert('Please select at least one candidate resume.');
+            alert('Vui lòng chọn ít nhất một CV ứng viên.');
             return;
         }
 
-        if (this.loaderOverlay) {
-            this.loaderTitle.textContent = `Evaluating ${filenames.length} Candidate(s)...`;
-            this.loaderDesc.textContent = 'Computing 5 RAG vector dimension scores strictly in evaluation order...';
-            this.loaderOverlay.style.display = 'flex';
-        }
+        this.waitingScreen.startBatch(
+            'evaluate_candidate',
+            `Đang đánh giá ${filenames.length} ứng viên...`,
+            'Đang chấm điểm 5 chiều vector RAG theo đúng thứ tự đánh giá...',
+            filenames.length
+        );
 
+        let data;
         try {
             // Use existing verified RAG criteria
-            const data = await API.evaluateBatch(stdReq, hiddenReq, filenames, true);
+            data = await this.runEvaluationJob(stdReq, hiddenReq, filenames);
+        } catch (err) {
+            // Close the waiting screen before the blocking alert so it isn't left behind it.
+            this.waitingScreen.finish();
+            alert('Lỗi đánh giá: ' + err.message);
+            return;
+        }
+        this.waitingScreen.finish();
+
+        try {
             if (data && Array.isArray(data.results)) {
                 if (data.results.length === 0) {
-                    alert('No evaluation results generated. Please ensure selected candidates have been scanned/extracted in Step 1.');
+                    alert('Không có kết quả đánh giá nào. Hãy kiểm tra các ứng viên đã chọn đã được quét/trích xuất ở Bước 1.');
                 } else {
                     this.renderDashboard(data.results);
                 }
             } else {
-                alert('Evaluation failed: Server returned an invalid response structure.');
+                alert('Đánh giá thất bại: Máy chủ trả về dữ liệu không hợp lệ.');
             }
         } catch (err) {
-            alert('Evaluation error: ' + err.message);
-        } finally {
-            if (this.loaderOverlay) this.loaderOverlay.style.display = 'none';
+            alert('Lỗi đánh giá: ' + err.message);
+        }
+    }
+
+    /**
+     * Starts batch evaluation as a background job and polls it, reporting per-candidate
+     * progress to the waiting screen, until it finishes.
+     * @returns {Promise<Object>} The same results payload the synchronous batch endpoint returns.
+     */
+    async runEvaluationJob(stdReq, hiddenReq, filenames) {
+        const { job_id: jobId } = await API.startEvaluationJob(stdReq, hiddenReq, filenames, true, 'vietnamese');
+        for (;;) {
+            await new Promise(resolve => setTimeout(resolve, EVAL_JOB_POLL_MS));
+            const job = await API.getEvaluationJob(jobId);
+            this.waitingScreen.reportProgress(job.completed, job.total);
+            if (job.state === 'done') return job.result;
+            if (job.state === 'failed') throw new Error(job.error || 'Tác vụ đánh giá thất bại.');
         }
     }
 
@@ -724,15 +713,15 @@ export class EvaluatorController {
         if (this.kpiStrongVal) this.kpiStrongVal.textContent = strongCount;
         if (this.kpiPotentialVal) this.kpiPotentialVal.textContent = potentialCount;
         if (this.kpiAvgScoreVal) this.kpiAvgScoreVal.textContent = avgScore;
-        if (this.evalTotalBadge) this.evalTotalBadge.textContent = `${totalCount} Evaluated`;
+        if (this.evalTotalBadge) this.evalTotalBadge.textContent = `Đã đánh giá ${totalCount}`;
 
         if (!this.tierBlocksContainer) return;
         this.tierBlocksContainer.innerHTML = '';
 
         const tierGroups = {
-            1: { title: 'Resume Tier 1 (Priority Candidates)', badgeClass: 'tier-badge-1', cardClass: 'tier-1-card', items: [] },
-            2: { title: 'Resume Tier 2 (Secondary Candidates)', badgeClass: 'tier-badge-2', cardClass: 'tier-2-card', items: [] },
-            3: { title: 'Resume Tier 3 (Unlisted Candidates)', badgeClass: 'tier-badge-3', cardClass: 'tier-3-card', items: [] }
+            1: { title: 'Nhóm CV 1 (Ứng viên ưu tiên)', badgeClass: 'tier-badge-1', cardClass: 'tier-1-card', items: [] },
+            2: { title: 'Nhóm CV 2 (Ứng viên thứ cấp)', badgeClass: 'tier-badge-2', cardClass: 'tier-2-card', items: [] },
+            3: { title: 'Nhóm CV 3 (Ứng viên ngoài danh sách)', badgeClass: 'tier-badge-3', cardClass: 'tier-3-card', items: [] }
         };
 
         results.forEach(res => {
@@ -754,20 +743,20 @@ export class EvaluatorController {
                 <div class="panel-header-split" style="margin-bottom: 14px;">
                     <div style="display: flex; align-items: center; gap: 12px;">
                         <h3 style="margin: 0; color: var(--brand-legacy-blue); font-size: 1.1rem;">${group.title}</h3>
-                        <span class="tier-badge ${group.badgeClass}">Tier ${tNum}</span>
+                        <span class="tier-badge ${group.badgeClass}">Nhóm ${tNum}</span>
                     </div>
-                    <span class="text-muted" style="font-size: 0.85rem; font-weight:600;">${group.items.length} Candidate(s)</span>
+                    <span class="text-muted" style="font-size: 0.85rem; font-weight:600;">${group.items.length} ứng viên</span>
                 </div>
                 <div class="table-responsive">
                     <table class="leaderboard-table">
                         <thead>
                             <tr>
-                                <th>Rank</th>
-                                <th>Candidate / Email</th>
-                                <th>Match Score</th>
-                                <th>Recommendation</th>
-                                <th>Strengths / Gaps</th>
-                                <th>Action</th>
+                                <th>Hạng</th>
+                                <th>Ứng viên / Email</th>
+                                <th>Điểm phù hợp</th>
+                                <th>Đề xuất</th>
+                                <th>Điểm mạnh / Thiếu sót</th>
+                                <th>Thao tác</th>
                             </tr>
                         </thead>
                         <tbody class="tier-tbody"></tbody>
@@ -785,16 +774,16 @@ export class EvaluatorController {
                     <td><span class="rank-badge rank-${evalOrderNum}">${evalOrderNum}</span></td>
                     <td>
                         <strong style="color: var(--brand-legacy-blue); font-size: 0.95rem;">${this.escapeHtml(res.resume_name)}</strong><br>
-                        <span style="font-size:0.78rem; color: var(--text-muted);">✉ ${this.escapeHtml(res.candidate_email || res.candidate_identifier || 'N/A')}</span>
+                        <span style="font-size:0.78rem; color: var(--text-muted);">✉ ${this.escapeHtml(res.candidate_email || res.candidate_identifier || 'Không có')}</span>
                     </td>
                     <td><strong style="color: var(--brand-azure); font-size:1.2rem; font-family:var(--font-mono);">${res.overall_score || 0}</strong><span style="font-size:0.8rem; color:var(--text-muted);">/100</span></td>
-                    <td><span class="badge-rec rec-${res.match_recommendation}">${res.match_recommendation}</span></td>
+                    <td><span class="badge-rec rec-${res.match_recommendation}">${this.recommendationLabel(res.match_recommendation)}</span></td>
                     <td style="font-size:0.82rem; font-weight:600;">
                         <span style="color:#15803D;">✓ ${res.summary?.total_strengths || 0}</span> • 
                         <span style="color:#B91C1C;">✗ ${res.summary?.total_gaps || 0}</span>
                     </td>
                     <td>
-                        <button class="btn btn-sm btn-secondary btn-inspect">Inspect Dossier</button>
+                        <button class="btn btn-sm btn-secondary btn-inspect">Xem hồ sơ</button>
                     </td>
                 `;
 
@@ -830,17 +819,17 @@ export class EvaluatorController {
         const gapsListEl = document.getElementById('det-cand-gaps-list');
 
         if (nameEl) nameEl.textContent = cand.candidate_identifier || cand.resume_name;
-        if (fileEl) fileEl.textContent = `${cand.resume_name}.json • Evaluated ${cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleTimeString() : 'Just now'}`;
+        if (fileEl) fileEl.textContent = `${cand.resume_name}.json • Đánh giá lúc ${cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleTimeString('vi-VN') : 'vừa xong'}`;
         if (scoreEl) scoreEl.textContent = cand.overall_score || '0.0';
 
         if (recBadge) {
-            recBadge.textContent = cand.match_recommendation;
+            recBadge.textContent = this.recommendationLabel(cand.match_recommendation);
             recBadge.className = `badge-rec rec-${cand.match_recommendation}`;
         }
 
         // Executive summary body
         if (summaryEl) {
-            summaryEl.textContent = cand.summary?.executive_summary || `Candidate score is ${cand.overall_score}/100 with match classification of ${cand.match_recommendation}. Evaluated across 5 RAG vector dimensions.`;
+            summaryEl.textContent = cand.summary?.executive_summary || `Ứng viên đạt ${cand.overall_score}/100 điểm, mức độ phù hợp: ${this.recommendationLabel(cand.match_recommendation)}. Được đánh giá theo 5 chiều vector RAG.`;
         }
 
         // Populate Strengths & Gaps lists
@@ -852,7 +841,7 @@ export class EvaluatorController {
             });
             strengthsListEl.innerHTML = allStrengths.length > 0
                 ? allStrengths.map(s => `<li>${this.escapeHtml(s)}</li>`).join('')
-                : '<li>No explicit strengths recorded.</li>';
+                : '<li>Chưa ghi nhận điểm mạnh rõ ràng.</li>';
         }
 
         if (gapsListEl) {
@@ -863,7 +852,7 @@ export class EvaluatorController {
             });
             gapsListEl.innerHTML = allGaps.length > 0
                 ? allGaps.map(g => `<li>${this.escapeHtml(g)}</li>`).join('')
-                : '<li>No major gaps or risk factors noted.</li>';
+                : '<li>Không có thiếu sót hay rủi ro lớn.</li>';
         }
 
         // Render 5-Dimension Scorecard Cards
@@ -882,26 +871,30 @@ export class EvaluatorController {
 
                 card.innerHTML = `
                     <div class="dim-header">
-                        <span>${this.escapeHtml(d.category_name)} (${Math.round((d.weight || 0.2) * 100)}%)</span>
+                        <span>${this.escapeHtml(CATEGORY_NAMES[key] || d.category_name)} (${Math.round((d.weight || 0.2) * 100)}%)</span>
                         <span class="dim-score">${d.score}/100</span>
                     </div>
                     <div class="dim-progress-track">
                         <div class="dim-progress-fill" style="width: ${d.score}%;"></div>
                     </div>
                     ${reasoningText ? `
-                        <div style="font-size:0.8rem; font-weight:700; margin-top:6px; color: var(--brand-legacy-blue);">🧠 AI Reasoning:</div>
+                        <div style="font-size:0.8rem; font-weight:700; margin-top:6px; color: var(--brand-legacy-blue);">🧠 Lập luận của AI:</div>
                         <div class="dim-reasoning-box">${reasoningText}</div>
                     ` : ''}
-                    <div style="font-size:0.8rem; font-weight:700; margin-top:6px; color:#15803D;">Strengths:</div>
-                    <ul class="dim-list">${strengthsList || '<li>None noted</li>'}</ul>
-                    <div style="font-size:0.8rem; font-weight:700; margin-top:6px; color:#B91C1C;">Gaps / Concerns:</div>
-                    <ul class="dim-list">${gapsList || '<li>None noted</li>'}</ul>
+                    <div style="font-size:0.8rem; font-weight:700; margin-top:6px; color:#15803D;">Điểm mạnh:</div>
+                    <ul class="dim-list">${strengthsList || '<li>Không có</li>'}</ul>
+                    <div style="font-size:0.8rem; font-weight:700; margin-top:6px; color:#B91C1C;">Thiếu sót / Lưu ý:</div>
+                    <ul class="dim-list">${gapsList || '<li>Không có</li>'}</ul>
                 `;
                 dimensionsContainer.appendChild(card);
             });
         }
 
         this.detailView.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    recommendationLabel(rec) {
+        return RECOMMENDATION_LABELS[rec] || rec || '';
     }
 
     escapeHtml(str) {

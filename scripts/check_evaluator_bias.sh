@@ -3,22 +3,28 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=128GB
+#SBATCH --mem=32GB
 #SBATCH --partition=student9696
-#SBATCH --gres=gpu:nvidia_rtx_pro_6000_blackwell_server_edition_4g.96gb
-#SBATCH --time=10:00:00
+#SBATCH --gres=gpu:nvidia_rtx_pro_6000_blackwell_server_edition_4g.96gb:1
+#SBATCH --time=12:00:00
 #SBATCH --output=logging/slurm_eval_bias_%j.out
 #SBATCH --error=logging/slurm_eval_bias_%j.err
 
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script for ATS Evaluator Bias & Positional Sensitivity Suite
 # Usage:
+#   sbatch scripts/check_evaluator_bias.sh [--model <key>] [suite flags]
+#   sbatch scripts/check_evaluator_bias.sh --model glm4.7-flash --all
 #   sbatch scripts/check_evaluator_bias.sh --remaining
 #   sbatch scripts/check_evaluator_bias.sh --all
 #   sbatch scripts/check_evaluator_bias.sh --seniority_title
 #   sbatch scripts/check_evaluator_bias.sh --education_certifications
 #   sbatch scripts/check_evaluator_bias.sh --work_experience
 #   sbatch scripts/check_evaluator_bias.sh --technical_skills
+#
+# --model keys (default: qwen3.5-35b-a3b) are defined in scripts/model_profiles.sh:
+#   qwen3.5-35b-a3b | qwen2.5-32b | gemma4-26b-a4b | glm4.7-flash
+# Results go to bias-result/<model-key>/.
 # -----------------------------------------------------------------------------
 
 INITIAL_CWD="$(pwd)"
@@ -60,6 +66,33 @@ fi
 SCRIPT_DIR="$FIND_CONFIG_DIR"
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/vllm_utils.sh"
+source "$SCRIPT_DIR/model_profiles.sh"
+
+# Consume --model <key> / --model=<key>; forward all other arguments to run_bias_detection.py
+MODEL_KEY_ARG=""
+SUITE_ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --model)
+      if [ -z "$2" ]; then
+        echo "[ERROR] --model requires a key. Valid keys: $MODEL_PROFILE_KEYS" >&2
+        exit 1
+      fi
+      MODEL_KEY_ARG="$2"
+      shift 2
+      ;;
+    --model=*)
+      MODEL_KEY_ARG="${1#--model=}"
+      shift
+      ;;
+    *)
+      SUITE_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+load_model_profile "${MODEL_KEY_ARG:-$DEFAULT_MODEL_KEY}" || exit 1
 
 if [ -z "$PROJECT_ROOT" ]; then
   echo "[CRITICAL ERROR] PROJECT_ROOT is not set after sourcing config.sh!" >&2
@@ -108,16 +141,17 @@ nvidia-smi 2>/dev/null || echo "nvidia-smi not available"
 echo "====================================================================="
 
 PORT=$(find_free_port)
-MODEL="Qwen/Qwen3.5-35B-A3B"
 
 echo "[$(date +'%H:%M:%S')] Project Root: $PROJECT_ROOT"
-echo "[$(date +'%H:%M:%S')] Target Model: $MODEL"
+echo "[$(date +'%H:%M:%S')] Target Model: $MODEL (profile: $MODEL_KEY)"
+echo "[$(date +'%H:%M:%S')] Profile: CONCURRENCY=$CONCURRENCY MAX_EVAL_PER_SHUFFLE_KIND=$MAX_EVAL_PER_SHUFFLE_KIND VLLM_ENABLE_THINKING=$VLLM_ENABLE_THINKING"
+echo "[$(date +'%H:%M:%S')] Extra vLLM Args: ${VLLM_EXTRA_ARGS[*]:-(none)}"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT"
 
 export VLLM_URL="http://127.0.0.1:$PORT/v1"
 export MODEL_NAME="$MODEL"
 
-start_vllm_server "$MODEL" "$PORT" "$PROJECT_ROOT/logs/vllm_evaluator_bias.log" || exit 1
+start_vllm_server "$MODEL" "$PORT" "$PROJECT_ROOT/logs/vllm_evaluator_bias_${MODEL_KEY}.log" || exit 1
 
 echo "=== vLLM Server Ready! ==="
 
@@ -133,10 +167,8 @@ if [ "$JSON_COUNT" -eq 0 ]; then
     --vllm-url "$VLLM_URL"
 fi
 
-export CONCURRENCY=100
-export MAX_EVAL_PER_SHUFFLE_KIND=1000
-echo "=== Starting Bias & Positional Order Sensitivity Suite (Arguments: ${*:-'--remaining (default)'}) ==="
-python3 -u "$PROJECT_ROOT/scripts/run_bias_detection.py" "$@"
+echo "=== Starting Bias & Positional Order Sensitivity Suite (Arguments: ${SUITE_ARGS[*]:-'--remaining (default)'}) ==="
+python3 -u "$PROJECT_ROOT/scripts/run_bias_detection.py" "${SUITE_ARGS[@]}"
 
 stop_vllm_server
 echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Bias Detection Job Finished ==="

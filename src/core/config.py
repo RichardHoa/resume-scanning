@@ -21,9 +21,10 @@ APPROVED_DIR = os.path.join(ROOT_DIR, "approved_jsons")
 OUTPUT_DIR = os.path.join(ROOT_DIR, "output_jsons")
 PDF_DIR = os.path.join(ROOT_DIR, "pdfs")
 EXTRACTION_MARKDOWN_DIR = os.path.join(ROOT_DIR, "extraction_markdown")
+SERVER_STATE_DIR = os.path.join(ROOT_DIR, "server_state")
 
 # Ensure required directories exist
-for d in [LOGGING_DIR, BROKEN_JSON_DIR, EVAL_RESULTS_DIR, EVALUATION_JSON_DIR, RAG_DIR, EXTRACTION_MARKDOWN_DIR, APPROVED_DIR]:
+for d in [LOGGING_DIR, BROKEN_JSON_DIR, EVAL_RESULTS_DIR, EVALUATION_JSON_DIR, RAG_DIR, EXTRACTION_MARKDOWN_DIR, APPROVED_DIR, SERVER_STATE_DIR]:
     os.makedirs(d, exist_ok=True)
 
 # Weight distribution for 5 evaluation dimensions
@@ -46,7 +47,7 @@ MATCH_THRESHOLDS = {
 }
 
 # Token & Context Window Limits
-VLLM_MAX_MODEL_LEN = 40000 # Total vLLM model context length limit (--max-model-len)
+VLLM_MAX_MODEL_LEN = 20000 # Total vLLM model context length limit (--max-model-len)
 MAX_NEW_TOKENS = 8096     # Output new tokens limit
 DSPY_MAX_TOKENS = 4048    # DSPy prompt optimization output token limit
 
@@ -56,8 +57,23 @@ SCRUTINY_TEMPERATURE = 0.7
 SCRUTINY_MAX_QUESTIONS_PER_FIELD = 5
 
 # Default model defaults
-DEFAULT_LLM_MODEL = "Qwen/Qwen3.5-35B-A3B-FP8"
+DEFAULT_LLM_MODEL = "Qwen/Qwen3.5-35B-A3B"
 DEFAULT_EMBEDDING_MODEL = "AITeamVN/Vietnamese_Embedding"
 DEFAULT_VLLM_URL = "http://127.0.0.1:8100/v1"
 VLLM_REQUEST_TIMEOUT = 1800
 
+
+# Operation duration tracking (web waiting-screen time estimates). The expected duration of an
+# operation kind is the median of its recent successful runs, or the default below when none exist.
+OPERATION_DURATIONS_PATH = os.path.join(SERVER_STATE_DIR, "operation_durations.json")
+OPERATION_DURATION_WINDOW = 20
+OPERATION_DURATION_DEFAULTS_SECONDS = {
+    "scrutiny": 30.0,
+    "decompose": 60.0,
+    "save_criteria": 10.0,
+    "extract": 60.0,
+    "evaluate_candidate": 90.0
+}
+
+# Background batch-evaluation jobs: finished jobs are dropped from memory after this many seconds
+EVAL_JOB_TTL_SECONDS = 1800

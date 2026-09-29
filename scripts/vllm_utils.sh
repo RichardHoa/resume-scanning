@@ -84,9 +84,10 @@ stop_vllm_server() {
 # -----------------------------------------------------------------------------
 # Start vLLM Server Instance and Wait for Readiness
 # Usage: start_vllm_server <MODEL_NAME> <PORT> [LOG_FILE]
+# Optional: VLLM_EXTRA_ARGS bash array of extra `vllm serve` flags (see model_profiles.sh)
 # -----------------------------------------------------------------------------
 start_vllm_server() {
-  local model="${1:-Qwen/Qwen3.5-35B-A3B-FP8}"
+  local model="${1:-Qwen/Qwen3.5-35B-A3B}"
   local port="${2:-8100}"
   local log_file="${3:-$PROJECT_ROOT/logs/vllm_server.log}"
 
@@ -133,6 +134,7 @@ start_vllm_server() {
     --enforce-eager \
     --trust-remote-code \
     --served-model-name "$model" \
+    "${VLLM_EXTRA_ARGS[@]}" \
     > "$log_file" 2>&1 &
 
   VLLM_PID=$!

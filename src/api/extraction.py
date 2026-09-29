@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from src.core.config import APPROVED_DIR, OUTPUT_DIR
 from src.core.state import state
+from src.core.durations import record_duration
 from src.core.evaluation_order import load_evaluation_order, get_candidate_tier
 
 router = APIRouter(prefix="/api", tags=["extraction"])
@@ -47,6 +48,7 @@ async def extract_resume(file: UploadFile = File(...), language: str = Form("vie
             with open(os.path.join(output_dir, f"{base_name}.json"), "w", encoding="utf-8") as f:
                 json.dump(extracted_data, f, ensure_ascii=False, indent=2)
 
+            record_duration("extract", elapsed_time)
             return JSONResponse(content=extracted_data, headers=headers)
         except json.JSONDecodeError:
             headers = {"X-Extraction-Time": f"{elapsed_time:.2f}"}

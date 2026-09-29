@@ -8,12 +8,13 @@
  */
 
 import { API } from './api.js';
+import { WaitingScreen } from './waiting-screen.js';
 
 export class ExtractorController {
     constructor() {
         this.selectedFile = null;
         this.extractedJsonData = null;
-        this.loaderInterval = null;
+        this.waitingScreen = new WaitingScreen();
 
         this.initDOMElements();
         this.initEvents();
@@ -43,12 +44,6 @@ export class ExtractorController {
         this.btnCopy = document.getElementById('btn-copy');
         this.btnDownload = document.getElementById('btn-download');
         this.btnReset = document.getElementById('btn-reset');
-        this.selectLanguage = document.getElementById('select-parse-language');
-
-        this.loaderOverlay = document.getElementById('loader-overlay');
-        this.loaderTitle = document.getElementById('loader-title');
-        this.loaderDesc = document.getElementById('loader-desc');
-        this.loaderProgress = document.getElementById('loader-progress');
 
         this.tabButtons = document.querySelectorAll('.tab-btn');
         this.tabContents = document.querySelectorAll('.tab-content');
@@ -127,11 +122,11 @@ export class ExtractorController {
         if (this.isFullVisual) {
             this.dashboardSplit.classList.add('full-visual-mode');
             if (this.codePane) this.codePane.style.display = 'none';
-            if (this.btnToggleView) this.btnToggleView.textContent = '👁️ Show Split View';
+            if (this.btnToggleView) this.btnToggleView.textContent = '👁️ Hiện chia đôi màn hình';
         } else {
             this.dashboardSplit.classList.remove('full-visual-mode');
             if (this.codePane) this.codePane.style.display = 'flex';
-            if (this.btnToggleView) this.btnToggleView.textContent = '👁️ Visual Only / Split';
+            if (this.btnToggleView) this.btnToggleView.textContent = '👁️ Chỉ trực quan / Chia đôi';
         }
     }
 
@@ -141,7 +136,7 @@ export class ExtractorController {
      */
     handleFileSelect(file) {
         if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-            alert('Only PDF resume files are supported.');
+            alert('Chỉ hỗ trợ tệp CV định dạng PDF.');
             return;
         }
         this.selectedFile = file;
@@ -168,51 +163,18 @@ export class ExtractorController {
      */
     async runExtraction() {
         if (!this.selectedFile) return;
-        this.showLoader();
         try {
-            const language = this.selectLanguage ? this.selectLanguage.value : 'vietnamese';
-            const { data, extractionTime } = await API.extractCv(this.selectedFile, language);
+            const { data, extractionTime } = await this.waitingScreen.run(
+                'extract',
+                'Đang trích xuất CV PDF...',
+                'Đang đọc tệp PDF và cấu trúc hóa thông tin CV bằng mô hình AI cục bộ.',
+                () => API.extractCv(this.selectedFile, 'vietnamese')
+            );
             this.extractedJsonData = data;
             this.displayResults(data, extractionTime);
         } catch (err) {
-            alert('Extraction error: ' + err.message);
-        } finally {
-            this.hideLoader();
+            alert('Lỗi trích xuất: ' + err.message);
         }
-    }
-
-    /**
-     * Displays progress loader dialog with animated step messages.
-     */
-    showLoader() {
-        if (!this.loaderOverlay) return;
-        this.loaderOverlay.style.display = 'flex';
-        if (this.loaderProgress) this.loaderProgress.style.width = '10%';
-
-        const states = [
-            { title: 'Reading PDF Document...', desc: 'Parsing binary layer and extracting raw text strings.' },
-            { title: 'Analyzing Structural Layout...', desc: 'Identifying bounding boxes, headers, and section breaks.' },
-            { title: 'Running Local AI Model...', desc: 'Structuring CV details using local deep learning inference engine.' },
-            { title: 'Formatting Output Schema...', desc: 'Mapping work history, education, skills, and certifications.' }
-        ];
-
-        let idx = 0;
-        this.loaderTitle.textContent = states[0].title;
-        this.loaderDesc.textContent = states[0].desc;
-
-        this.loaderInterval = setInterval(() => {
-            idx = (idx + 1) % states.length;
-            this.loaderTitle.textContent = states[idx].title;
-            this.loaderDesc.textContent = states[idx].desc;
-        }, 8000);
-    }
-
-    /**
-     * Hides extraction progress loader dialog.
-     */
-    hideLoader() {
-        clearInterval(this.loaderInterval);
-        if (this.loaderOverlay) this.loaderOverlay.style.display = 'none';
     }
 
     /**
@@ -265,22 +227,22 @@ export class ExtractorController {
     renderParsedData(data) {
         // 1. Profile Tab
         const applied = data.position_applied || {};
-        document.getElementById('profile-position').textContent = applied.title || 'Position Not Specified';
-        document.getElementById('profile-level').textContent = applied.level || 'Unknown';
+        document.getElementById('profile-position').textContent = applied.title || 'Chưa rõ vị trí';
+        document.getElementById('profile-level').textContent = applied.level || 'Chưa rõ';
 
         const basic = data.basic_information || {};
-        document.getElementById('profile-email').textContent = basic.email || 'N/A';
-        document.getElementById('profile-phone').textContent = basic.phone || 'N/A';
-        document.getElementById('profile-location').textContent = basic.location || 'N/A';
-        document.getElementById('profile-links').textContent = basic.other_info || 'N/A';
-        document.getElementById('profile-summary').textContent = data.self_evaluation || 'No self evaluation provided.';
+        document.getElementById('profile-email').textContent = basic.email || 'Không có';
+        document.getElementById('profile-phone').textContent = basic.phone || 'Không có';
+        document.getElementById('profile-location').textContent = basic.location || 'Không có';
+        document.getElementById('profile-links').textContent = basic.other_info || 'Không có';
+        document.getElementById('profile-summary').textContent = data.self_evaluation || 'Không có phần tự đánh giá.';
 
         // 2. Work Experience Tab
         const expTimeline = document.getElementById('experience-timeline');
         expTimeline.innerHTML = '';
         const jobs = data.work_experience || [];
         if (jobs.length === 0) {
-            expTimeline.innerHTML = '<p class="summary-text" style="text-align: center; padding: 2rem 0;">No work experience detected.</p>';
+            expTimeline.innerHTML = '<p class="summary-text" style="text-align: center; padding: 2rem 0;">Không tìm thấy kinh nghiệm làm việc.</p>';
         } else {
             jobs.forEach(job => {
                 const card = document.createElement('div');
@@ -296,10 +258,10 @@ export class ExtractorController {
                 card.innerHTML = `
                     <div class="timeline-card-header">
                         <div>
-                            <div class="job-title">${this.escapeHtml(job.position || 'Position')}</div>
-                            <div class="company-name">${this.escapeHtml(job.company_name || 'N/A')}</div>
+                            <div class="job-title">${this.escapeHtml(job.position || 'Vị trí')}</div>
+                            <div class="company-name">${this.escapeHtml(job.company_name || 'Không có')}</div>
                         </div>
-                        <span class="job-duration">${this.escapeHtml(job.duration || 'N/A')}</span>
+                        <span class="job-duration">${this.escapeHtml(job.duration || 'Không có')}</span>
                     </div>
                     ${job.company_description ? `<div class="company-desc">${this.escapeHtml(job.company_description)}</div>` : ''}
                     ${respHtml}
@@ -313,17 +275,17 @@ export class ExtractorController {
         eduList.innerHTML = '';
         const schools = data.education_background || [];
         if (schools.length === 0) {
-            eduList.innerHTML = '<p class="summary-text">No education background detected.</p>';
+            eduList.innerHTML = '<p class="summary-text">Không tìm thấy thông tin học vấn.</p>';
         } else {
             schools.forEach(school => {
                 const item = document.createElement('div');
                 item.className = 'education-item';
                 const meta = [];
-                if (school.field_of_study) meta.push(`Major: ${school.field_of_study}`);
+                if (school.field_of_study) meta.push(`Chuyên ngành: ${school.field_of_study}`);
                 if (school.gpa) meta.push(`GPA: ${school.gpa}`);
                 item.innerHTML = `
-                    <div class="univ-name">${this.escapeHtml(school.university_name || 'N/A')}</div>
-                    <div class="edu-degree">${this.escapeHtml(school.degree || 'Degree N/A')} (${school.graduation_year || 'N/A'})</div>
+                    <div class="univ-name">${this.escapeHtml(school.university_name || 'Không có')}</div>
+                    <div class="edu-degree">${this.escapeHtml(school.degree || 'Không rõ bằng cấp')} (${school.graduation_year || 'Không có'})</div>
                     ${meta.length > 0 ? `<div class="edu-meta">${this.escapeHtml(meta.join(' | '))}</div>` : ''}
                 `;
                 eduList.appendChild(item);
@@ -338,20 +300,20 @@ export class ExtractorController {
         certs.forEach(c => certItems.push({ name: c.name, org: c.issuing_organization, dur: c.duration }));
         languages.forEach(l => {
             if (l.certificates && l.certificates.length > 0) {
-                l.certificates.forEach(lc => certItems.push({ name: `${l.language}: ${lc.name}`, org: lc.issuing_organization || 'Board', dur: lc.duration }));
+                l.certificates.forEach(lc => certItems.push({ name: `${l.language}: ${lc.name}`, org: lc.issuing_organization || 'Tổ chức cấp', dur: lc.duration }));
             } else if (l.proficiency) {
-                certItems.push({ name: `Language: ${l.language}`, org: l.proficiency, dur: '' });
+                certItems.push({ name: `Ngoại ngữ: ${l.language}`, org: l.proficiency, dur: '' });
             }
         });
         if (certItems.length === 0) {
-            certsList.innerHTML = '<p class="summary-text">No certifications detected.</p>';
+            certsList.innerHTML = '<p class="summary-text">Không tìm thấy chứng chỉ.</p>';
         } else {
             certItems.forEach(cert => {
                 const card = document.createElement('div');
                 card.className = 'cert-card';
                 card.innerHTML = `
                     <div class="cert-title">${this.escapeHtml(cert.name)}</div>
-                    <div class="cert-org">${this.escapeHtml(cert.org || 'N/A')} ${cert.dur ? `• ${this.escapeHtml(cert.dur)}` : ''}</div>
+                    <div class="cert-org">${this.escapeHtml(cert.org || 'Không có')} ${cert.dur ? `• ${this.escapeHtml(cert.dur)}` : ''}</div>
                 `;
                 certsList.appendChild(card);
             });
@@ -362,7 +324,7 @@ export class ExtractorController {
         skillsList.innerHTML = '';
         const skills = data.skills_and_specialties || [];
         if (skills.length === 0) {
-            skillsList.innerHTML = '<p class="summary-text">No skills detected.</p>';
+            skillsList.innerHTML = '<p class="summary-text">Không tìm thấy kỹ năng.</p>';
         } else {
             skills.forEach(sk => {
                 const pill = document.createElement('span');
@@ -376,14 +338,14 @@ export class ExtractorController {
         projectsList.innerHTML = '';
         const projects = data.projects || [];
         if (projects.length === 0) {
-            projectsList.innerHTML = '<p class="summary-text">No projects detected.</p>';
+            projectsList.innerHTML = '<p class="summary-text">Không tìm thấy dự án.</p>';
         } else {
             projects.forEach(p => {
                 const card = document.createElement('div');
                 card.className = 'project-card';
                 card.innerHTML = `
-                    <div class="proj-name">${this.escapeHtml(p.project_name || 'Project')} <span style="font-size:0.8rem; font-weight:normal; float:right;">${this.escapeHtml(p.duration || '')}</span></div>
-                    <div class="proj-desc" style="font-size:0.85rem; margin-top:4px;">${this.escapeHtml(p.description || 'N/A')}</div>
+                    <div class="proj-name">${this.escapeHtml(p.project_name || 'Dự án')} <span style="font-size:0.8rem; font-weight:normal; float:right;">${this.escapeHtml(p.duration || '')}</span></div>
+                    <div class="proj-desc" style="font-size:0.85rem; margin-top:4px;">${this.escapeHtml(p.description || 'Không có')}</div>
                 `;
                 projectsList.appendChild(card);
             });
@@ -396,8 +358,8 @@ export class ExtractorController {
     copyJson() {
         if (!this.extractedJsonData) return;
         navigator.clipboard.writeText(JSON.stringify(this.extractedJsonData, null, 2))
-            .then(() => alert('Raw JSON copied to clipboard!'))
-            .catch(err => alert('Failed to copy JSON: ' + err));
+            .then(() => alert('Đã sao chép JSON vào bộ nhớ tạm!'))
+            .catch(err => alert('Không sao chép được JSON: ' + err));
     }
 
     /**
@@ -426,10 +388,10 @@ export class ExtractorController {
     }
 
     formatBytes(bytes, decimals = 2) {
-        if (bytes === 0) return '0 Bytes';
+        if (bytes === 0) return '0 byte';
         const k = 1024;
         const dm = decimals < 0 ? 0 : decimals;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const sizes = ['byte', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
     }

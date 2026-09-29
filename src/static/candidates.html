@@ -4,11 +4,11 @@
   Vietnamese Resume Scanner - Candidate Pool Workbench
   ==============================================================================
 -->
-<html lang="en">
+<html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vietnamese Resume Scanner | Candidate Pool Workbench</title>
+    <title>Quét CV Tiếng Việt | Kho ứng viên</title>
     <!-- Google Fonts: Be Vietnam Pro, Noto Sans, JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,43 +17,43 @@
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <a href="#main-content" class="sr-only focus-not-sr-only">Skip to Main Content</a>
+    <a href="#main-content" class="sr-only focus-not-sr-only">Chuyển đến nội dung chính</a>
     <div class="app-workbench">
         <!-- Persistent Left Command Rail -->
-        <aside class="command-rail" role="navigation" aria-label="Main Navigation">
+        <aside class="command-rail" role="navigation" aria-label="Điều hướng chính">
             <div class="rail-brand">
                 <div class="rail-brand-logo">
                     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.78c0-2.33 4.67-3.5 7-3.5s7 1.17 7 3.5V19z"/></svg>
                 </div>
                 <div class="rail-brand-title">
                     <span class="brand-heading">Fulbright Candidate Matrix</span>
-                    <span class="subtitle">Layout Engine & RAG</span>
+                    <span class="subtitle">Bộ máy bố cục & RAG</span>
                 </div>
             </div>
 
             <nav class="rail-nav-menu">
-                <span class="rail-section-label">WORKSPACES</span>
+                <span class="rail-section-label">KHÔNG GIAN LÀM VIỆC</span>
                 <a href="/extractor" class="nav-link">
-                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span> Step 1: CV Extractor
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span> Bước 1: Trích xuất CV
                 </a>
                 <a href="/evaluator" class="nav-link">
-                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg></span> Step 2: HR Evaluator
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg></span> Bước 2: Đánh giá ứng viên
                 </a>
                 <a href="/rag" class="nav-link">
-                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 12v1a2 2 0 0 0 2 2h2v4.93zm4.9-3.24a9.96 9.96 0 0 0 1.9-4.69H16v-1a2 2 0 0 0-2-2h-3v-2a1 1 0 0 1 1-1h3.5a.5.5 0 0 0 .5-.5V5.1A9.97 9.97 0 0 1 17.9 16.69z"/></svg></span> RAG Knowledge Base
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 12v1a2 2 0 0 0 2 2h2v4.93zm4.9-3.24a9.96 9.96 0 0 0 1.9-4.69H16v-1a2 2 0 0 0-2-2h-3v-2a1 1 0 0 1 1-1h3.5a.5.5 0 0 0 .5-.5V5.1A9.97 9.97 0 0 1 17.9 16.69z"/></svg></span> Kho tri thức RAG
                 </a>
                 <a href="/candidates" class="nav-link active" aria-current="page">
-                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></span> Candidate Pool
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></span> Kho ứng viên
                 </a>
             </nav>
 
             <div class="rail-telemetry">
                 <div class="telemetry-row">
-                    <span>ENGINE</span>
-                    <span class="status-indicator"><span class="status-dot"></span> READY</span>
+                    <span>BỘ MÁY</span>
+                    <span class="status-indicator"><span class="status-dot"></span> SẴN SÀNG</span>
                 </div>
                 <div class="telemetry-row">
-                    <span>VECTOR STORE</span>
+                    <span>KHO VECTOR</span>
                     <span style="color: var(--color-secondary); font-weight:700;">ChromaDB</span>
                 </div>
             </div>
@@ -63,8 +63,8 @@
         <main class="workbench-stage" id="main-content">
             <div class="workbench-header">
                 <div class="workbench-title-group">
-                    <h1><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg> Candidate Evaluation Pool Workbench</h1>
-                    <p>Browse evaluation reports stored in <code>eval_results/</code>. Search, filter by match tier, sort, and inspect candidates.</p>
+                    <h1><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg> Kho kết quả đánh giá ứng viên</h1>
+                    <p>Duyệt các báo cáo đánh giá lưu trong <code>eval_results/</code>. Tìm kiếm, lọc theo mức độ phù hợp, sắp xếp và xem chi tiết ứng viên.</p>
                 </div>
             </div>
 
@@ -72,38 +72,38 @@
                 <div class="panel">
                     <div class="panel-header-split">
                         <div>
-                            <h2>Candidate Evaluation Dossiers</h2>
-                            <p>Real-time analytics and score distribution pool.</p>
+                            <h2>Hồ sơ đánh giá ứng viên</h2>
+                            <p>Thống kê và phân bố điểm theo thời gian thực.</p>
                         </div>
                         <button class="btn btn-secondary" id="btn-refresh-candidates" type="button">
-                            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Refresh Pool
+                            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Làm mới danh sách
                         </button>
                     </div>
 
                     <!-- Statistics Summary Grid -->
                     <div class="cand-stats-grid">
                         <div class="stat-box">
-                            <span class="stat-label">Total Candidates</span>
+                            <span class="stat-label">Tổng số ứng viên</span>
                             <span class="stat-number" id="cand-stat-total">0</span>
                         </div>
                         <div class="stat-box stat-strong">
-                            <span class="stat-label">Strong Match</span>
+                            <span class="stat-label">Phù hợp cao</span>
                             <span class="stat-number" id="cand-stat-strong">0</span>
                         </div>
                         <div class="stat-box stat-potential">
-                            <span class="stat-label">Potential Match</span>
+                            <span class="stat-label">Có tiềm năng</span>
                             <span class="stat-number" id="cand-stat-potential">0</span>
                         </div>
                         <div class="stat-box stat-low">
-                            <span class="stat-label">Low Match</span>
+                            <span class="stat-label">Phù hợp thấp</span>
                             <span class="stat-number" id="cand-stat-low">0</span>
                         </div>
                         <div class="stat-box stat-reject">
-                            <span class="stat-label">Reject</span>
+                            <span class="stat-label">Loại</span>
                             <span class="stat-number" id="cand-stat-reject">0</span>
                         </div>
                         <div class="stat-box">
-                            <span class="stat-label">Average Score</span>
+                            <span class="stat-label">Điểm trung bình</span>
                             <span class="stat-number" id="cand-stat-avg">0.0</span>
                         </div>
                     </div>
@@ -111,28 +111,28 @@
                     <!-- Search & Filter Toolbar -->
                     <div class="cand-toolbar">
                         <div class="search-input-group">
-                            <input type="text" id="cand-search-input" class="form-control" placeholder="Search candidate name, title, or email..." aria-label="Search candidate by name, title, or email">
+                            <input type="text" id="cand-search-input" class="form-control" placeholder="Tìm theo tên, chức danh hoặc email ứng viên..." aria-label="Tìm ứng viên theo tên, chức danh hoặc email">
                         </div>
                         <div class="toolbar-select-group">
                             <div class="select-wrapper">
-                                <label for="cand-filter-status">Filter:</label>
+                                <label for="cand-filter-status">Lọc:</label>
                                 <select id="cand-filter-status" class="form-control">
-                                    <option value="ALL">All Statuses</option>
-                                    <option value="STRONG_MATCH">Strong Match (>=85)</option>
-                                    <option value="POTENTIAL_MATCH">Potential Match (70-84)</option>
-                                    <option value="LOW_MATCH">Low Match (55-69)</option>
-                                    <option value="REJECT">Reject (&lt;55)</option>
+                                    <option value="ALL">Tất cả trạng thái</option>
+                                    <option value="STRONG_MATCH">Phù hợp cao (>=85)</option>
+                                    <option value="POTENTIAL_MATCH">Có tiềm năng (70-84)</option>
+                                    <option value="LOW_MATCH">Phù hợp thấp (55-69)</option>
+                                    <option value="REJECT">Loại (&lt;55)</option>
                                 </select>
                             </div>
                             <div class="select-wrapper">
-                                <label for="cand-sort-by">Sort:</label>
+                                <label for="cand-sort-by">Sắp xếp:</label>
                                 <select id="cand-sort-by" class="form-control">
-                                    <option value="evaluation_order" selected>Secret Evaluation Order (Tier 1 → Tier 2 → Tier 3)</option>
-                                    <option value="score_desc">Score: Highest First</option>
-                                    <option value="score_asc">Score: Lowest First</option>
-                                    <option value="name_asc">Name: A → Z</option>
-                                    <option value="name_desc">Name: Z → A</option>
-                                    <option value="date_desc">Date: Newest First</option>
+                                    <option value="evaluation_order" selected>Thứ tự đánh giá bí mật (Nhóm 1 → Nhóm 2 → Nhóm 3)</option>
+                                    <option value="score_desc">Điểm: Cao nhất trước</option>
+                                    <option value="score_asc">Điểm: Thấp nhất trước</option>
+                                    <option value="name_asc">Tên: A → Z</option>
+                                    <option value="name_desc">Tên: Z → A</option>
+                                    <option value="date_desc">Ngày: Mới nhất trước</option>
                                 </select>
                             </div>
                         </div>
@@ -140,7 +140,7 @@
 
                     <!-- Candidate Evaluation Cards Grid -->
                     <div id="cand-cards-grid" class="cand-cards-grid" aria-live="polite" aria-atomic="true">
-                        <div class="loading-state">Loading candidate evaluations...</div>
+                        <div class="loading-state">Đang tải kết quả đánh giá ứng viên...</div>
                     </div>
                 </div>
             </div>
@@ -152,14 +152,14 @@
         <div class="modal-card">
             <div class="modal-header">
                 <div class="modal-header-info">
-                    <h2 id="modal-cand-name">Candidate Name</h2>
-                    <span class="modal-subtext" id="modal-cand-role">Evaluation Dossier</span>
+                    <h2 id="modal-cand-name">Tên ứng viên</h2>
+                    <span class="modal-subtext" id="modal-cand-role">Hồ sơ đánh giá</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <button class="btn btn-secondary btn-sm" id="modal-btn-download" type="button">
-                        <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Export JSON
+                        <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Xuất JSON
                     </button>
-                    <button class="modal-close-btn" id="modal-close-btn" aria-label="Close Candidate Details Modal" type="button">&times;</button>
+                    <button class="modal-close-btn" id="modal-close-btn" aria-label="Đóng chi tiết ứng viên" type="button">&times;</button>
                 </div>
             </div>
             <div class="modal-body" id="modal-cand-body"></div>

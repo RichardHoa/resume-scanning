@@ -32,6 +32,9 @@ class LocalCriteriaRAG:
         self.db_dir = RAG_DIR
         os.makedirs(self.db_dir, exist_ok=True)
         self.db_path = os.path.join(self.db_dir, "chroma_db")
+        # HR's original Standard/Hidden Requirements text, kept beside the Criteria so a
+        # manual update that omits the text can still write it into hr_rag.txt.
+        self.originals_path = os.path.join(self.db_dir, "original_requirements.json")
 
         self.chroma_client = None
         self.collection = None
@@ -139,6 +142,36 @@ class LocalCriteriaRAG:
             except Exception as e:
                 print(f"[LocalRAG Warning] Could not remove hr_rag.txt: {e}", file=sys.stderr)
 
+        if os.path.exists(self.originals_path):
+            try:
+                os.remove(self.originals_path)
+            except Exception as e:
+                print(f"[LocalRAG Warning] Could not remove original_requirements.json: {e}", file=sys.stderr)
+
+    def load_original_requirements(self) -> Dict[str, str]:
+        """Returns HR's stored original Standard/Hidden Requirements text (empty strings if none)."""
+        originals = {"standard_requirements": "", "hidden_requirements": ""}
+        if os.path.exists(self.originals_path):
+            try:
+                with open(self.originals_path, "r", encoding="utf-8") as f:
+                    saved = json.load(f)
+                if isinstance(saved, dict):
+                    for key in originals:
+                        originals[key] = str(saved.get(key) or "")
+            except Exception as e:
+                print(f"[LocalRAG Warning] Could not read original_requirements.json: {e}", file=sys.stderr)
+        return originals
+
+    def _save_original_requirements(self, standard_req: str, hidden_req: str):
+        try:
+            with open(self.originals_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {"standard_requirements": standard_req or "", "hidden_requirements": hidden_req or ""},
+                    f, ensure_ascii=False, indent=2
+                )
+        except Exception as e:
+            print(f"[LocalRAG Error] Failed to write original_requirements.json: {e}", file=sys.stderr)
+
     def get_stored_rag_summary(self) -> Dict[str, Any]:
         """Returns a structured summary of all RAG criteria stored in the persistent database."""
         return get_stored_rag_summary(self)
@@ -153,6 +186,8 @@ class LocalCriteriaRAG:
             if not decomposed or not isinstance(decomposed, dict):
                 print("[LocalRAG] Decomposed criteria dictionary is empty.", file=sys.stderr)
                 return
+
+            self._save_original_requirements(standard_req, hidden_req)
 
             now_str = datetime.now().isoformat()
             ids = []
@@ -256,10 +291,18 @@ class LocalCriteriaRAG:
         self.ingest_requirements(standard_req, hidden_req, llm_decomposer_func=llm_decomposer_func, force_reingest=True)
         return self.get_stored_rag_summary()
 
-    def update_criteria_manually(self, categories: Dict[str, List[str]], standard_req: str = "", hidden_req: str = "") -> Dict[str, Any]:
+    def update_criteria_manually(self, categories: Dict[str, List[str]], standard_req: Optional[str] = None, hidden_req: Optional[str] = None) -> Dict[str, Any]:
         """
         Updates stored RAG criteria with manual user edits, re-computes embeddings, and updates hr_rag.txt.
+        Requirement text left as None falls back to the stored originals, so a Criteria-only
+        edit (e.g. from the RAG Workbench) keeps HR's original text in hr_rag.txt.
         """
+        if standard_req is None or hidden_req is None:
+            originals = self.load_original_requirements()
+            if standard_req is None:
+                standard_req = originals["standard_requirements"]
+            if hidden_req is None:
+                hidden_req = originals["hidden_requirements"]
         self.ingest_decomposed_dict(categories, standard_req=standard_req, hidden_req=hidden_req)
         return self.get_stored_rag_summary()
 

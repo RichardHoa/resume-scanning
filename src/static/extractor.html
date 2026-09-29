@@ -4,11 +4,11 @@
   Vietnamese Resume Scanner - Step 1: CV Extractor Workbench
   ==============================================================================
 -->
-<html lang="en">
+<html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vietnamese Resume Scanner | CV Extractor Workbench</title>
+    <title>Quét CV Tiếng Việt | Trích xuất CV</title>
     <!-- Google Fonts: Be Vietnam Pro, Noto Sans, JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,40 +19,40 @@
 <body>
     <div class="app-workbench">
         <!-- Persistent Left Command Rail -->
-        <aside class="command-rail" role="navigation" aria-label="Main Navigation">
+        <aside class="command-rail" role="navigation" aria-label="Điều hướng chính">
             <div class="rail-brand">
                 <div class="rail-brand-logo">
                     <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.78c0-2.33 4.67-3.5 7-3.5s7 1.17 7 3.5V19z"/></svg>
                 </div>
                 <div class="rail-brand-title">
                     <h1>Fulbright Candidate Matrix</h1>
-                    <span class="subtitle">Layout Engine & RAG</span>
+                    <span class="subtitle">Bộ máy bố cục & RAG</span>
                 </div>
             </div>
 
             <nav class="rail-nav-menu">
-                <span class="rail-section-label">WORKSPACES</span>
+                <span class="rail-section-label">KHÔNG GIAN LÀM VIỆC</span>
                 <a href="/extractor" class="nav-link active" aria-current="page">
-                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span> Step 1: CV Extractor
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span> Bước 1: Trích xuất CV
                 </a>
                 <a href="/evaluator" class="nav-link">
-                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg></span> Step 2: HR Evaluator
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg></span> Bước 2: Đánh giá ứng viên
                 </a>
                 <a href="/rag" class="nav-link">
-                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 12v1a2 2 0 0 0 2 2h2v4.93zm4.9-3.24a9.96 9.96 0 0 0 1.9-4.69H16v-1a2 2 0 0 0-2-2h-3v-2a1 1 0 0 1 1-1h3.5a.5.5 0 0 0 .5-.5V5.1A9.97 9.97 0 0 1 17.9 16.69z"/></svg></span> RAG Knowledge Base
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 12v1a2 2 0 0 0 2 2h2v4.93zm4.9-3.24a9.96 9.96 0 0 0 1.9-4.69H16v-1a2 2 0 0 0-2-2h-3v-2a1 1 0 0 1 1-1h3.5a.5.5 0 0 0 .5-.5V5.1A9.97 9.97 0 0 1 17.9 16.69z"/></svg></span> Kho tri thức RAG
                 </a>
                 <a href="/candidates" class="nav-link">
-                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></span> Candidate Pool
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></span> Kho ứng viên
                 </a>
             </nav>
 
             <div class="rail-telemetry">
                 <div class="telemetry-row">
-                    <span>ENGINE</span>
-                    <span class="status-indicator"><span class="status-dot"></span> READY</span>
+                    <span>BỘ MÁY</span>
+                    <span class="status-indicator"><span class="status-dot"></span> SẴN SÀNG</span>
                 </div>
                 <div class="telemetry-row">
-                    <span>VECTOR STORE</span>
+                    <span>KHO VECTOR</span>
                     <span style="color: var(--color-secondary); font-weight:700;">ChromaDB</span>
                 </div>
             </div>
@@ -62,16 +62,16 @@
         <main class="workbench-stage">
             <div class="workbench-header">
                 <div class="workbench-title-group">
-                    <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Step 1: CV Extractor Workbench</h2>
-                    <p>Upload Vietnamese & English PDF resumes to trigger layout AI extraction into structured JSON profiles.</p>
+                    <h2><svg class="icon-svg" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Bước 1: Trích xuất CV</h2>
+                    <p>Tải lên CV PDF tiếng Việt hoặc tiếng Anh để AI phân tích bố cục và trích xuất thành hồ sơ JSON có cấu trúc.</p>
                 </div>
             </div>
 
             <div class="page-view active" id="page-extractor">
                 <section class="panel upload-panel" id="upload-section">
                     <div class="panel-header">
-                        <h2>Upload Candidate Resume</h2>
-                        <p>Drag and drop a PDF file or browse to begin extraction.</p>
+                        <h2>Tải lên CV ứng viên</h2>
+                        <p>Kéo thả tệp PDF hoặc chọn tệp để bắt đầu trích xuất.</p>
                     </div>
                     <div class="upload-dropzone" id="dropzone">
                         <input type="file" id="file-input" accept=".pdf" style="display: none;">
@@ -79,21 +79,10 @@
                             <div class="upload-icon">
                                 <svg viewBox="0 0 24 24" style="width: 48px; height: 48px; fill: var(--color-secondary);"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
                             </div>
-                            <h3>Drag & Drop CV PDF here</h3>
-                            <p>or <span class="browse-link">browse files</span> from your computer</p>
+                            <h3>Kéo & thả CV PDF vào đây</h3>
+                            <p>hoặc <span class="browse-link">chọn tệp</span> từ máy tính của bạn</p>
                         </div>
                     </div>
-                    <div class="lang-selector-group" style="margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; background: var(--color-surface, #f8fafc); padding: 10px 14px; border-radius: 8px; border: 1px solid var(--color-border, #e2e8f0);">
-                        <label for="select-parse-language" style="font-weight: 600; font-size: 0.9rem; color: var(--color-text-main, #1e293b); display: flex; align-items: center; gap: 6px;">
-                            <svg viewBox="0 0 24 24" style="width: 18px; height: 18px; fill: currentColor;"><path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2.1l1.1-3h4.6l1.1 3H23l-4.5-12zm-2.62 7l1.62-4.41L19.12 17h-3.24z"/></svg>
-                            Target Parse Language Flag:
-                        </label>
-                        <select id="select-parse-language" style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--color-border, #cbd5e1); font-weight: 500; background: #ffffff; cursor: pointer;">
-                            <option value="vietnamese" selected>Vietnamese (Default)</option>
-                            <option value="english">English</option>
-                        </select>
-                    </div>
-
                     <div class="file-preview-card" id="file-preview" style="display: none;">
                         <div class="file-icon-pdf">
                             <svg viewBox="0 0 24 24" style="width: 28px; height: 28px; fill: var(--color-destructive);"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5z"/></svg>
@@ -102,47 +91,47 @@
                             <span class="file-name" id="preview-filename">resume.pdf</span>
                             <span class="file-size" id="preview-filesize">0 KB</span>
                         </div>
-                        <button class="btn-remove" id="btn-remove-file" aria-label="Remove File">&times;</button>
+                        <button class="btn-remove" id="btn-remove-file" aria-label="Bỏ tệp">&times;</button>
                     </div>
                     <button class="btn btn-primary btn-block" id="btn-extract" disabled>
-                        <svg class="icon-svg" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Start AI Resume Extraction
+                        <svg class="icon-svg" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Bắt đầu trích xuất CV bằng AI
                     </button>
                 </section>
 
                 <section class="panel results-panel" id="results-section" style="display: none;">
                     <div class="results-header">
                         <div class="results-title-group">
-                            <h2>Extraction Results</h2>
-                            <span class="badge-success">Success</span>
+                            <h2>Kết quả trích xuất</h2>
+                            <span class="badge-success">Thành công</span>
                             <div class="badge-success" id="badge-time" style="display: none;">
                                 <span id="val-time">-</span>
                             </div>
                         </div>
                         <div class="results-actions">
                             <button class="btn btn-secondary" id="btn-toggle-view">
-                                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg> Split View
+                                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg> Chia đôi màn hình
                             </button>
                             <button class="btn btn-secondary" id="btn-copy">
-                                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy JSON
+                                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Sao chép JSON
                             </button>
                             <button class="btn btn-success" id="btn-download">
-                                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Download JSON
+                                <svg class="icon-svg" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Tải xuống JSON
                             </button>
-                            <button class="btn btn-danger" id="btn-reset">Analyze Another</button>
+                            <button class="btn btn-danger" id="btn-reset">Phân tích CV khác</button>
                         </div>
                     </div>
 
                     <div class="warning-banner" id="warning-banner" style="display: none;">
                         <div class="warning-banner-header">
                             <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; fill: #d97706;"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
-                            <span>Extraction Warnings Flagged (Low Consensus / Unmatched Text)</span>
+                            <span>Cảnh báo trích xuất (Độ đồng thuận thấp / Văn bản không khớp)</span>
                         </div>
                         <ul id="warning-list" class="warning-list"></ul>
                     </div>
 
                     <div class="dashboard-split">
                         <div class="split-pane code-pane">
-                            <h3>Raw Extracted JSON</h3>
+                            <h3>JSON trích xuất thô</h3>
                             <div class="code-container">
                                 <pre><code id="json-output"></code></pre>
                             </div>
@@ -150,10 +139,10 @@
 
                         <div class="split-pane visual-pane">
                             <div class="tabs-nav">
-                                <button class="tab-btn active" data-tab="tab-profile">Profile</button>
-                                <button class="tab-btn" data-tab="tab-experience">Work Experience</button>
-                                <button class="tab-btn" data-tab="tab-education">Education & Certs</button>
-                                <button class="tab-btn" data-tab="tab-projects">Skills & Projects</button>
+                                <button class="tab-btn active" data-tab="tab-profile">Hồ sơ</button>
+                                <button class="tab-btn" data-tab="tab-experience">Kinh nghiệm làm việc</button>
+                                <button class="tab-btn" data-tab="tab-education">Học vấn & Chứng chỉ</button>
+                                <button class="tab-btn" data-tab="tab-projects">Kỹ năng & Dự án</button>
                             </div>
 
                             <div class="tab-content active" id="tab-profile">
@@ -163,33 +152,33 @@
                                             <svg viewBox="0 0 24 24" style="width: 28px; height: 28px; fill: var(--color-primary);"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
                                         </div>
                                         <div>
-                                            <h4 id="profile-position">Job Title</h4>
-                                            <span class="skill-pill" id="profile-level">Senior</span>
+                                            <h4 id="profile-position">Chức danh</h4>
+                                            <span class="skill-pill" id="profile-level">Cấp bậc</span>
                                         </div>
                                     </div>
                                     <hr class="divider">
                                     <div class="profile-details-grid">
                                         <div class="detail-item">
                                             <span class="detail-label">Email</span>
-                                            <span class="detail-val" id="profile-email">N/A</span>
+                                            <span class="detail-val" id="profile-email">Không có</span>
                                         </div>
                                         <div class="detail-item">
-                                            <span class="detail-label">Phone</span>
-                                            <span class="detail-val" id="profile-phone">N/A</span>
+                                            <span class="detail-label">Số điện thoại</span>
+                                            <span class="detail-val" id="profile-phone">Không có</span>
                                         </div>
                                         <div class="detail-item">
-                                            <span class="detail-label">Location</span>
-                                            <span class="detail-val" id="profile-location">N/A</span>
+                                            <span class="detail-label">Địa chỉ</span>
+                                            <span class="detail-val" id="profile-location">Không có</span>
                                         </div>
                                         <div class="detail-item">
-                                            <span class="detail-label">Other Links</span>
-                                            <span class="detail-val" id="profile-links">N/A</span>
+                                            <span class="detail-label">Liên kết khác</span>
+                                            <span class="detail-val" id="profile-links">Không có</span>
                                         </div>
                                     </div>
                                     <hr class="divider">
                                     <div>
-                                        <h5 style="margin-bottom: 6px;">Self Evaluation</h5>
-                                        <p class="text-muted" id="profile-summary">N/A</p>
+                                        <h5 style="margin-bottom: 6px;">Tự đánh giá</h5>
+                                        <p class="text-muted" id="profile-summary">Không có</p>
                                     </div>
                                 </div>
                             </div>
@@ -199,16 +188,16 @@
                             </div>
 
                             <div class="tab-content" id="tab-education">
-                                <h5 style="margin-bottom: 10px;">Education</h5>
+                                <h5 style="margin-bottom: 10px;">Học vấn</h5>
                                 <div id="education-list"></div>
-                                <h5 style="margin: 20px 0 10px 0;">Certifications & Languages</h5>
+                                <h5 style="margin: 20px 0 10px 0;">Chứng chỉ & Ngoại ngữ</h5>
                                 <div id="certifications-list"></div>
                             </div>
 
                             <div class="tab-content" id="tab-projects">
-                                <h5 style="margin-bottom: 10px;">Skills & Specialties</h5>
+                                <h5 style="margin-bottom: 10px;">Kỹ năng & Chuyên môn</h5>
                                 <div class="skills-container" id="skills-list"></div>
-                                <h5 style="margin: 20px 0 10px 0;">Projects</h5>
+                                <h5 style="margin: 20px 0 10px 0;">Dự án</h5>
                                 <div id="projects-list"></div>
                             </div>
                         </div>
@@ -223,11 +212,13 @@
             <div class="spinner-ring">
                 <div></div><div></div><div></div><div></div>
             </div>
-            <h3 id="loader-title">Processing Resume PDF...</h3>
-            <p id="loader-desc">Running layout OCR & AI extraction.</p>
+            <h3 id="loader-title">Đang xử lý CV PDF...</h3>
+            <p id="loader-desc">Đang chạy OCR bố cục & trích xuất bằng AI.</p>
             <div class="loader-progress-bar">
                 <div class="loader-progress-fill" id="loader-progress"></div>
             </div>
+            <p class="loader-count" id="loader-count" style="display: none;"></p>
+            <p class="loader-time" id="loader-time"></p>
         </div>
     </div>
 

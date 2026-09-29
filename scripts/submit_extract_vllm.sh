@@ -81,8 +81,8 @@ else
   PDF_DIR="$PROJECT_ROOT/Vietnamese-dataset/CnB"
 fi
 
-# Target Model Name (Default: Qwen/Qwen3.5-35B-A3B-FP8)
-MODEL="${RAW_MODEL:-Qwen/Qwen3.5-35B-A3B-FP8}"
+# Target Model Name (Default: Qwen/Qwen3.5-35B-A3B)
+MODEL="${RAW_MODEL:-Qwen/Qwen3.5-35B-A3B}"
 
 # Target Output Directory (Default: output_jsons inside project root)
 if [ -n "$RAW_OUTPUT_DIR" ]; then

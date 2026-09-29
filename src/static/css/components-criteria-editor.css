@@ -1,0 +1,132 @@
+/* Shared Criteria Editor - Verify step & RAG Workbench */
+
+.criteria-editor-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.criteria-category-card {
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: var(--shadow-sm);
+    width: 100%;
+}
+
+.criteria-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #F1F5F9;
+}
+
+.criteria-card-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--brand-legacy-blue);
+}
+
+.criteria-items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 50px;
+}
+
+.criteria-item-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: #F8FAFC;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    transition: all var(--transition-fast);
+}
+
+.criteria-item-row:hover {
+    border-color: var(--brand-azure);
+    background: #FFFFFF;
+}
+
+.criteria-item-num {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--brand-legacy-blue);
+    min-width: 22px;
+    padding-top: 6px;
+}
+
+.criteria-item-text,
+.criteria-add-input {
+    flex-grow: 1;
+    min-width: 0;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    padding: 4px 6px;
+    resize: none;
+    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    box-sizing: border-box;
+}
+
+.criteria-item-text {
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: var(--radius-xs);
+}
+
+.criteria-item-text:focus {
+    background: #FFFFFF;
+    border-color: var(--brand-azure);
+    outline: none;
+}
+
+.criteria-item-del-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    margin-top: 2px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+}
+
+.criteria-item-del-btn:hover {
+    color: #DC2626;
+    background: #FEE2E2;
+}
+
+.criteria-add-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.criteria-add-input {
+    padding: 6px 10px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.criteria-add-btn {
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}

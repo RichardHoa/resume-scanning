@@ -144,6 +144,14 @@ def match_criteria_evaluations(
     return matched
 
 
+def get_bias_result_dir(project_root: str) -> str:
+    """Returns bias-result/<MODEL_KEY>/ so runs of different models never overwrite each other (bias-result/ if MODEL_KEY unset)."""
+    model_key = os.environ.get("MODEL_KEY", "").strip()
+    if model_key:
+        return os.path.join(project_root, "bias-result", model_key)
+    return os.path.join(project_root, "bias-result")
+
+
 def locate_candidate_resume(project_root: str, custom_path: Optional[str] = None) -> str:
     """Finds target candidate resume JSON file from explicit argument, default search paths, or output_jsons/."""
     if custom_path and os.path.isfile(custom_path):
@@ -215,7 +223,7 @@ def run_single_category_bias_test(
     """
     Executes exhaustive bias and positional sensitivity evaluation for a single category across 5 test iterations.
     Generates a single consolidated CSV file:
-      bias-result/bias_detection_{category_key}.csv
+      bias-result/[<MODEL_KEY>/]bias_detection_{category_key}.csv
     """
     builder = get_bias_builder(category_key)
     category_name = builder.category_label
@@ -261,7 +269,7 @@ def run_single_category_bias_test(
     total_total_runs = total_runs_per_iter * num_iterations
 
     # Output paths
-    bias_result_dir = os.path.join(project_root, "bias-result")
+    bias_result_dir = get_bias_result_dir(project_root)
     os.makedirs(bias_result_dir, exist_ok=True)
     cat_log_dir = os.path.join(project_root, "logging", "bias_prompts", category_key)
     os.makedirs(cat_log_dir, exist_ok=True)

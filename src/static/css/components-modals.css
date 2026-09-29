@@ -151,3 +151,14 @@
     transition: width 0.3s ease;
 }
 
+.loader-card .loader-count {
+    color: var(--brand-legacy-blue);
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.loader-card .loader-time {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    font-variant-numeric: tabular-nums;
+}

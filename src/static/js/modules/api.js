@@ -14,7 +14,7 @@ export const API = {
      */
     async fetchConfig() {
         const res = await fetch('/api/config');
-        if (!res.ok) throw new Error('Failed to load server configuration.');
+        if (!res.ok) throw new Error('Không tải được cấu hình máy chủ.');
         return await res.json();
     },
 
@@ -34,7 +34,7 @@ export const API = {
         });
         if (!response.ok) {
             const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || errData.detail || 'Extraction failed.');
+            throw new Error(errData.error || errData.detail || 'Trích xuất thất bại.');
         }
         const data = await response.json();
         const timeHeader = response.headers.get('X-Extraction-Time');
@@ -47,7 +47,7 @@ export const API = {
      */
     async getScannedResumes() {
         const res = await fetch('/api/scanned_resumes');
-        if (!res.ok) throw new Error('Failed to fetch scanned resumes.');
+        if (!res.ok) throw new Error('Không tải được danh sách CV đã quét.');
         return await res.json();
     },
 
@@ -72,9 +72,59 @@ export const API = {
         });
         if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
-            const errMsg = errData.detail || errData.error || errData.message || `Server returned HTTP status ${res.status}`;
+            const errMsg = errData.detail || errData.error || errData.message || `Máy chủ trả về mã lỗi HTTP ${res.status}`;
             throw new Error(errMsg);
         }
+        return await res.json();
+    },
+
+    /**
+     * Starts a batch evaluation as a background job on the server.
+     * Takes the same arguments as evaluateBatch.
+     * @returns {Promise<{job_id: string}>} Id of the started job.
+     */
+    async startEvaluationJob(stdReq, hiddenReq, filenames, useExistingRag = false, language = "vietnamese") {
+        const res = await fetch('/api/evaluate_batch/jobs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                standard_requirements: stdReq,
+                hidden_requirements: hiddenReq,
+                resume_filenames: filenames,
+                use_existing_rag: useExistingRag,
+                language: language
+            })
+        });
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            const errMsg = errData.detail || errData.error || errData.message || `Máy chủ trả về mã lỗi HTTP ${res.status}`;
+            throw new Error(errMsg);
+        }
+        return await res.json();
+    },
+
+    /**
+     * Reads a background batch-evaluation job's status.
+     * @param {string} jobId - Id returned by startEvaluationJob.
+     * @returns {Promise<{state: string, total: number, completed: number, elapsed_seconds: number, result: ?Object, error: ?string}>}
+     */
+    async getEvaluationJob(jobId) {
+        const res = await fetch(`/api/evaluate_batch/jobs/${encodeURIComponent(jobId)}`);
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            const errMsg = errData.detail || errData.error || errData.message || `Máy chủ trả về mã lỗi HTTP ${res.status}`;
+            throw new Error(errMsg);
+        }
+        return await res.json();
+    },
+
+    /**
+     * Fetches the expected duration in seconds per operation kind, learned from recent runs.
+     * @returns {Promise<{expected_seconds: Object<string, number>}>}
+     */
+    async getExpectedDurations() {
+        const res = await fetch('/api/durations');
+        if (!res.ok) throw new Error('Không tải được thời lượng dự kiến của thao tác.');
         return await res.json();
     },
 
@@ -97,7 +147,7 @@ export const API = {
         });
         if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
-            const errMsg = errData.detail || errData.error || errData.message || `Server returned HTTP status ${res.status}`;
+            const errMsg = errData.detail || errData.error || errData.message || `Máy chủ trả về mã lỗi HTTP ${res.status}`;
             throw new Error(errMsg);
         }
         return await res.json();
@@ -124,7 +174,7 @@ export const API = {
         });
         if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
-            const errMsg = errData.detail || errData.error || errData.message || `Server returned HTTP status ${res.status}`;
+            const errMsg = errData.detail || errData.error || errData.message || `Máy chủ trả về mã lỗi HTTP ${res.status}`;
             throw new Error(errMsg);
         }
         return await res.json();
@@ -133,11 +183,11 @@ export const API = {
     /**
      * Updates persistent RAG database with user-edited criteria across 5 dimensions.
      * @param {Object} categories - Map of category names to arrays of string criteria items.
-     * @param {string} [stdReq=''] - Standard requirements text.
-     * @param {string} [hiddenReq=''] - Hidden requirements text.
+     * @param {?string} [stdReq=null] - Standard requirements text; null keeps the stored original.
+     * @param {?string} [hiddenReq=null] - Hidden requirements text; null keeps the stored original.
      * @returns {Promise<Object>} Updated RAG summary.
      */
-    async updateRagCriteria(categories, stdReq = '', hiddenReq = '') {
+    async updateRagCriteria(categories, stdReq = null, hiddenReq = null) {
         const res = await fetch('/api/rag/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -149,7 +199,7 @@ export const API = {
         });
         if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
-            const errMsg = errData.detail || errData.error || errData.message || `Server returned HTTP status ${res.status}`;
+            const errMsg = errData.detail || errData.error || errData.message || `Máy chủ trả về mã lỗi HTTP ${res.status}`;
             throw new Error(errMsg);
         }
         return await res.json();
@@ -161,7 +211,7 @@ export const API = {
      */
     async getRagInfo() {
         const res = await fetch('/api/rag');
-        if (!res.ok) throw new Error('Failed to fetch RAG database status.');
+        if (!res.ok) throw new Error('Không tải được trạng thái cơ sở dữ liệu RAG.');
         return await res.json();
     },
 
@@ -171,7 +221,7 @@ export const API = {
      */
     async clearRagInfo() {
         const res = await fetch('/api/rag', { method: 'DELETE' });
-        if (!res.ok) throw new Error('Failed to clear RAG database.');
+        if (!res.ok) throw new Error('Không xóa được cơ sở dữ liệu RAG.');
         return await res.json();
     },
 
@@ -181,7 +231,7 @@ export const API = {
      */
     async getEvaluationOrder() {
         const res = await fetch('/api/evaluation_order');
-        if (!res.ok) throw new Error('Failed to fetch evaluation order configuration.');
+        if (!res.ok) throw new Error('Không tải được cấu hình thứ tự đánh giá.');
         return await res.json();
     },
 
@@ -191,7 +241,7 @@ export const API = {
      */
     async getEvalResults() {
         const res = await fetch('/api/eval_results');
-        if (!res.ok) throw new Error('Failed to fetch candidate evaluations.');
+        if (!res.ok) throw new Error('Không tải được kết quả đánh giá ứng viên.');
         return await res.json();
     },
 
@@ -202,7 +252,7 @@ export const API = {
      */
     async getEvalResultDetail(filename) {
         const res = await fetch(`/api/eval_results/${encodeURIComponent(filename)}`);
-        if (!res.ok) throw new Error('Failed to fetch evaluation detail.');
+        if (!res.ok) throw new Error('Không tải được chi tiết đánh giá.');
         return await res.json();
     },
 
@@ -213,7 +263,7 @@ export const API = {
      */
     async deleteEvalResult(filename) {
         const res = await fetch(`/api/eval_results/${encodeURIComponent(filename)}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error('Failed to delete evaluation result.');
+        if (!res.ok) throw new Error('Không xóa được kết quả đánh giá.');
         return await res.json();
     }
 };

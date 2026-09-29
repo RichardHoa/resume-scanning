@@ -551,9 +551,65 @@
     box-shadow: var(--shadow-sm);
 }
 
+/* Requirement intake: single column until Clarification Questions exist, then a
+   two-row grid with each field's questions beside its textarea. */
+.intake-panel {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.intake-panel.has-questions {
+    max-width: 1400px;
+}
+
+.intake-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.intake-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.intake-row .form-group {
+    margin: 0;
+}
+
+.intake-panel.has-questions .intake-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.scrutiny-cell {
+    display: none;
+    padding: 0.85rem;
+    background: #FFFBEB;
+    border: 1px solid #FCD34D;
+    border-radius: var(--radius-md);
+}
+
+.intake-panel.has-questions .scrutiny-cell {
+    display: block;
+}
+
+.scrutiny-empty-note {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+@media (max-width: 900px) {
+    .intake-panel.has-questions .intake-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 .scrutiny-panel {
-    margin-top: 1.5rem;
-    padding: 1.15rem;
+    margin-bottom: 1rem;
+    padding: 0.85rem 1.15rem;
     background: #FFFBEB;
     border: 1px solid #FCD34D;
     border-radius: var(--radius-md);
@@ -565,7 +621,6 @@
     gap: 4px;
     font-weight: 700;
     color: #B45309;
-    margin-bottom: 1rem;
     font-size: 0.95rem;
 }
 
@@ -573,10 +628,6 @@
     font-weight: 400;
     font-size: 0.8rem;
     color: var(--text-secondary);
-}
-
-.scrutiny-field-group {
-    margin-bottom: 1rem;
 }
 
 .scrutiny-field-title {
@@ -609,121 +660,6 @@
     color: var(--text-main);
     font-weight: 600;
     margin-top: 4px;
-}
-
-.criteria-editor-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-    gap: 1.25rem;
-    margin-bottom: 1.5rem;
-}
-
-.criteria-category-card {
-    background: #FFFFFF;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 1.15rem;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    box-shadow: var(--shadow-sm);
-}
-
-.criteria-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #F1F5F9;
-}
-
-.criteria-card-title {
-    font-size: 0.88rem;
-    font-weight: 700;
-    color: var(--brand-legacy-blue);
-}
-
-.criteria-items-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    min-height: 50px;
-    max-height: 280px;
-    overflow-y: auto;
-    padding-right: 4px;
-}
-
-.criteria-item-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: #F8FAFC;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 6px 10px;
-    transition: all var(--transition-fast);
-}
-
-.criteria-item-row:hover {
-    border-color: var(--brand-azure);
-    background: #FFFFFF;
-}
-
-.criteria-item-text {
-    flex-grow: 1;
-    font-size: 0.82rem;
-    color: var(--text-main);
-    border: 1px solid transparent;
-    background: transparent;
-    padding: 4px 6px;
-    border-radius: var(--radius-xs);
-    font-family: var(--font-sans);
-    resize: none;
-}
-
-.criteria-item-text:focus {
-    background: #FFFFFF;
-    border-color: var(--brand-azure);
-    outline: none;
-}
-
-.criteria-item-del-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all var(--transition-fast);
-}
-
-.criteria-item-del-btn:hover {
-    color: #DC2626;
-    background: #FEE2E2;
-}
-
-.criteria-add-box {
-    display: flex;
-    gap: 6px;
-    margin-top: 4px;
-}
-
-.criteria-add-input {
-    flex-grow: 1;
-    font-size: 0.8rem;
-    padding: 6px 10px;
-    border: 1px dashed var(--border);
-    border-radius: var(--radius-sm);
-}
-
-.criteria-add-btn {
-    padding: 4px 10px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    white-space: nowrap;
 }
 
 /* Active RAG Banner */

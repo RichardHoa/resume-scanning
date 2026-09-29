@@ -4,6 +4,7 @@ Configuration & Tier Order FastAPI Router
 from fastapi import APIRouter
 from src.core.state import state
 from src.core.evaluation_order import load_evaluation_order
+from src.core.durations import expected_durations
 
 router = APIRouter(prefix="/api", tags=["config"])
 
@@ -23,3 +24,9 @@ def get_config():
         "image_mode": False,
         "mock": state.args.mock if state.args else False
     }
+
+
+@router.get("/durations")
+def get_expected_durations():
+    """Expected seconds per operation kind, for waiting-screen time estimates."""
+    return {"expected_seconds": expected_durations()}

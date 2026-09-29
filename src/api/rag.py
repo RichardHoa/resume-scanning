@@ -1,8 +1,10 @@
+import time
 import asyncio
 from typing import Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from src.core.state import state
+from src.core.durations import record_duration
 
 router = APIRouter(prefix="/api", tags=["rag"])
 
@@ -21,8 +23,8 @@ class ScrutinizeRequirementsRequest(BaseModel):
 
 class UpdateRagCriteriaRequest(BaseModel):
     categories: Dict[str, List[str]] = Field(..., description="Map of dimension categories to lists of criteria strings")
-    standard_requirements: Optional[str] = Field(default="", description="Raw standard requirements text")
-    hidden_requirements: Optional[str] = Field(default="", description="Raw hidden requirements text")
+    standard_requirements: Optional[str] = Field(default=None, description="Raw standard requirements text; omit to keep the stored original")
+    hidden_requirements: Optional[str] = Field(default=None, description="Raw hidden requirements text; omit to keep the stored original")
 
 
 @router.get("/rag")
@@ -49,11 +51,13 @@ async def decompose_requirements_endpoint(payload: DecomposeRequirementsRequest)
         raise HTTPException(status_code=400, detail="Please provide Standard Job Requirements or Hidden Requirements.")
 
     try:
+        start_time = time.time()
         summary = await asyncio.to_thread(
             state.evaluator.decompose_requirements,
             std_req,
             hidden_req
         )
+        record_duration("decompose", time.time() - start_time)
         return {
             "success": True,
             "message": "Requirements successfully categorized and saved into RAG database.",
@@ -83,6 +87,7 @@ async def scrutinize_requirements_endpoint(payload: ScrutinizeRequirementsReques
         raise HTTPException(status_code=400, detail="Please provide Standard Job Requirements or Hidden Requirements.")
 
     try:
+        start_time = time.time()
         result = await asyncio.to_thread(
             state.evaluator.scrutinize_requirements,
             std_req,
@@ -90,6 +95,7 @@ async def scrutinize_requirements_endpoint(payload: ScrutinizeRequirementsReques
             "hr_requirements",
             payload.language
         )
+        record_duration("scrutiny", time.time() - start_time)
         return {"success": True, **result}
     except Exception as e:
         import traceback
@@ -101,17 +107,20 @@ async def scrutinize_requirements_endpoint(payload: ScrutinizeRequirementsReques
 def update_rag_criteria_endpoint(payload: UpdateRagCriteriaRequest):
     """
     Updates the active RAG vector database with manually adjusted category criteria,
-    re-computes embeddings, and updates hr_rag.txt.
+    re-computes embeddings, and updates hr_rag.txt. Omitted requirement text reuses the
+    stored originals; provided text replaces them.
     """
     if not state.evaluator:
         raise HTTPException(status_code=500, detail="Resume Evaluator model is not initialized on the server.")
 
     try:
+        start_time = time.time()
         summary = state.evaluator.rag.update_criteria_manually(
             payload.categories,
-            standard_req=payload.standard_requirements or "",
-            hidden_req=payload.hidden_requirements or ""
+            standard_req=payload.standard_requirements,
+            hidden_req=payload.hidden_requirements
         )
+        record_duration("save_criteria", time.time() - start_time)
         return {
             "success": True,
             "message": "RAG criteria and hr_rag.txt updated successfully.",

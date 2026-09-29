@@ -1,7 +1,7 @@
 """
 Application Shared State & Dependencies
 """
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 
 
 class AppState:
@@ -12,6 +12,8 @@ class AppState:
         self.args: Optional[Any] = None
         self.temp_dir: str = ""
         self.static_dir: str = ""
+        # In-memory background batch-evaluation jobs keyed by job id (not persisted across restarts)
+        self.eval_jobs: Dict[str, Dict[str, Any]] = {}
 
 
 state = AppState()

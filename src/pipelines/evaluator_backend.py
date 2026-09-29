@@ -78,27 +78,36 @@ def call_vllm_backend(evaluator_inst: Any, category: str, messages: List[Dict[st
         "top_p": 0.95,
         "repetition_penalty": 1.05,
         "max_tokens": MAX_NEW_TOKENS,
-        "response_format": {"type": "json_object"}
+        "response_format": {"type": "json_object"},
+        # Thinking is off unless the model profile opts in (VLLM_ENABLE_THINKING=1); e.g. GLM-4.7 thinks by default
+        "chat_template_kwargs": {"enable_thinking": os.environ.get("VLLM_ENABLE_THINKING", "0") == "1"}
     }
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"}
-    )
+    # On HTTP 400, retry without optional fields the server/model may not support, one at a time
+    optional_fields = ["response_format", "chat_template_kwargs"]
     try:
-        try:
-            resp_obj = urllib.request.urlopen(req, timeout=VLLM_REQUEST_TIMEOUT)
-        except urllib.error.HTTPError as he:
-            if he.code == 400:
-                payload.pop("response_format", None)
-                req_fallback = urllib.request.Request(
-                    url,
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={"Content-Type": "application/json"}
-                )
-                resp_obj = urllib.request.urlopen(req_fallback, timeout=VLLM_REQUEST_TIMEOUT)
-            else:
-                raise he
+        while True:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"}
+            )
+            try:
+                resp_obj = urllib.request.urlopen(req, timeout=VLLM_REQUEST_TIMEOUT)
+                break
+            except urllib.error.HTTPError as he:
+                if he.code != 400 or not optional_fields:
+                    raise he
+                try:
+                    err_text = he.read().decode("utf-8", errors="replace")
+                except Exception:
+                    err_text = ""
+                # Prompt too long is not an unsupported-field problem; retrying without fields won't help
+                if "context length" in err_text or "max_model_len" in err_text:
+                    raise he
+                # Drop the field the server complained about, else the next one in order
+                culprit = next((f for f in optional_fields if f in err_text), optional_fields[0])
+                optional_fields.remove(culprit)
+                payload.pop(culprit, None)
 
         with resp_obj as resp:
             res_data = json.loads(resp.read().decode("utf-8"))

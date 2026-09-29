@@ -104,7 +104,10 @@ def get_stored_rag_summary(rag_inst: Any) -> Dict[str, Any]:
         except Exception:
             pass
 
-    engine_name = "ChromaDB Persistent Vector Store" if rag_inst.collection is not None else "ChromaDB (Pending Install - Run 'pip install chromadb')"
+    originals = rag_inst.load_original_requirements()
+
+    # Shown as-is on the RAG Workbench page, so it is written in Vietnamese.
+    engine_name = "Kho vector ChromaDB" if rag_inst.collection is not None else "ChromaDB (chưa cài đặt - hãy chạy 'pip install chromadb')"
 
     return {
         "has_stored_rag": rag_inst.has_stored_rag(),
@@ -112,5 +115,7 @@ def get_stored_rag_summary(rag_inst: Any) -> Dict[str, Any]:
         "db_path": rag_inst.db_path,
         "engine": engine_name,
         "categories": categories_dict,
-        "hr_rag_text": hr_rag_content
+        "hr_rag_text": hr_rag_content,
+        "standard_requirements": originals["standard_requirements"],
+        "hidden_requirements": originals["hidden_requirements"]
     }
