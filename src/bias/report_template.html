@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evaluator Bias Report</title>
+<!-- Filled in by src/bias/report_html.py: the marker in the <script> below is replaced with this model's data. -->
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --accent: #2a78d6; --accent-wash: rgba(42,120,214,0.10);
+  --b0: #dddcd4; --b1: #86b6ef; --b2: #2a78d6; --b3: #104281;
+  --warn: #b25a00;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root {
+  color-scheme: dark;
+  --bg: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --accent: #3987e5; --accent-wash: rgba(57,135,229,0.16);
+  --b0: #383835; --b1: #1c5cab; --b2: #3987e5; --b3: #9ec5f4;
+  --warn: #f0a24a;
+} }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 32px 16px 64px; display: grid; gap: 24px; }
+h1 { font-size: 26px; line-height: 1.2; margin: 0; letter-spacing: -0.01em; }
+h1 .model { font-family: var(--mono); font-weight: 600; }
+h3 { font: 600 14px/1.3 var(--mono); margin: 0; }
+p { margin: 0; max-width: 68ch; color: var(--ink-2); }
+code { font: 12.5px var(--mono); background: var(--accent-wash); padding: 1px 5px; border-radius: 4px; color: var(--ink); }
+.eyebrow { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); font-weight: 600; }
+header { display: grid; gap: 10px; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; display: grid; gap: 16px; min-width: 0; }
+
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 8px; padding: 3px; gap: 2px; background: var(--bg); justify-self: start; }
+.seg button { font: 500 13px var(--sans); color: var(--ink-2); background: none; border: 0; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+.seg button:hover { color: var(--ink); background: var(--accent-wash); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--border); font-weight: 600; }
+button:focus-visible, pre:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-2); align-items: center; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+.cat { display: grid; gap: 10px; padding-top: 16px; border-top: 1px solid var(--grid); }
+.cat:first-of-type { border-top: 0; padding-top: 0; }
+.cat-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; }
+.bases { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 12px; color: var(--ink-2); }
+.chip { font: 600 12px var(--mono); padding: 1px 7px; border-radius: 4px; border: 1px solid var(--border); color: var(--ink); font-variant-numeric: tabular-nums; }
+.chip.fail { color: var(--warn); border-color: currentColor; }
+.rows { display: grid; gap: 4px; font-variant-numeric: tabular-nums; }
+.row { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr) 64px 118px 58px 92px; gap: 12px; align-items: center; padding: 4px 0; }
+.row.hdr { font-size: 11px; color: var(--ink-2); letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; padding-bottom: 2px; }
+.row.all { border-top: 1px solid var(--axis); padding-top: 8px; margin-top: 4px; font-weight: 600; }
+.kind { font: 12.5px var(--mono); overflow-wrap: anywhere; }
+.row.all .kind { font-weight: 600; }
+.num { text-align: right; }
+.sub { color: var(--ink-2); font-weight: 400; }
+.failtxt { color: var(--warn); }
+.updown { text-align: right; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+.bar { display: flex; gap: 2px; height: 14px; }
+.bar i { display: block; height: 100%; min-width: 2px; }
+.bar i:first-child { border-radius: 4px 0 0 4px; }
+.bar i:last-child { border-radius: 0 4px 4px 0; }
+.bar i:only-child { border-radius: 4px; }
+.bar i:hover { filter: brightness(1.12); }
+
+pre.file { margin: 0; font: 12px/1.45 var(--mono); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px; overflow-x: auto; color: var(--ink); white-space: pre; }
+.note { font-size: 12.5px; color: var(--ink-2); display: grid; gap: 4px; }
+.empty { color: var(--ink-2); }
+
+#tip { position: fixed; pointer-events: none; z-index: 10; background: var(--surface); color: var(--ink); border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0,0,0,0.18); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; max-width: 280px; font-variant-numeric: tabular-nums; }
+#tip b { font-family: var(--mono); font-weight: 600; }
+#tip .muted { color: var(--ink-2); }
+[hidden] { display: none !important; }
+
+@media (max-width: 680px) {
+  .row { grid-template-columns: minmax(0,1fr) 56px 100px; grid-template-areas: "k k k" "b b b" "c u g"; row-gap: 4px; }
+  .row .kind { grid-area: k; } .row .bar { grid-area: b; } .row .c-changed { grid-area: c; text-align: left; }
+  .row .updown { grid-area: u; } .row .c-big { grid-area: g; } .row .c-runs { display: none; }
+  .row.hdr { display: none; }
+  .row .c-changed::before { content: "changed "; font-weight: 400; color: var(--ink-2); }
+  .row .c-big::before { content: "max "; font-weight: 400; color: var(--ink-2); }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow" id="path">bias-result/</div>
+    <h1>Evaluator Bias Report · <span class="model" id="model"></span></h1>
+    <p>For each category, each row is one shuffle kind: the same prompt content in a different order. The bar shows how many points the score moved from the Baseline of the same repeat.</p>
+  </header>
+
+  <section class="panel">
+    <div class="seg" id="views" role="group" aria-label="View"></div>
+    <div id="out"></div>
+    <div class="note">
+      <div>Percentages are over non-failed runs. A run counts as failed if its own output was invalid, or if the Baseline of its repeat was invalid, because there is no trusted score to compare against.</div>
+    </div>
+  </section>
+</div>
+<div id="tip" hidden></div>
+
+<script>
+(() => {
+const DATA = /*__REPORT_DATA__*/null;
+
+const BUCKETS = [
+  ["moved_0_pct", "Unchanged (0 pts)", "--b0"],
+  ["moved_1_30_pct", "Moved 1–30 pts", "--b1"],
+  ["moved_31_60_pct", "Moved 31–60 pts", "--b2"],
+  ["moved_61_100_pct", "Moved 61–100 pts", "--b3"],
+];
+const fp = v => v === null ? "-" : v.toFixed(1) + "%";
+const fi = n => n.toLocaleString("en-US");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+document.title = `Bias Report · ${DATA.model}`;
+document.getElementById("model").textContent = DATA.model;
+document.getElementById("path").textContent = `bias-result/${DATA.model}/`;
+
+let view = "chart";
+try { const v = localStorage.getItem("bias-report-view"); if (["chart", "txt", "csv"].includes(v)) view = v; } catch (e) {}
+
+const tip = document.getElementById("tip");
+function moveTip(e) {
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + w > innerWidth - 8) x = e.clientX - w - pad;
+  if (y + h > innerHeight - 8) y = e.clientY - h - pad;
+  tip.style.left = Math.max(8, x) + "px"; tip.style.top = Math.max(8, y) + "px";
+}
+function bindTips(root) {
+  root.querySelectorAll("[data-tip]").forEach(el => {
+    el.addEventListener("pointerenter", e => { tip.innerHTML = el.dataset.tip; tip.hidden = false; moveTip(e); });
+    el.addEventListener("pointermove", moveTip);
+    el.addEventListener("pointerleave", () => { tip.hidden = true; });
+  });
+}
+
+function barHtml(r) {
+  const ok = r.runs - r.failed;
+  if (ok === 0) return `<div class="bar"><i style="flex:1;background:var(--grid)" data-tip="${esc(`<b>${esc(r.shuffle_kind)}</b><br>No valid runs to compare`)}"></i></div>`;
+  return `<div class="bar">` + BUCKETS.map(([name, label, color]) => {
+    const v = r[name]; if (!v) return "";
+    const t = `<b>${esc(r.shuffle_kind)}</b><br>${label}<br>${v.toFixed(1)}% <span class="muted">of ${fi(ok)} valid runs</span>`;
+    return `<i style="flex:${v} 1 0;background:var(${color})" data-tip="${esc(t)}"></i>`;
+  }).join("") + `</div>`;
+}
+
+function renderChart(out) {
+  if (!DATA.categories.length) { out.innerHTML = `<p class="empty">bias_summary.csv has no rows.</p>`; return; }
+  let h = `<div class="legend">${BUCKETS.map(([, label, color]) => `<span><i class="sw" style="background:var(${color})"></i>${label}</span>`).join("")}</div>`;
+  for (const c of DATA.categories) {
+    const chips = c.baseline_scores.split(" ").filter(Boolean).map(s => `<span class="chip ${s === "failed" ? "fail" : ""}">${esc(s)}</span>`).join("");
+    h += `<div class="cat"><div class="cat-head"><h3>${esc(c.category)}</h3><div class="bases">Baseline per repeat ${chips || "-"}</div></div><div class="rows">`;
+    h += `<div class="row hdr"><span>Shuffle kind</span><span>Points moved from Baseline</span><span class="num">Changed</span><span class="num">Up / Down</span><span class="num">Biggest</span><span class="num">Runs</span></div>`;
+    for (const r of c.rows) {
+      const failed = r.failed ? `<span class="failtxt">${fi(r.failed)} failed</span>` : `<span class="sub">0 failed</span>`;
+      h += `<div class="row ${r.shuffle_kind === "ALL" ? "all" : ""}">
+        <span class="kind">${esc(r.shuffle_kind)}</span>
+        ${barHtml(r)}
+        <span class="num c-changed">${fp(r.changed_pct)}</span>
+        <span class="updown">▲ ${fp(r.went_up_pct)} ▼ ${fp(r.went_down_pct)}</span>
+        <span class="num c-big">${r.biggest_change ?? "-"}</span>
+        <span class="num c-runs">${fi(r.runs)}<br><small>${failed}</small></span>
+      </div>`;
+    }
+    h += `</div></div>`;
+  }
+  out.innerHTML = h;
+  bindTips(out);
+}
+
+function render() {
+  const vEl = document.getElementById("views");
+  vEl.innerHTML = [["chart", "Chart"], ["txt", "report.txt"], ["csv", "bias_summary.csv"]]
+    .map(([k, l]) => `<button type="button" aria-pressed="${k === view}" data-v="${k}">${l}</button>`).join("");
+  vEl.querySelectorAll("button").forEach(b => b.onclick = () => {
+    view = b.dataset.v;
+    try { localStorage.setItem("bias-report-view", view); } catch (e) {}
+    render();
+  });
+  const out = document.getElementById("out");
+  tip.hidden = true;
+  if (view === "chart") renderChart(out);
+  else {
+    const text = view === "txt" ? DATA.report_txt : DATA.summary_csv;
+    out.innerHTML = text ? `<pre class="file" tabindex="0">${esc(text)}</pre>` : `<p class="empty">File not found next to report.html.</p>`;
+  }
+}
+render();
+})();
+</script>
+</body>
+</html>

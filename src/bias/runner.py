@@ -551,6 +551,10 @@ def run_single_category_bias_test(
         writer.writeheader()
         writer.writerows(all_csv_rows)
 
+    # Imported here: `python -m src.bias.summary` loads this package first, so a top-level import would double-load it
+    from src.bias.summary import HTML_FILENAME, REPORT_FILENAME, write_model_summary
+    summary_csv = write_model_summary(bias_result_dir)
+
     # 3. Analysis & Summary across all iterations
     valid_scores = [r["score"] for r in all_results_matrix if r.get("is_valid", True)]
     eval_pool = valid_scores if valid_scores else [r["score"] for r in all_results_matrix]
@@ -612,6 +616,9 @@ def run_single_category_bias_test(
     print(f" Total Execution Time:               {total_time}s", file=sys.stderr)
     print(f" Prompts Logged to:                  {cat_log_dir}/", file=sys.stderr)
     print(f" Consolidated Output CSV:            {out_csv}", file=sys.stderr)
+    print(f" Model Summary CSV:                  {summary_csv}", file=sys.stderr)
+    print(f" Model Report:                       {os.path.join(bias_result_dir, REPORT_FILENAME)}", file=sys.stderr)
+    print(f" Model Report Page:                  {os.path.join(bias_result_dir, HTML_FILENAME)}", file=sys.stderr)
     print("=" * 86, file=sys.stderr)
 
     return summary_data

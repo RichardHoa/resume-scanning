@@ -27,3 +27,11 @@ _Avoid_: criteria type, bucket
 **Criterion**:
 A single verbatim requirement string assigned to one Category during decomposition, stored in the RAG store.
 _Avoid_: requirement item
+
+**Shuffle Kind**:
+One way of reordering the same prompt content in a bias test (e.g. Macro Permutation, Criteria Permutation, Atomic Interleave), used to check whether evaluation scores depend on ordering. The Baseline is not a Shuffle Kind.
+_Avoid_: experiment type, permutation group
+
+**Baseline**:
+The unshuffled evaluation run in each bias-test iteration; every Shuffle Kind run in that iteration is compared against it.
+_Avoid_: control, reference run
