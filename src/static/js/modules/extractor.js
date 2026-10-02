@@ -227,7 +227,11 @@ export class ExtractorController {
     renderParsedData(data) {
         // 1. Profile Tab
         const applied = data.position_applied || {};
-        document.getElementById('profile-position').textContent = applied.title || 'Chưa rõ vị trí';
+        // A Missing Position is never evaluated; HR sees it here, right after upload
+        const positionEl = document.getElementById('profile-position');
+        const missingPosition = !(typeof applied.title === 'string' && applied.title.trim());
+        positionEl.textContent = missingPosition ? '⚠️ Không tìm thấy vị trí ứng tuyển — CV này sẽ không được đánh giá' : applied.title;
+        positionEl.style.color = missingPosition ? '#B91C1C' : '';
         document.getElementById('profile-level').textContent = applied.level || 'Chưa rõ';
 
         const basic = data.basic_information || {};
@@ -322,7 +326,7 @@ export class ExtractorController {
         // 4. Skills & Projects Tab
         const skillsList = document.getElementById('skills-list');
         skillsList.innerHTML = '';
-        const skills = data.skills_and_specialties || [];
+        const skills = data.skills || [];
         if (skills.length === 0) {
             skillsList.innerHTML = '<p class="summary-text">Không tìm thấy kỹ năng.</p>';
         } else {

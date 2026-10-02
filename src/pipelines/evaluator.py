@@ -17,7 +17,8 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 from src.core.config import (
-    DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, FALLBACK_ERROR_SCORE
+    DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, FALLBACK_ERROR_SCORE, MAX_NEW_TOKENS,
+    CATEGORY_EVAL_MAX_TOKENS, CATEGORY_EVAL_RETRY_TEMPERATURE, SCRUTINY_MAX_QUESTIONS_PER_FIELD
 )
 from src.core.logger import log_llm_call, log_broken_json
 from src.core.json_utils import clean_and_parse_json
@@ -26,7 +27,8 @@ from src.prompts.evaluator_prompts import (
     get_evaluator_system_prompt,
     get_requirements_decomposition_system_prompt,
     get_requirements_scrutiny_system_prompt,
-    get_category_evaluation_prompt
+    get_category_evaluation_prompt,
+    CATEGORY_EVALUATION_SCHEMA
 )
 from src.pipelines.evaluator_mocks import (
     get_mock_category_response
@@ -34,10 +36,12 @@ from src.pipelines.evaluator_mocks import (
 from src.pipelines.evaluator_utils import (
     clean_and_deduplicate_list,
     validate_category_evaluation,
-    extract_relevant_resume_field
+    extract_relevant_resume_field,
+    is_missing_position
 )
 from src.pipelines.evaluator_backend import (
     CATEGORY_LABELS,
+    LLMReply,
     call_transformers_backend,
     call_vllm_backend,
     decompose_requirements_with_llm,
@@ -45,10 +49,17 @@ from src.pipelines.evaluator_backend import (
     aggregate_evaluation_results,
     save_evaluation_report
 )
+from src.pipelines.review_panel import create_review_panel
 
 # Backwards-compatibility aliases for module-level functions
 _clean_and_deduplicate_list = clean_and_deduplicate_list
 _validate_category_evaluation = validate_category_evaluation
+
+# The transformers code path is kept in the repo but refused at runtime
+TRANSFORMERS_BACKEND_REFUSED = (
+    "The transformers backend is no longer supported for evaluation. "
+    "Start a vLLM server and use '--backend vllm', or use '--mock'."
+)
 
 
 class ResumeEvaluator:
@@ -58,17 +69,20 @@ class ResumeEvaluator:
     def __init__(
         self,
         model_name: str = DEFAULT_LLM_MODEL,
-        backend: str = "transformers",
+        backend: str = "vllm",
         vllm_url: str = DEFAULT_VLLM_URL,
         mock: bool = False,
         language: str = "vietnamese"
     ):
+        if backend == "transformers":
+            raise ValueError(TRANSFORMERS_BACKEND_REFUSED)
         self.model_name = model_name or DEFAULT_LLM_MODEL
         self.backend = backend
         self.vllm_url = vllm_url
         self.mock = mock
         self.language = language
         self.rag = LocalCriteriaRAG()
+        self.review_panel = create_review_panel(mock, vllm_url, self.model_name)
 
         self.tokenizer = None
         self.model = None
@@ -105,14 +119,16 @@ class ResumeEvaluator:
         run_index: Optional[int] = None,
         language: Optional[str] = None,
         temperature: float = 0.0,
-        log_dir: Optional[str] = None
-    ) -> str:
+        json_schema: Optional[Dict[str, Any]] = None,
+        log_dir: Optional[str] = None,
+        max_tokens: int = MAX_NEW_TOKENS
+    ) -> LLMReply:
         eff_language = language or self.language
         if system_prompt is None:
             if category == "requirements_decomposition":
                 system_prompt = get_requirements_decomposition_system_prompt()
             elif category == "requirements_scrutiny":
-                system_prompt = get_requirements_scrutiny_system_prompt()
+                system_prompt = get_requirements_scrutiny_system_prompt(max_questions=SCRUTINY_MAX_QUESTIONS_PER_FIELD)
             else:
                 system_prompt = get_evaluator_system_prompt(language=eff_language)
 
@@ -121,7 +137,7 @@ class ResumeEvaluator:
         if self.mock:
             response = get_mock_category_response(category, language=eff_language)
             log_llm_call(full_prompt, response, category, resume_name, run_index=run_index, log_dir=log_dir)
-            return response
+            return LLMReply(response)
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -129,20 +145,27 @@ class ResumeEvaluator:
         ]
 
         if self.backend == "transformers":
-            response_text = self._call_transformers_backend(prompt, messages, temperature=temperature)
+            reply = LLMReply(self._call_transformers_backend(prompt, messages, temperature=temperature, max_tokens=max_tokens))
         elif self.backend == "vllm":
-            response_text = self._call_vllm_backend(category, messages, temperature=temperature)
+            reply = self._call_vllm_backend(messages, temperature=temperature, json_schema=json_schema, max_tokens=max_tokens, step=category)
         else:
-            response_text = ""
+            reply = LLMReply("")
 
-        log_llm_call(full_prompt, response_text, category, resume_name, run_index=run_index, log_dir=log_dir)
-        return response_text
+        log_llm_call(full_prompt, reply.text, category, resume_name, run_index=run_index, log_dir=log_dir)
+        return reply
 
-    def _call_transformers_backend(self, prompt: str, messages: List[Dict[str, str]], temperature: float = 0.0) -> str:
-        return call_transformers_backend(self, prompt, messages, temperature=temperature)
+    def _call_transformers_backend(self, prompt: str, messages: List[Dict[str, str]], temperature: float = 0.0, max_tokens: int = MAX_NEW_TOKENS) -> str:
+        return call_transformers_backend(self, prompt, messages, temperature=temperature, max_tokens=max_tokens)
 
-    def _call_vllm_backend(self, category: str, messages: List[Dict[str, str]], temperature: float = 0.0) -> str:
-        return call_vllm_backend(self, category, messages, temperature=temperature)
+    def _call_vllm_backend(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.0,
+        json_schema: Optional[Dict[str, Any]] = None,
+        max_tokens: int = MAX_NEW_TOKENS,
+        step: str = "unlabeled"
+    ) -> LLMReply:
+        return call_vllm_backend(self, messages, temperature=temperature, json_schema=json_schema, max_tokens=max_tokens, step=step)
 
     def _decompose_requirements_with_llm(
         self,
@@ -195,7 +218,7 @@ class ResumeEvaluator:
         resume_data: Dict[str, Any],
         retrieved_criteria: List[str],
         resume_name: str,
-        max_retries: int = 30,
+        max_retries: int = 5,
         run_index: Optional[int] = None,
         language: Optional[str] = None,
         log_dir: Optional[str] = None
@@ -204,10 +227,14 @@ class ResumeEvaluator:
         resume_snippet = self._extract_relevant_resume_field(category, resume_data)
         prompt = get_category_evaluation_prompt(category_name, self.model_name, retrieved_criteria, resume_snippet)
 
-        raw_out = ""
+        reply = LLMReply("")
         for attempt in range(1, max_retries + 1):
-            raw_out = self._call_llm(prompt, category, resume_name, run_index=run_index, language=eff_language, log_dir=log_dir)
-            parsed = clean_and_parse_json(raw_out)
+            reply = self._call_llm(
+                prompt, category, resume_name, run_index=run_index, language=eff_language,
+                temperature=0.0 if attempt == 1 else CATEGORY_EVAL_RETRY_TEMPERATURE,
+                json_schema=CATEGORY_EVALUATION_SCHEMA, log_dir=log_dir, max_tokens=CATEGORY_EVAL_MAX_TOKENS
+            )
+            parsed = clean_and_parse_json(reply.text)
             validated = validate_category_evaluation(parsed)
 
             if validated is not None:
@@ -215,10 +242,16 @@ class ResumeEvaluator:
                 return validated
 
             print(f"[Eval Retry] Attempt {attempt}/{max_retries} for category '{category}' failed. Retrying...", file=sys.stderr)
-            log_broken_json(prompt, raw_out, category, resume_name, attempt=attempt, error_reason="Invalid numeric score or JSON", run_index=run_index, log_dir=log_dir)
+            log_broken_json(
+                prompt, reply.text, category, resume_name, attempt=attempt, error_reason="Invalid numeric score or JSON",
+                run_index=run_index, finish_reason=reply.finish_reason, completion_tokens=reply.completion_tokens, log_dir=log_dir
+            )
 
         print(f"[FATAL] Category '{category_name}' failed after {max_retries} retries.", file=sys.stderr)
-        log_broken_json(prompt, raw_out, category, resume_name, attempt=max_retries, error_reason=f"Max retries ({max_retries}) reached", run_index=run_index, log_dir=log_dir)
+        log_broken_json(
+            prompt, reply.text, category, resume_name, attempt=max_retries, error_reason=f"Max retries ({max_retries}) reached",
+            run_index=run_index, finish_reason=reply.finish_reason, completion_tokens=reply.completion_tokens, log_dir=log_dir
+        )
         is_en = eff_language.lower() in ("english", "en")
         gap_msg = f"Failed to parse evaluation data from model (Invalid JSON/Score after {max_retries} attempts)" if is_en else f"Không thể phân tích dữ liệu đánh giá từ mô hình (Format JSON/Score không hợp lệ sau {max_retries} lần thử)"
         reason_msg = f"DATA FAILURE: Unable to parse valid JSON after {max_retries} attempts." if is_en else f"THẤT BẠI DỮ LIỆU: Không thể phân tích JSON hợp lệ sau {max_retries} lần thử."
@@ -368,13 +401,36 @@ class ResumeEvaluator:
         output_path: Optional[str] = None,
         num_evaluations: int = 1,
         language: Optional[str] = None,
-        log_dir: Optional[str] = None
+        log_dir: Optional[str] = None,
+        resume_path: Optional[str] = None,
+        generate_feedback: bool = True
     ) -> Dict[str, Any]:
         eff_language = language or self.language
         start_resume_time = time.time()
         standard_req = standard_req or ""
         hidden_req = hidden_req or ""
         resume_data = resume_data if isinstance(resume_data, dict) else {}
+
+        # A Missing Position is never evaluated: no LLM call is made, and the report only lets HR preview the resume
+        if is_missing_position(resume_data):
+            print(f"[Evaluation] [{resume_name}] Missing Position: the resume states no applied-for position. Not evaluated.", file=sys.stderr)
+            basic_info = resume_data.get("basic_information")
+            basic_info = basic_info if isinstance(basic_info, dict) else {}
+            missing_output = {
+                "status": "missing_position",
+                "resume_name": resume_name,
+                "candidate_identifier": basic_info.get("full_name") or basic_info.get("name") or basic_info.get("email") or resume_name,
+                "candidate_name": str(basic_info.get("full_name") or basic_info.get("name") or "").strip(),
+                "overall_score": 0,
+                "match_recommendation": "MISSING_POSITION",
+                "evaluated_at": datetime.now().isoformat(),
+                "standard_requirements": standard_req,
+                "hidden_requirements": hidden_req,
+                "resume_path": os.path.abspath(resume_path) if resume_path else None,
+                "language": eff_language
+            }
+            self._save_evaluation_report(missing_output, resume_name, output_dir, output_path)
+            return missing_output
 
         # 1. Ingest requirements into Local RAG
         t_decomp_start = time.time()
@@ -390,7 +446,7 @@ class ResumeEvaluator:
         cat_eval_outputs = self._evaluate_all_categories(resume_data, resume_name, num_evaluations, language=eff_language, log_dir=log_dir)
 
         # 3. Aggregate results
-        dimension_results, category_timings, overall_score, recommendation = self._aggregate_evaluation_results(
+        dimension_results, category_timings, overall_score, recommendation, failed_categories = self._aggregate_evaluation_results(
             cat_eval_outputs, resume_name, num_evaluations
         )
 
@@ -402,9 +458,13 @@ class ResumeEvaluator:
         basic_info = basic_info if isinstance(basic_info, dict) else {}
         candidate_name = basic_info.get("full_name") or basic_info.get("name") or basic_info.get("email") or resume_name
 
+        # A Failed Evaluation keeps its partial scores for debugging, but is never ranked or shown as a result
         evaluation_output = {
+            "status": "error" if failed_categories else "ok",
             "resume_name": resume_name,
             "candidate_identifier": candidate_name,
+            # Copied from the extraction for display only; stripped from every LLM input
+            "candidate_name": str(basic_info.get("full_name") or basic_info.get("name") or "").strip(),
             "overall_score": overall_score,
             "match_recommendation": recommendation,
             "evaluated_at": datetime.now().isoformat(),
@@ -418,8 +478,15 @@ class ResumeEvaluator:
             "summary": {
                 "total_strengths": sum([len(v["strengths"]) for v in dimension_results.values()]),
                 "total_gaps": sum([len(v["gaps"]) for v in dimension_results.values()])
-            }
+            },
+            # Self-contained: everything needed to revisit this evaluation is in the report
+            "standard_requirements": standard_req,
+            "hidden_requirements": hidden_req,
+            "resume_path": os.path.abspath(resume_path) if resume_path else None,
+            "language": eff_language
         }
+        if failed_categories:
+            evaluation_output["failed_categories"] = failed_categories
 
         if resume_data.get("ocr_applied") or resume_data.get("intensive_hr_review_required"):
             evaluation_output["ocr_applied"] = True
@@ -427,7 +494,18 @@ class ResumeEvaluator:
         if "warning" in resume_data:
             evaluation_output["warning"] = resume_data["warning"]
 
-        # 5. Save report if requested
+        # 5. Candidate Feedback, only for a fully scored evaluation. The panel returns a separate object and
+        # never touches the scores; a panel failure is recorded in it and the evaluation is still saved
+        if not failed_categories:
+            if generate_feedback:
+                evaluation_output["candidate_feedback"] = self.review_panel.review(
+                    evaluation_output, resume_data, standard_req, hidden_req,
+                    language=eff_language, resume_name=resume_name, log_dir=log_dir
+                )
+            else:
+                evaluation_output["candidate_feedback"] = {"status": "skipped"}
+
+        # 6. Save report if requested
         self._save_evaluation_report(evaluation_output, resume_name, output_dir, output_path)
 
         return evaluation_output

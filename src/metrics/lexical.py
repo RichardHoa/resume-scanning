@@ -1,3 +1,4 @@
+# STALE: still scores the removed skills_and_specialties field. See .scratch/extraction-verbatim-only/issues/02-stale-skills-benchmark.md
 """
 Lexical matching, email/phone normalization, skill matching, and Hungarian assignment logic.
 """

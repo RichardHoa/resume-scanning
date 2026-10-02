@@ -1,3 +1,4 @@
+# STALE: still scores the removed skills_and_specialties field. See .scratch/extraction-verbatim-only/issues/02-stale-skills-benchmark.md
 """
 CLI Entrypoint for Ground Truth Accuracy Evaluation Benchmark
 """
@@ -17,6 +18,10 @@ from src.metrics.lexical import evaluate_json_pair
 
 
 def main():
+    raise RuntimeError(
+        "STALE: benchmark still scores the removed skills_and_specialties field. "
+        "See .scratch/extraction-verbatim-only/issues/02-stale-skills-benchmark.md"
+    )
     parser = argparse.ArgumentParser(description="Structured JSON Accuracy Evaluator for Resume Extraction")
     parser.add_argument("--gt-dir", type=str, default="approved_jsons",
                         help="Path to directory containing ground truth JSON files")

@@ -5,28 +5,33 @@
 # Sourced by SLURM scripts. `load_model_profile <key>` sets:
 #   MODEL                      HuggingFace model ID served by vLLM
 #   MODEL_KEY                  Short key (also names the bias-result/<key>/ folder)
-#   CONCURRENCY                Concurrent evaluation workers
-#   MAX_EVAL_PER_SHUFFLE_KIND  Cap on evaluations per shuffle kind (bias suite)
+#   CONCURRENCY                Max requests in flight to vLLM from one process, shared by every caller
+#                              (no default: every branch must set it)
+#   MAX_EVAL_PER_SHUFFLE_KIND  Cap on evaluations per shuffle kind (bias suite, default 200)
 #   VLLM_ENABLE_THINKING       1 = let the model think (chat_template_kwargs), 0 = off
+#   VLLM_REASONING_STRENGTH    System-prompt effort level for models that always reason ("" = unset)
 #   VLLM_EXTRA_ARGS            Bash array of extra `vllm serve` flags
 #
 # To add a model: add a case branch below and its key to MODEL_PROFILE_KEYS.
 # -----------------------------------------------------------------------------
 
-DEFAULT_MODEL_KEY="qwen3.5-35b-a3b"
-MODEL_PROFILE_KEYS="qwen3.5-35b-a3b qwen2.5-32b gemma4-26b-a4b glm4.7-flash"
+DEFAULT_MODEL_KEY="sea-lion-v4.5-27b"
+MODEL_PROFILE_KEYS="qwen3.5-35b-a3b qwen2.5-32b gemma4-26b-a4b glm4.7-flash qwen3.6-35b-a3b qwen3.8-27b gemma4-31b muse-glimmer-30b sea-lion-v4.5-27b"
 
 load_model_profile() {
   local key="${1:-$DEFAULT_MODEL_KEY}"
 
+  # Defaults; a branch only sets what differs. CONCURRENCY has none: it is model-specific
+  CONCURRENCY=""
+  MAX_EVAL_PER_SHUFFLE_KIND=200
   VLLM_ENABLE_THINKING=0
+  VLLM_REASONING_STRENGTH=""
   VLLM_EXTRA_ARGS=()
 
   case "$key" in
     qwen3.5-35b-a3b)
       MODEL="Qwen/Qwen3.5-35B-A3B"
       CONCURRENCY=100
-      MAX_EVAL_PER_SHUFFLE_KIND=1000
       ;;
     qwen2.5-32b)
       # Dense 32B: every parameter is active per token, so keep concurrency low
@@ -38,7 +43,6 @@ load_model_profile() {
       # Multimodal checkpoint: disable image/audio inputs to skip encoder memory reservation
       MODEL="google/gemma-4-26B-A4B-it"
       CONCURRENCY=100
-      MAX_EVAL_PER_SHUFFLE_KIND=1000
       VLLM_EXTRA_ARGS=(
         --limit-mm-per-prompt.image 0
         --limit-mm-per-prompt.audio 0
@@ -49,9 +53,58 @@ load_model_profile() {
       # Thinks by default; VLLM_ENABLE_THINKING=0 turns it off per request
       MODEL="zai-org/GLM-4.7-Flash"
       CONCURRENCY=100
-      MAX_EVAL_PER_SHUFFLE_KIND=1000
       VLLM_EXTRA_ARGS=(
         --reasoning-parser glm45
+      )
+      ;;
+    qwen3.6-35b-a3b)
+      # Vision-language checkpoint: --language-model-only skips the vision encoder
+      MODEL="Qwen/Qwen3.6-35B-A3B"
+      CONCURRENCY=100
+      VLLM_EXTRA_ARGS=(
+        --language-model-only
+        --reasoning-parser qwen3
+      )
+      ;;
+    qwen3.8-27b)
+      # Dense 27B vision-language checkpoint; thinks by default, VLLM_ENABLE_THINKING=0 turns it off
+      MODEL="Qwen/Qwen3.8-27B"
+      CONCURRENCY=80
+      VLLM_EXTRA_ARGS=(
+        --language-model-only
+        --reasoning-parser qwen3
+      )
+      ;;
+    gemma4-31b)
+      # Dense 31B multimodal checkpoint: disable image/audio inputs to skip encoder memory reservation
+      MODEL="google/gemma-4-31B-it"
+      CONCURRENCY=20
+      VLLM_EXTRA_ARGS=(
+        --limit-mm-per-prompt.image 0
+        --limit-mm-per-prompt.audio 0
+        --reasoning-parser gemma4
+      )
+      ;;
+    muse-glimmer-30b)
+      # Dense 30B vision-language checkpoint (vLLM >= 0.28). Reasoning cannot be turned off, only set to
+      # low/medium/high/xhigh; the reasoning and tool parsers share the channel framing, so run both
+      MODEL="meta-models/Muse-Glimmer-30B"
+      CONCURRENCY=200
+      VLLM_REASONING_STRENGTH="low"
+      VLLM_EXTRA_ARGS=(
+        --limit-mm-per-prompt.image 0
+        --reasoning-parser muse_glimmer
+        --enable-auto-tool-choice
+        --tool-call-parser muse_glimmer
+      )
+      ;;
+    sea-lion-v4.5-27b)
+      # Dense 27B Qwen3.6 fine-tune (vision-language): --language-model-only skips the vision encoder
+      MODEL="aisingapore/Qwen-SEA-LION-v4.5-27B-IT"
+      CONCURRENCY=45
+      VLLM_EXTRA_ARGS=(
+        --language-model-only
+        --reasoning-parser qwen3
       )
       ;;
     *)
@@ -60,7 +113,25 @@ load_model_profile() {
       ;;
   esac
 
+  if [[ -z "$CONCURRENCY" ]]; then
+    echo "[ERROR] Model profile '$key' does not set CONCURRENCY" >&2
+    return 1
+  fi
+
   MODEL_KEY="$key"
-  export MODEL MODEL_KEY CONCURRENCY MAX_EVAL_PER_SHUFFLE_KIND VLLM_ENABLE_THINKING
+  export MODEL MODEL_KEY CONCURRENCY MAX_EVAL_PER_SHUFFLE_KIND VLLM_ENABLE_THINKING VLLM_REASONING_STRENGTH
+  return 0
+}
+
+# `resolve_model_arg <arg>`: a profile key, or nothing for the default profile, loads that profile;
+# anything else is taken as a raw HuggingFace model ID served without a profile.
+resolve_model_arg() {
+  local arg="$1"
+  if [[ -z "$arg" || " $MODEL_PROFILE_KEYS " == *" $arg "* ]]; then
+    load_model_profile "$arg"
+    return $?
+  fi
+  MODEL="$arg"
+  export MODEL
   return 0
 }

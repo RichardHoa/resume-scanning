@@ -54,6 +54,7 @@ fi
 SCRIPT_DIR="$FIND_CONFIG_DIR"
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/vllm_utils.sh"
+source "$SCRIPT_DIR/model_profiles.sh"
 
 if [ -z "$PROJECT_ROOT" ]; then
   echo "[CRITICAL ERROR] PROJECT_ROOT is not set after sourcing config.sh!" >&2
@@ -89,13 +90,6 @@ eval "$(conda shell.bash hook 2>/dev/null)" || true
 source activate resume_env 2>/dev/null || conda activate resume_env 2>/dev/null || true
 echo "[$(date +'%H:%M:%S')] Step 2 complete. Active Python: $(which python3 2>/dev/null || echo 'python3 not found')"
 
-# Ensure critical evaluation dependencies (sentence-transformers, chromadb) are installed
-if ! python3 -c "import sentence_transformers, chromadb" 2>/dev/null; then
-  echo "[NOTICE] 'sentence-transformers' or 'chromadb' package missing in Conda environment 'resume_env'."
-  echo "[NOTICE] Auto-installing missing evaluation dependencies via pip..."
-  python3 -m pip install sentence-transformers chromadb 2>/dev/null || pip install sentence-transformers chromadb 2>/dev/null || true
-fi
-
 # Print GPU info on compute node immediately
 echo "====================================================================="
 echo "[$(date +'%Y-%m-%d %H:%M:%S')] STEP 3: Inspecting GPU hardware allocation..."
@@ -103,7 +97,7 @@ nvidia-smi 2>/dev/null || echo "nvidia-smi not available"
 echo "====================================================================="
 
 PORT=$(find_free_port)
-MODEL="${RAW_MODEL:-Qwen/Qwen3.5-35B-A3B}"
+resolve_model_arg "$RAW_MODEL" || exit 1
 
 echo "[$(date +'%H:%M:%S')] Project Root: $PROJECT_ROOT"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL"
@@ -132,8 +126,7 @@ python3 -u "$PROJECT_ROOT/src/step_2_evaluate.py" \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --dir output_jsons \
   --job-req hr-requirement.txt \
-  --output evaluation_json \
-  --workers 6
+  --output evaluation_json
 
 stop_vllm_server
 echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Batch Evaluation Job Finished ==="

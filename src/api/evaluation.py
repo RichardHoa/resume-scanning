@@ -8,20 +8,28 @@ import time
 import uuid
 import asyncio
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Callable, List, Optional
+from urllib.parse import quote
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
-from src.core.config import APPROVED_DIR, OUTPUT_DIR, EVAL_RESULTS_DIR, LOGGING_DIR, EVAL_JOB_TTL_SECONDS
+from src.core.config import (
+    APPROVED_DIR, OUTPUT_DIR, EVAL_RESULTS_DIR, LOGGING_DIR, EVAL_JOB_TTL_SECONDS, VLLM_MAX_CONCURRENT_REQUESTS
+)
 from src.core.state import state
 from src.core.durations import record_duration
 from src.core.evaluation_order import (
     load_evaluation_order,
     get_candidate_tier,
+    get_report_tier,
     get_eval_search_dirs,
     find_eval_file
 )
+from src.core.resume_pdfs import find_resume_pdf
+from src.reports.candidate_report import build_candidate_report_pdf
 
 router = APIRouter(prefix="/api", tags=["evaluation"])
 
@@ -133,11 +141,18 @@ async def _run_batch_evaluation(
         candidate_items.sort(key=lambda c: (c["tier"], c["tier_order"], c["fname"]))
 
         print(f"\n================================================================================", file=sys.stderr)
-        print(f"[SERVER EVALUATION] Starting evaluation of {len(candidate_items)} candidate resume(s) with up to 20 concurrent workers in evaluation order...", file=sys.stderr)
+        print(f"[SERVER EVALUATION] Starting evaluation of {len(candidate_items)} candidate resume(s) in evaluation order, throttled by the {VLLM_MAX_CONCURRENT_REQUESTS}-request vLLM limit...", file=sys.stderr)
         print(f"[SERVER EVALUATION] Output prompt logs directory: {web_batch_log_dir}", file=sys.stderr)
         print(f"================================================================================", file=sys.stderr)
 
-        semaphore = asyncio.Semaphore(20)
+        # Candidates are scheduled freely; the process-wide vLLM request limit does the throttling. The
+        # default asyncio executor is too small for that, so the batch gets its own threads. More candidates
+        # in flight than request slots could never add throughput, so that is the thread count.
+        loop = asyncio.get_running_loop()
+        executor = ThreadPoolExecutor(
+            max_workers=min(len(candidate_items), VLLM_MAX_CONCURRENT_REQUESTS),
+            thread_name_prefix="eval-candidate"
+        )
         total_candidates = len(candidate_items)
         completed_count = 0
         if on_progress:
@@ -150,18 +165,18 @@ async def _run_batch_evaluation(
                 on_progress(completed_count, total_candidates)
 
         async def _evaluate_single_candidate(item):
-            async with semaphore:
-                fname = item["fname"]
-                resume_data = item["data"]
-                base_name = os.path.splitext(fname)[0]
-                safe_base_name = re.sub(r'[^a-zA-Z0-9_-]', '_', base_name or "candidate")
-                cand_log_dir = os.path.join(web_batch_log_dir, safe_base_name)
-                os.makedirs(cand_log_dir, exist_ok=True)
+            fname = item["fname"]
+            resume_data = item["data"]
+            base_name = os.path.splitext(fname)[0]
+            safe_base_name = re.sub(r'[^a-zA-Z0-9_-]', '_', base_name or "candidate")
+            cand_log_dir = os.path.join(web_batch_log_dir, safe_base_name)
+            os.makedirs(cand_log_dir, exist_ok=True)
 
-                try:
-                    candidate_start_time = time.time()
-                    eval_result = await asyncio.to_thread(
-                        state.evaluator.evaluate_resume,
+            try:
+                candidate_start_time = time.time()
+                eval_result = await loop.run_in_executor(
+                    executor,
+                    lambda: state.evaluator.evaluate_resume(
                         resume_data,
                         standard_req,
                         hidden_req,
@@ -169,33 +184,43 @@ async def _run_batch_evaluation(
                         output_dir=EVAL_RESULTS_DIR,
                         num_evaluations=num_evaluations,
                         language=eval_language,
-                        log_dir=cand_log_dir
+                        log_dir=cand_log_dir,
+                        resume_path=item["fpath"],
+                        generate_feedback=True
                     )
+                )
+                # Covers evaluation and the Review Panel, so the waiting-screen estimate includes feedback time.
+                # A Missing Position makes no LLM call, so its near-zero time would skew the estimate
+                if eval_result.get("status") != "missing_position":
                     record_duration("evaluate_candidate", time.time() - candidate_start_time)
-                    eval_result["candidate_email"] = item["email"]
-                    eval_result["tier"] = item["tier"]
-                    eval_result["tier_name"] = item["tier_name"]
-                    eval_result["tier_order"] = item["tier_order"]
-                    eval_result["prompt_log_dir"] = cand_log_dir
-                    return eval_result
-                except Exception as e:
-                    print(f"Error evaluating {fname}: {e}\n{traceback.format_exc()}", file=sys.stderr)
-                    return {
-                        "resume_name": fname,
-                        "error": str(e),
-                        "overall_score": 0,
-                        "match_recommendation": "ERROR",
-                        "candidate_email": item["email"],
-                        "tier": item["tier"],
-                        "tier_name": item["tier_name"],
-                        "tier_order": item["tier_order"],
-                        "prompt_log_dir": cand_log_dir
-                    }
-                finally:
-                    _mark_candidate_done()
+                eval_result["candidate_email"] = item["email"]
+                eval_result["tier"] = item["tier"]
+                eval_result["tier_name"] = item["tier_name"]
+                eval_result["tier_order"] = item["tier_order"]
+                eval_result["prompt_log_dir"] = cand_log_dir
+                return eval_result
+            except Exception as e:
+                print(f"Error evaluating {fname}: {e}\n{traceback.format_exc()}", file=sys.stderr)
+                return {
+                    "status": "error",
+                    "resume_name": fname,
+                    "error": str(e),
+                    "overall_score": 0,
+                    "match_recommendation": "ERROR",
+                    "candidate_email": item["email"],
+                    "tier": item["tier"],
+                    "tier_name": item["tier_name"],
+                    "tier_order": item["tier_order"],
+                    "prompt_log_dir": cand_log_dir
+                }
+            finally:
+                _mark_candidate_done()
 
-        # Run candidate evaluations concurrently up to 20 at a time, preserving order in results
-        results = list(await asyncio.gather(*[_evaluate_single_candidate(item) for item in candidate_items]))
+        # Run all candidate evaluations concurrently, preserving order in results
+        try:
+            results = list(await asyncio.gather(*[_evaluate_single_candidate(item) for item in candidate_items]))
+        finally:
+            executor.shutdown(wait=False)
 
         total_batch_time = time.time() - start_batch_time
 
@@ -340,11 +365,12 @@ def list_eval_results():
                         data = json.load(f)
                     if isinstance(data, dict):
                         data["filename"] = fname
-                        tinfo = get_candidate_tier(data, fname, order_data)
+                        tinfo = get_report_tier(data, fname, order_data)
                         data["tier"] = tinfo["tier"]
                         data["tier_name"] = tinfo["tier_name"]
                         data["tier_order"] = tinfo["tier_order"]
                         data["candidate_email"] = tinfo["resolved_email"]
+                        data["has_resume_pdf"] = find_resume_pdf(data.get("resume_name") or fname) is not None
                         evaluations.append(data)
                 except Exception as e:
                     print(f"Warning: Failed to parse evaluation file {fpath}: {e}", file=sys.stderr)
@@ -374,6 +400,51 @@ def get_eval_result_detail(filename: str):
         return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read evaluation file: {e}")
+
+
+def _load_eval_result(filename: str) -> dict:
+    fpath = find_eval_file(filename)
+    if not fpath:
+        raise HTTPException(status_code=404, detail="Evaluation result file not found.")
+    try:
+        with open(fpath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read evaluation file: {e}")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=500, detail="Evaluation file is not a JSON object.")
+    return data
+
+
+@router.get("/eval_results/{filename}/resume_pdf")
+def get_eval_resume_pdf(filename: str):
+    """Serves the candidate's original resume PDF inline, so it opens in the browser's PDF viewer."""
+    data = _load_eval_result(filename)
+    pdf_path = find_resume_pdf(data.get("resume_name") or filename)
+    if not pdf_path:
+        raise HTTPException(status_code=404, detail="No resume PDF is stored for this candidate.")
+    return FileResponse(pdf_path, media_type="application/pdf", content_disposition_type="inline")
+
+
+@router.get("/eval_results/{filename}/report_pdf")
+def get_eval_report_pdf(filename: str):
+    """The evaluation report as a PDF for HR, with the candidate's resume PDF appended when one is stored."""
+    data = _load_eval_result(filename)
+    if data.get("status") == "missing_position":
+        raise HTTPException(status_code=409, detail="Missing Position: this resume was never evaluated, so there is no report.")
+    # The email the page shows comes from evaluation_order matching, not from the saved report
+    data["candidate_email"] = get_report_tier(data, filename, load_evaluation_order())["resolved_email"]
+    try:
+        pdf_bytes = build_candidate_report_pdf(data, find_resume_pdf(data.get("resume_name") or filename))
+    except Exception as e:
+        print(f"Error building report PDF for {filename}: {e}\n{traceback.format_exc()}", file=sys.stderr)
+        raise HTTPException(status_code=500, detail=f"Failed to build report PDF: {e}")
+    download_name = os.path.splitext(os.path.basename(filename))[0] + "_danh_gia.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(download_name)}"}
+    )
 
 
 @router.delete("/eval_results/{filename}")

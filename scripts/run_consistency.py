@@ -162,7 +162,8 @@ def main():
                         standard_req,
                         hidden_req,
                         resume_name=rname,
-                        num_evaluations=args.num_evaluations
+                        num_evaluations=args.num_evaluations,
+                        generate_feedback=False
                     )
                     score = result.get("overall_score", 0.0)
                     return c_info["email"], score

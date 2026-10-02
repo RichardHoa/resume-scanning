@@ -20,7 +20,6 @@ setup_vllm_env() {
 
   # Parallel compilation with 4 workers (requires ~40-60GB host RAM during nvcc CUTLASS build)
   export VLLM_USE_DEEP_GEMM=0
-  export VLLM_USE_V1=0
   export MAX_JOBS=4
   export NVCC_THREADS=1
   export FLASHINFER_BUILD_MAX_JOBS=4
@@ -87,7 +86,7 @@ stop_vllm_server() {
 # Optional: VLLM_EXTRA_ARGS bash array of extra `vllm serve` flags (see model_profiles.sh)
 # -----------------------------------------------------------------------------
 start_vllm_server() {
-  local model="${1:-Qwen/Qwen3.5-35B-A3B}"
+  local model="${1:-aisingapore/Qwen-SEA-LION-v4.5-27B-IT}"
   local port="${2:-8100}"
   local log_file="${3:-$PROJECT_ROOT/logs/vllm_server.log}"
 
@@ -127,7 +126,7 @@ start_vllm_server() {
     --dtype auto \
     --port "$port" \
     --host 127.0.0.1 \
-    --max-model-len "${VLLM_MAX_MODEL_LEN:-16384}" \
+    --max-model-len "${VLLM_MAX_MODEL_LEN:-32768}" \
     --max-num-seqs 256 \
     --enable-prefix-caching \
     --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.85}" \
@@ -151,7 +150,8 @@ start_vllm_server() {
       echo "--- Tail of $log_file ---"
       tail -n 120 "$log_file" 2>/dev/null || echo "(No log file found)"
       echo "====================================================================="
-      break
+      stop_vllm_server
+      return 1
     fi
 
     local http_code

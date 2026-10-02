@@ -1,0 +1,1628 @@
+[16:08:58] STEP 1: Loading system environment modules...
+[16:08:58] STEP 2: Activating Conda environment 'resume_env'...
+[16:08:59] Active Python: /home/slurmdang14/.conda/envs/resume_env/bin/python3
+=====================================================================
+[2026-10-06 16:08:59] STEP 4: Resetting workspace to blank state...
+Clearing extraction markdowns, output JSONs, evaluation JSONs, and RAG vector storage.
+=====================================================================
+=====================================================================
+[2026-10-06 16:09:00] STEP 5: Inspecting GPU hardware allocation...
+Tue Oct  6 16:09:00 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.126.20             Driver Version: 580.126.20     CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA RTX PRO 6000 Blac...    Off |   00000000:81:00.0 Off |                   On |
+| N/A   27C    P8             34W /  600W |       1MiB /  97887MiB |     N/A      Default |
+|                                         |                        |              Enabled |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| MIG devices:                                                                            |
++------------------+----------------------------------+-----------+-----------------------+
+| GPU  GI  CI  MIG |              Shared Memory-Usage |        Vol|        Shared         |
+|      ID  ID  Dev |                Shared BAR1-Usage | SM     Unc| CE ENC  DEC  OFA  JPG |
+|                  |                                  |        ECC|                       |
+|==================+==================================+===========+=======================|
+|  0    0   0   0  |               1MiB / 97250MiB    |188      0 |  4   4    4    1    4 |
+|                  |               1MiB / 131072MiB   |           |                       |
++------------------+----------------------------------+-----------+-----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+=====================================================================
+[16:09:01] Project Root: /home/slurmdang14/resume-scanning
+[16:09:01] Target PDF Directory: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB
+[16:09:01] Target Output Directory: /home/slurmdang14/resume-scanning/output_jsons
+[16:09:01] Target Evaluation Directory: /home/slurmdang14/resume-scanning/evaluation_json
+[16:09:01] Target Model: aisingapore/Qwen-SEA-LION-v4.5-27B-IT
+[16:09:01] Target Job Requirement File: /home/slurmdang14/resume-scanning/hr-requirement.txt
+[16:09:02] Allocated Server Port: 44149
+[16:09:02] Server Log File: /home/slurmdang14/resume-scanning/logs/vllm_extract_eval.log
+[16:09:02] Extractor Log File: /home/slurmdang14/resume-scanning/logs/extract_step1.log
+[16:09:02] Evaluator Log File: /home/slurmdang14/resume-scanning/logs/eval_step2.log
+[16:09:02] HF Cache Path: /home/slurmdang14/.cache/huggingface
+=== vLLM package detected! Starting vLLM Server (aisingapore/Qwen-SEA-LION-v4.5-27B-IT) on Port 44149 ===
+vLLM server launched with PID 2836103 on port 44149. Waiting for server readiness...
+[16:09:13] Loading vLLM server (Attempt 2/720, elapsed: 10s)...
+[16:09:23] Loading vLLM server (Attempt 4/720, elapsed: 20s)...
+[16:09:33] Loading vLLM server (Attempt 6/720, elapsed: 30s)...
+   └─ vLLM activity: (APIServer pid=2836103) INFO 10-06 16:09:31 [model.py:692] Resolved architecture: Qwen3_5ForConditionalGeneration (APIServer pid=2836103) INFO 10-06 16:09:31 [model.py:2030] Using max model len 32768 
+[16:09:44] Loading vLLM server (Attempt 8/720, elapsed: 40s)...
+   └─ vLLM activity: (APIServer pid=2836103) INFO 10-06 16:09:35 [vllm.py:1780] Cudagraph is disabled under eager mode (APIServer pid=2836103) INFO 10-06 16:09:35 [compilation.py:336] Enabled custom fusions: norm_quant, act_quant 
+[16:09:54] Loading vLLM server (Attempt 10/720, elapsed: 50s)...
+   └─ vLLM activity: (APIServer pid=2836103) INFO 10-06 16:09:35 [compilation.py:336] Enabled custom fusions: norm_quant, act_quant (EngineCore pid=2836216) INFO 10-06 16:09:50 [core.py:123] Initializing a V1 LLM engine (v0.30.0) with config: model='aisingapore/Qwen-SEA-LION-v4.5-27B-IT', speculative_config=None, tokenizer='aisingapore/Qwen-SEA-LION-v4.5-27B-IT', skip_tokenizer_init=False, tokenizer_mode=auto, revision=main, tokenizer_revision=main, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=32768, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=False, quantization=None, quantization_config=None, enforce_eager=True, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='qwen3', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, per_request_spec_decode_metrics='none', kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_mode='warn', jit_monitor_verbose=False), seed=0, served_model_name=aisingapore/Qwen-SEA-LION-v4.5-27B-IT, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.NONE: 0>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['all'], 'ir_enable_torch_wrap': False, 'splitting_ops': [], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [8192], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.NONE: 0>, 'cudagraph_num_of_warmups': 0, 'cudagraph_capture_sizes': [], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': True, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False, 'enable_qk_norm_rope_fusion': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False, 'fuse_qk_norm_rope_kvcache': False}, 'max_cudagraph_capture_size': 0, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': False, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'], gelu_and_mul_sparse=['triton', 'native']), enable_flashinfer_autotune=True, enable_cutedsl_warmup=True, enable_jit_warmup=True, moe_backend='auto', sparse_indexer_topk_backend='auto', linear_backend='auto', linear_backend_per_quant=None) 
+[16:10:04] Loading vLLM server (Attempt 12/720, elapsed: 60s)...
+   └─ vLLM activity: (EngineCore pid=2836216) INFO 10-06 16:10:03 [weight_utils.py:829] Prefetching checkpoint files: 60% (9/15) (EngineCore pid=2836216) INFO 10-06 16:10:03 [weight_utils.py:829] Prefetching checkpoint files: 70% (11/15) 
+[16:10:14] Loading vLLM server (Attempt 14/720, elapsed: 70s)...
+   └─ vLLM activity: (EngineCore pid=2836216) INFO 10-06 16:10:03 [weight_utils.py:829] Prefetching checkpoint files: 60% (9/15) (EngineCore pid=2836216) INFO 10-06 16:10:03 [weight_utils.py:829] Prefetching checkpoint files: 70% (11/15) 
+[16:10:24] Loading vLLM server (Attempt 16/720, elapsed: 80s)...
+   └─ vLLM activity: (EngineCore pid=2836216) INFO 10-06 16:10:03 [weight_utils.py:829] Prefetching checkpoint files: 70% (11/15) (EngineCore pid=2836216) INFO 10-06 16:10:22 [weight_utils.py:829] Prefetching checkpoint files: 80% (12/15) 
+[16:10:35] Loading vLLM server (Attempt 18/720, elapsed: 90s)...
+   └─ vLLM activity: (EngineCore pid=2836216) INFO 10-06 16:10:03 [weight_utils.py:829] Prefetching checkpoint files: 70% (11/15) (EngineCore pid=2836216) INFO 10-06 16:10:22 [weight_utils.py:829] Prefetching checkpoint files: 80% (12/15) 
+[16:10:45] Loading vLLM server (Attempt 20/720, elapsed: 100s)...
+   └─ vLLM activity: (EngineCore pid=2836216) Loading safetensors checkpoint shards:  73% Completed | 11/15 [00:44<00:04,  1.07s/it] (EngineCore pid=2836216) Loading safetensors checkpoint shards:  80% Completed | 12/15 [00:45<00:02,  1.02it/s] 
+[16:10:55] Loading vLLM server (Attempt 22/720, elapsed: 110s)...
+   └─ vLLM activity: (EngineCore pid=2836216) INFO 10-06 16:10:47 [interface.py:957] Padding mamba page size by 0.13% to ensure that mamba page size and attention page size are exactly equal. (EngineCore pid=2836216) INFO 10-06 16:10:47 [utils.py:320] Using LBNHC KV cache layout. 
+[16:11:05] Loading vLLM server (Attempt 24/720, elapsed: 120s)...
+   └─ vLLM activity: (EngineCore pid=2836216) INFO 10-06 16:10:47 [interface.py:957] Padding mamba page size by 0.13% to ensure that mamba page size and attention page size are exactly equal. (EngineCore pid=2836216) INFO 10-06 16:10:47 [utils.py:320] Using LBNHC KV cache layout. 
+[16:11:15] Loading vLLM server (Attempt 26/720, elapsed: 130s)...
+   └─ vLLM activity: (EngineCore pid=2836216) INFO 10-06 16:10:47 [interface.py:957] Padding mamba page size by 0.13% to ensure that mamba page size and attention page size are exactly equal. (EngineCore pid=2836216) INFO 10-06 16:10:47 [utils.py:320] Using LBNHC KV cache layout. 
+[16:11:25] Loading vLLM server (Attempt 28/720, elapsed: 140s)...
+   └─ vLLM activity: (EngineCore pid=2836216) 2026-10-06 16:11:22,269 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends (EngineCore pid=2836216) 2026-10-06 16:11:22,698 - INFO - autotuner.py:2652 - flashinfer.jit: [Autotuner]: Saved 0 configs to /home/slurmdang14/.cache/huggingface/flashinfer_autotune_cache/b68b4e082ab12f70711eb28c135db45f419bb360699244bd93ff0deaae20d670/autotune_configs.json (0 new, 0 from previous config) 
+[16:11:36] Loading vLLM server (Attempt 30/720, elapsed: 150s)...
+   └─ vLLM activity: (EngineCore pid=2836216) 2026-10-06 16:11:22,698 - INFO - autotuner.py:2652 - flashinfer.jit: [Autotuner]: Saved 0 configs to /home/slurmdang14/.cache/huggingface/flashinfer_autotune_cache/b68b4e082ab12f70711eb28c135db45f419bb360699244bd93ff0deaae20d670/autotune_configs.json (0 new, 0 from previous config) (EngineCore pid=2836216) INFO 10-06 16:11:31 [gpu_worker.py:888] Free memory on device (94.43/94.97 GiB) on startup. Desired GPU memory utilization is (0.85, 80.73 GiB). Actual usage is 50.81 GiB for consumed memory (weights + non-torch), 1.19 GiB for peak activation, and 0.0 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=30685991015` (28.58 GiB) to fit into requested memory, or `--kv-cache-memory=45401958912` (42.28 GiB) to fully utilize gpu memory. Current kv cache memory in use is 28.73 GiB. 
+[16:11:46] SUCCESS: vLLM server is READY and responding on port 44149!
+=====================================================================
+[2026-10-06 16:11:46] === [Step 1/2] Starting Batch Extraction (vLLM) ===
+Processing PDFs from '/home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB' -> JSONs to '/home/slurmdang14/resume-scanning/output_jsons' using model 'aisingapore/Qwen-SEA-LION-v4.5-27B-IT'
+Detailed extraction log: /home/slurmdang14/resume-scanning/logs/extract_step1.log
+=====================================================================
+Found 38 PDF files in /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB. Starting batch processing...
+Executing batch extraction with 6 parallel worker threads...
+[1/38] Processing CnB - BUI THI VAN ANH.pdf...
+[2/38] Processing CnB - Bui Thi Thanh Tuyen.pdf...
+[3/38] Processing CnB - Bui Thi Xuan Hoa.pdf...
+[4/38] Processing CnB - DOAN NGUYEN TRUONG GIANG.pdf...
+[5/38] Processing CnB - Dang Thai Hai Tram.pdf...
+[6/38] Processing CnB - Do Thi Minh Thu.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - BUI THI VAN ANH.pdf
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Bui Thi Thanh Tuyen.pdf
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Bui Thi Xuan Hoa.pdf
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - DOAN NGUYEN TRUONG GIANG.pdfParsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Dang Thai Hai Tram.pdfParsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Do Thi Minh Thu.pdf
+
+
+rapidocr_api using backend: rapidocr
+/home/slurmdang14/.conda/envs/resume_env/lib/python3.12/site-packages/pymupdf4llm/ocr/compute_ocr_features.py:236: RuntimeWarning: Mean of empty slice.
+  fft_ratio = magnitude[magnitude > magnitude.mean()].mean() / (
+/home/slurmdang14/.conda/envs/resume_env/lib/python3.12/site-packages/numpy/_core/_methods.py:144: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+Using RapidOCR for OCR processing.
+Using RapidOCR for OCR processing.
+Using RapidOCR for OCR processing.
+Using RapidOCR for OCR processing.
+Using RapidOCR for OCR processing.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Dang Thai Hai Tram.md
+[Extractor Language] Detected resume language status: 'english' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+Using RapidOCR for OCR processing.
+Using RapidOCR for OCR processing.
+Using RapidOCR for OCR processing.
+Using RapidOCR for OCR processing.
+Using RapidOCR for OCR processing.
+Warning: [Markdown Validation] Weird character: Document contains private use area / unmappable font characters (3 found).
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Do Thi Minh Thu.md
+[Extractor Language] Detected resume language status: 'bilingual' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Bui Thi Xuan Hoa.md
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - BUI THI VAN ANH.md
+[Extractor Language] Detected resume language status: 'english' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - DOAN NGUYEN TRUONG GIANG.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+
+=== Document parser messages ===
+OCR on page.number=0/1.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Bui Thi Thanh Tuyen.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[3/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Bui Thi Xuan Hoa.json (took 86.69 seconds)
+[7/38] Processing CnB - Doan Thi Anh Tuyet.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Doan Thi Anh Tuyet.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+Warning: [Markdown Validation] Weird character: Document contains corrupted encoding or replacement characters (\ufffd/null bytes).
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Doan Thi Anh Tuyet.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[6/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Do Thi Minh Thu.json (took 95.09 seconds)
+[8/38] Processing CnB - HUYNH NGOC CHAU.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - HUYNH NGOC CHAU.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+OCR on page.number=2/3.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - HUYNH NGOC CHAU.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[2/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Bui Thi Thanh Tuyen.json (took 124.23 seconds)
+[9/38] Processing CnB - Hoang Tan Tai.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Hoang Tan Tai.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=1/2.
+OCR on page.number=2/3.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Hoang Tan Tai.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[5/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Dang Thai Hai Tram.json (took 126.60 seconds)
+[10/38] Processing CnB - LE THI BICH PHUONG.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - LE THI BICH PHUONG.pdf
+The text detection result is empty
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=1/2.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - LE THI BICH PHUONG.md
+[Extractor Language] Detected resume language status: 'english' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[1/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - BUI THI VAN ANH.json (took 151.53 seconds)
+[11/38] Processing CnB - Le Ba Thuy Hang.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Le Ba Thuy Hang.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=1/2.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Le Ba Thuy Hang.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[7/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Doan Thi Anh Tuyet.json (took 89.38 seconds)
+[12/38] Processing CnB - NGUYEN NGOC THANH TRANG.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - NGUYEN NGOC THANH TRANG.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+OCR on page.number=1/2.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - NGUYEN NGOC THANH TRANG.md
+[Extractor Language] Detected resume language status: 'english' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[4/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - DOAN NGUYEN TRUONG GIANG.json (took 185.73 seconds)
+[13/38] Processing CnB - NGUYEN THANH TRUNG.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - NGUYEN THANH TRUNG.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+OCR on page.number=1/2.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - NGUYEN THANH TRUNG.md
+[Extractor Language] Detected resume language status: 'english' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[10/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - LE THI BICH PHUONG.json (took 101.15 seconds)
+[14/38] Processing CnB - NGUYỄN LÊ MAI LINH.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - NGUYỄN LÊ MAI LINH.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=1/2.
+OCR on page.number=1/2.
+Warning: [Markdown Validation] Weird character: Document contains private use area / unmappable font characters (1 found).
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - NGUYỄN LÊ MAI LINH.md
+[Extractor Language] Detected resume language status: 'english' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[9/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Hoang Tan Tai.json (took 115.25 seconds)
+[15/38] Processing CnB - Nguyen Anh Thu.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Nguyen Anh Thu.pdf
+The text detection result is empty
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Nguyen Anh Thu.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[8/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - HUYNH NGOC CHAU.json (took 166.23 seconds)
+[16/38] Processing CnB - Nguyen Duc Nham.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Nguyen Duc Nham.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+OCR on page.number=1/2.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Nguyen Duc Nham.md
+[Extractor Language] Detected resume language status: 'english' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[13/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - NGUYEN THANH TRUNG.json (took 79.19 seconds)
+[17/38] Processing CnB - Nguyen Ho Mi Sa.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Nguyen Ho Mi Sa.pdf
+The text detection result is empty
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+OCR on page.number=1/2.
+OCR on page.number=4/5.
+OCR on page.number=5/6.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Nguyen Ho Mi Sa.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[14/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - NGUYỄN LÊ MAI LINH.json (took 71.27 seconds)
+[18/38] Processing CnB - Nguyen Thi Bich Phuong.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Nguyen Thi Bich Phuong.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+OCR on page.number=1/2.
+OCR on page.number=4/5.
+OCR on page.number=5/6.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Nguyen Thi Bich Phuong.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[11/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Le Ba Thuy Hang.json (took 152.44 seconds)
+[19/38] Processing CnB - Nguyen Thi Thu Lieu.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Nguyen Thi Thu Lieu.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Nguyen Thi Thu Lieu.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[15/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Nguyen Anh Thu.json (took 102.32 seconds)
+[20/38] Processing CnB - Nguyen Thuy.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Nguyen Thuy.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+Warning: [Markdown Validation] Weird character: Document contains corrupted encoding or replacement characters (\ufffd/null bytes).
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Nguyen Thuy.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[12/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - NGUYEN NGOC THANH TRANG.json (took 176.45 seconds)
+[21/38] Processing CnB - Nguyen Tram.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Nguyen Tram.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Nguyen Tram.md
+[Extractor Language] Detected resume language status: 'english' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[16/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Nguyen Duc Nham.json (took 95.38 seconds)
+[22/38] Processing CnB - Nguyen Yen Minh.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Nguyen Yen Minh.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+Warning: [Markdown Validation] Weird character: Document contains private use area / unmappable font characters (10 found).
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Nguyen Yen Minh.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[18/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Nguyen Thi Bich Phuong.json (took 126.19 seconds)
+[23/38] Processing CnB - PHAM THI TUYET MAI.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - PHAM THI TUYET MAI.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - PHAM THI TUYET MAI.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[20/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Nguyen Thuy.json (took 86.43 seconds)
+[24/38] Processing CnB - PHAN THI THUY LIEU.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - PHAN THI THUY LIEU.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+OCR on page.number=1/2.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - PHAN THI THUY LIEU.md
+[Extractor Language] Detected resume language status: 'english' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[19/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Nguyen Thi Thu Lieu.json (took 128.22 seconds)
+[25/38] Processing CnB - Pham Truong Hoai Tram.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Pham Truong Hoai Tram.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+OCR on page.number=1/2.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Pham Truong Hoai Tram.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[21/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Nguyen Tram.json (took 86.09 seconds)
+[26/38] Processing CnB - Phung Thi Kim Chi.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Phung Thi Kim Chi.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=2/3.
+OCR on page.number=1/2.
+Warning: [Markdown Validation] Weird character: Document contains private use area / unmappable font characters (5 found).
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Phung Thi Kim Chi.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[22/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Nguyen Yen Minh.json (took 121.99 seconds)
+[27/38] Processing CnB - THÁI KIM HOÀNG.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - THÁI KIM HOÀNG.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=2/3.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - THÁI KIM HOÀNG.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[23/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - PHAM THI TUYET MAI.json (took 65.48 seconds)
+[28/38] Processing CnB - TRAN THI QUYNH HUNG.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - TRAN THI QUYNH HUNG.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - TRAN THI QUYNH HUNG.md
+[Extractor Language] Detected resume language status: 'bilingual' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[17/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Nguyen Ho Mi Sa.json (took 234.87 seconds)
+[29/38] Processing CnB - TRAN THI TUYET TRINH.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - TRAN THI TUYET TRINH.pdf
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[24/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - PHAN THI THUY LIEU.json (took 79.07 seconds)
+[30/38] Processing CnB - Thai Thanh Giang.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Thai Thanh Giang.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+OCR on page.number=1/2.
+Using RapidOCR for OCR processing.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Thai Thanh Giang.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+
+=== Document parser messages ===
+OCR on page.number=2/3.
+rocessing.
+OCR on page.number=0/1.
+OCR on page.number=1/2.
+Using RapidOCR for OCR processing.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - TRAN THI TUYET TRINH.md
+[Extractor Language] Detected resume language status: 'english' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[25/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Pham Truong Hoai Tram.json (took 115.99 seconds)
+[31/38] Processing CnB - Thai Thi Ny Na.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Thai Thi Ny Na.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Thai Thi Ny Na.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[28/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - TRAN THI QUYNH HUNG.json (took 71.30 seconds)
+[32/38] Processing CnB - Tran Ngo Minh The.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Tran Ngo Minh The.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Tran Ngo Minh The.md
+[Extractor Language] Detected resume language status: 'english' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[26/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Phung Thi Kim Chi.json (took 154.46 seconds)
+[33/38] Processing CnB - Tran Ngoc Thien Trang.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Tran Ngoc Thien Trang.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+Warning: [Markdown Validation] Weird character: Document contains corrupted encoding or replacement characters (\ufffd/null bytes).
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Tran Ngoc Thien Trang.md
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[27/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - THÁI KIM HOÀNG.json (took 116.62 seconds)
+[34/38] Processing CnB - Tran Nu Thanh Danh.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Tran Nu Thanh Danh.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+OCR on page.number=0/1.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Tran Nu Thanh Danh.md
+[Extractor Language] Detected resume language status: 'bilingual' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[29/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - TRAN THI TUYET TRINH.json (took 117.19 seconds)
+[35/38] Processing CnB - VO THI HONG TUYET.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - VO THI HONG TUYET.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - VO THI HONG TUYET.md
+[Extractor Language] Detected resume language status: 'vietnamese' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[31/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Thai Thi Ny Na.json (took 93.41 seconds)
+[36/38] Processing CnB - Vo Thu Kien Tran - 20241031.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - Vo Thu Kien Tran - 20241031.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - Vo Thu Kien Tran - 20241031.md
+[Extractor Language] Detected resume language status: 'english' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[33/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Tran Ngoc Thien Trang.json (took 100.02 seconds)
+[37/38] Processing CnB - VÕ THỊ PHƯƠNG KHÁNH.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/CnB - VÕ THỊ PHƯƠNG KHÁNH.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/CnB - VÕ THỊ PHƯƠNG KHÁNH.md
+[Extractor Language] Detected resume language status: 'english' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[34/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Tran Nu Thanh Danh.json (took 102.67 seconds)
+[38/38] Processing HR - Pham Thi Khanh Ly.pdf...
+Parsing PDF with PyMuPDF4LLM: /home/slurmdang14/resume-scanning/Vietnamese-dataset/CnB/HR - Pham Thi Khanh Ly.pdf
+
+=== Document parser messages ===
+Using RapidOCR for OCR processing.
+Saving markdown preview to: /home/slurmdang14/resume-scanning/extraction_markdown/HR - Pham Thi Khanh Ly.md
+[Extractor Language] Detected resume language status: 'english' (Target tag language: 'vietnamese')
+[Medoid Consensus] Gathering 1 extraction candidates (target language: vietnamese)...
+Generating structured output (vLLM)...
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[35/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - VO THI HONG TUYET.json (took 82.42 seconds)
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[30/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Thai Thanh Giang.json (took 208.27 seconds)
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[36/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Vo Thu Kien Tran - 20241031.json (took 74.20 seconds)
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[32/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - Tran Ngo Minh The.json (took 158.10 seconds)
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[37/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/CnB - VÕ THỊ PHƯƠNG KHÁNH.json (took 87.03 seconds)
+[Medoid Consensus] Successfully gathered 1/1 valid candidates. Selected Medoid candidate with consensus score: 1.0000
+[38/38] Successfully saved JSON extraction to /home/slurmdang14/resume-scanning/output_jsons/HR - Pham Thi Khanh Ly.json (took 140.05 seconds)
+
+Batch processing completed in 838.05 seconds. Output folder: /home/slurmdang14/resume-scanning/output_jsons
+=====================================================================
+[2026-10-06 16:25:47] === [Step 2/2] Starting High-Precision Batch Evaluation (vLLM) ===
+Evaluating JSONs from '/home/slurmdang14/resume-scanning/output_jsons' -> Results to '/home/slurmdang14/resume-scanning/evaluation_json' using model 'aisingapore/Qwen-SEA-LION-v4.5-27B-IT'
+Detailed evaluation log: /home/slurmdang14/resume-scanning/logs/eval_step2.log
+=====================================================================
+[HR Requirements Loaded] Standard length: 306 chars | Hidden length: 262 chars
+[LocalRAG] ChromaDB vector store initialized at /home/slurmdang14/resume-scanning/rag/chroma_db
+[LocalRAG] Loading embedding model: AITeamVN/Vietnamese_Embedding
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights:  10%|█         | 41/391 [00:00<00:01, 335.41it/s]Loading weights:  19%|█▉        | 75/391 [00:00<00:02, 156.80it/s]Loading weights:  25%|██▍       | 96/391 [00:00<00:01, 150.80it/s]Loading weights:  29%|██▉       | 114/391 [00:00<00:01, 157.02it/s]Loading weights:  34%|███▍      | 134/391 [00:00<00:01, 153.62it/s]Loading weights:  39%|███▊      | 151/391 [00:01<00:01, 125.37it/s]Loading weights:  47%|████▋     | 185/391 [00:01<00:01, 122.44it/s]Loading weights:  52%|█████▏    | 205/391 [00:01<00:01, 115.24it/s]Loading weights:  63%|██████▎   | 247/391 [00:01<00:00, 153.69it/s]Loading weights:  68%|██████▊   | 264/391 [00:01<00:00, 156.02it/s]Loading weights:  76%|███████▋  | 299/391 [00:01<00:00, 188.15it/s]Loading weights:  82%|████████▏ | 320/391 [00:02<00:00, 151.26it/s]Loading weights:  87%|████████▋ | 339/391 [00:02<00:00, 152.55it/s]Loading weights:  91%|█████████ | 356/391 [00:02<00:00, 155.96it/s]Loading weights: 100%|██████████| 391/391 [00:02<00:00, 163.35it/s]
+Found 38 JSON resume files in '/home/slurmdang14/resume-scanning/output_jsons'. Starting batch evaluation...
+[ResumeEvaluator] Using vLLM server backend at http://127.0.0.1:44149/v1
+[HR Requirements] Pre-ingesting criteria into RAG vector store...
+[LocalRAG] Using LLM requirement decomposer...
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/batch_init/requirements_decomposition/1.txt
+[LocalRAG] Cleared all RAG criteria from persistent ChromaDB collection (/home/slurmdang14/resume-scanning/rag/chroma_db).
+[LocalRAG] Successfully ingested & stored 11 requirement vector embeddings into ChromaDB collection.
+[LocalRAG] Exported requirement classification to hr_rag.txt
+Executing batch evaluation with 70 parallel worker threads...
+
+[1/38] Evaluating CnB - BUI THI VAN ANH.json...
+
+[2/38] Evaluating CnB - Bui Thi Thanh Tuyen.json...
+
+[3/38] Evaluating CnB - Bui Thi Xuan Hoa.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - BUI THI VAN ANH] HR Requirement Categorization took: 0.00s
+
+[4/38] Evaluating CnB - DOAN NGUYEN TRUONG GIANG.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Bui Thi Thanh Tuyen] HR Requirement Categorization took: 0.00s
+[Timing Log] [CnB - Bui Thi Xuan Hoa] HR Requirement Categorization took: 0.00s
+
+[5/38] Evaluating CnB - Dang Thai Hai Tram.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - DOAN NGUYEN TRUONG GIANG] HR Requirement Categorization took: 0.00s
+
+[6/38] Evaluating CnB - Do Thi Minh Thu.json...
+
+[7/38] Evaluating CnB - Doan Thi Anh Tuyet.json...
+
+[8/38] Evaluating CnB - HUYNH NGOC CHAU.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+
+[9/38] Evaluating CnB - Hoang Tan Tai.json...
+[Timing Log] [CnB - Dang Thai Hai Tram] HR Requirement Categorization took: 0.00s
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - HUYNH NGOC CHAU] HR Requirement Categorization took: 0.00s
+[Timing Log] [CnB - Do Thi Minh Thu] HR Requirement Categorization took: 0.00s
+
+[10/38] Evaluating CnB - LE THI BICH PHUONG.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Doan Thi Anh Tuyet] HR Requirement Categorization took: 0.00s
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Hoang Tan Tai] HR Requirement Categorization took: 0.00s
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - LE THI BICH PHUONG] HR Requirement Categorization took: 0.00s
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Bui Thi Xuan Hoa] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - HUYNH NGOC CHAU] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Hoang Tan Tai] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Do Thi Minh Thu] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - BUI THI VAN ANH] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Bui Thi Thanh Tuyen] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+
+[11/38] Evaluating CnB - Le Ba Thuy Hang.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Le Ba Thuy Hang] HR Requirement Categorization took: 0.00s
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - LE THI BICH PHUONG] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Dang Thai Hai Tram] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Le Ba Thuy Hang] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.01s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Doan Thi Anh Tuyet] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+
+[12/38] Evaluating CnB - NGUYEN NGOC THANH TRANG.json...
+
+[13/38] Evaluating CnB - NGUYEN THANH TRUNG.json...
+
+[14/38] Evaluating CnB - NGUYỄN LÊ MAI LINH.json...
+
+[15/38] Evaluating CnB - Nguyen Anh Thu.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - NGUYEN THANH TRUNG] HR Requirement Categorization took: 0.00s
+
+[16/38] Evaluating CnB - Nguyen Duc Nham.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+
+[17/38] Evaluating CnB - Nguyen Ho Mi Sa.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - NGUYEN NGOC THANH TRANG] HR Requirement Categorization took: 0.00s
+
+[18/38] Evaluating CnB - Nguyen Thi Bich Phuong.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - NGUYỄN LÊ MAI LINH] HR Requirement Categorization took: 0.00s
+[Timing Log] [CnB - Nguyen Anh Thu] HR Requirement Categorization took: 0.00s
+
+[19/38] Evaluating CnB - Nguyen Thi Thu Lieu.json...
+
+[20/38] Evaluating CnB - Nguyen Thuy.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Nguyen Duc Nham] HR Requirement Categorization took: 0.00s
+
+[21/38] Evaluating CnB - Nguyen Tram.json...
+
+[22/38] Evaluating CnB - Nguyen Yen Minh.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Nguyen Ho Mi Sa] HR Requirement Categorization took: 0.00s
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Nguyen Thi Bich Phuong] HR Requirement Categorization took: 0.00s
+
+[23/38] Evaluating CnB - PHAM THI TUYET MAI.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Nguyen Thi Thu Lieu] HR Requirement Categorization took: 0.00s
+
+[24/38] Evaluating CnB - PHAN THI THUY LIEU.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Nguyen Yen Minh] HR Requirement Categorization took: 0.00s
+
+[25/38] Evaluating CnB - Pham Truong Hoai Tram.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Nguyen Tram] HR Requirement Categorization took: 0.00s
+[Timing Log] [CnB - Nguyen Thuy] HR Requirement Categorization took: 0.00s
+
+[26/38] Evaluating CnB - Phung Thi Kim Chi.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - PHAN THI THUY LIEU] HR Requirement Categorization took: 0.00s
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+
+[27/38] Evaluating CnB - THÁI KIM HOÀNG.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Phung Thi Kim Chi] HR Requirement Categorization took: 0.00s
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Pham Truong Hoai Tram] HR Requirement Categorization took: 0.00s
+[Timing Log] [CnB - PHAM THI TUYET MAI] HR Requirement Categorization took: 0.00s
+
+[28/38] Evaluating CnB - TRAN THI QUYNH HUNG.json...
+
+[29/38] Evaluating CnB - TRAN THI TUYET TRINH.json...
+
+[30/38] Evaluating CnB - Thai Thanh Giang.json...
+
+[31/38] Evaluating CnB - Thai Thi Ny Na.json...
+
+[32/38] Evaluating CnB - Tran Ngo Minh The.json...
+
+[33/38] Evaluating CnB - Tran Ngoc Thien Trang.json...
+
+[34/38] Evaluating CnB - Tran Nu Thanh Danh.json...
+
+[35/38] Evaluating CnB - VO THI HONG TUYET.json...
+
+[36/38] Evaluating CnB - Vo Thu Kien Tran - 20241031.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - TRAN THI TUYET TRINH] HR Requirement Categorization took: 0.00s[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - THÁI KIM HOÀNG] HR Requirement Categorization took: 0.00s
+
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+
+[37/38] Evaluating CnB - VÕ THỊ PHƯƠNG KHÁNH.json...
+[Timing Log] [CnB - Thai Thanh Giang] HR Requirement Categorization took: 0.00s[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Thai Thi Ny Na] HR Requirement Categorization took: 0.00s
+
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Tran Nu Thanh Danh] HR Requirement Categorization took: 0.00s
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - TRAN THI QUYNH HUNG] HR Requirement Categorization took: 0.00s
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Tran Ngoc Thien Trang] HR Requirement Categorization took: 0.00s
+[Timing Log] [CnB - Tran Ngo Minh The] HR Requirement Categorization took: 0.00s
+[38/38] Evaluating HR - Pham Thi Khanh Ly.json...
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - Vo Thu Kien Tran - 20241031] HR Requirement Categorization took: 0.01s
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [CnB - VO THI HONG TUYET] HR Requirement Categorization took: 0.01s
+[Timing Log] [CnB - VÕ THỊ PHƯƠNG KHÁNH] HR Requirement Categorization took: 0.00s
+[LocalRAG] Reusing persistent ChromaDB database (11 items in /home/slurmdang14/resume-scanning/rag/chroma_db). SKIPPING LLM requirement categorization step!
+[Timing Log] [HR - Pham Thi Khanh Ly] HR Requirement Categorization took: 0.00s
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - NGUYEN NGOC THANH TRANG] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - DOAN NGUYEN TRUONG GIANG] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Nguyen Thi Thu Lieu] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - TRAN THI TUYET TRINH] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Tran Nu Thanh Danh] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.01s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - PHAN THI THUY LIEU] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - PHAM THI TUYET MAI] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Nguyen Anh Thu] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - THÁI KIM HOÀNG] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - TRAN THI QUYNH HUNG] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - VO THI HONG TUYET] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Nguyen Thi Bich Phuong] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.01s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Thai Thi Ny Na] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Vo Thu Kien Tran - 20241031] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Nguyen Ho Mi Sa] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Nguyen Duc Nham] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.03s (Median Score: 0)[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+
+[Timing Log] [CnB - VÕ THỊ PHƯƠNG KHÁNH] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.01s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Nguyen Yen Minh] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Tran Ngoc Thien Trang] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.01s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - NGUYỄN LÊ MAI LINH] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Tran Ngo Minh The] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Nguyen Tram] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.02s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Pham Truong Hoai Tram] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.01s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Phung Thi Kim Chi] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.00s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - NGUYEN THANH TRUNG] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.01s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Nguyen Thuy] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.01s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [HR - Pham Thi Khanh Ly] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.01s (Median Score: 0)
+[Evaluation] Category 'HR Hidden Requirements & Culture Fit' has no criteria in RAG. Setting 0% weight (not applicable).
+[Timing Log] [CnB - Thai Thanh Giang] Category 'HR Hidden Requirements & Culture Fit' (hidden_culture) evaluation took: 0.01s (Median Score: 0)
+[W1006 16:27:15.995391819 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65011712 bytes (free: 23789568, total: 101973950464).
+[W1006 16:27:15.047746594 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 56623104 bytes (free: 40566784, total: 101973950464).
+[W1006 16:27:15.053117498 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 56623104 bytes (free: 13303808, total: 101973950464).
+[W1006 16:27:15.053483843 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 56623104 bytes (free: 13303808, total: 101973950464).
+[W1006 16:27:15.126377279 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 44040192 bytes (free: 4915200, total: 101973950464).
+[W1006 16:27:15.126899375 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 44040192 bytes (free: 4915200, total: 101973950464).
+[W1006 16:27:16.498920996 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 60817408 bytes (free: 4915200, total: 101973950464).
+[W1006 16:27:16.554022945 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 60817408 bytes (free: 9109504, total: 101973950464).
+[W1006 16:27:16.555762831 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 50331648 bytes (free: 9109504, total: 101973950464).
+[W1006 16:27:16.556190316 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 50331648 bytes (free: 9109504, total: 101973950464).
+[W1006 16:27:16.559658752 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 37748736 bytes (free: 9109504, total: 101973950464).
+[W1006 16:27:16.560074330 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 37748736 bytes (free: 9109504, total: 101973950464).
+[W1006 16:27:16.561362395 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 31457280 bytes (free: 9109504, total: 101973950464).
+[W1006 16:27:16.561724643 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 31457280 bytes (free: 9109504, total: 101973950464).
+[W1006 16:27:16.566278412 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 2097152 bytes (free: 2818048, total: 101973950464).
+[W1006 16:27:16.566615584 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 2097152 bytes (free: 2818048, total: 101973950464).
+[W1006 16:27:16.570339429 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 2097152 bytes (free: 2818048, total: 101973950464).
+[W1006 16:27:16.581119915 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 46137344 bytes (free: 32178176, total: 101973950464).
+[W1006 16:27:16.595010853 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65011712 bytes (free: 13303808, total: 101973950464).
+[W1006 16:27:16.603901519 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 65011712 bytes (free: 46858240, total: 101973950464).
+[LocalRAG Warning] ChromaDB vector retrieval failed (CUDA out of memory. Tried to allocate 54.00 MiB. GPU 0 has a total capacity of 94.97 GiB of which 12.69 MiB is free. Process 2836216 has 82.03 GiB memory in use. Including non-PyTorch memory, this process has 12.93 GiB memory in use. Of the allocated memory 10.22 GiB is allocated by PyTorch, and 898.36 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)). Falling back to in-memory store.
+[LocalRAG Warning] ChromaDB vector retrieval failed (CUDA out of memory. Tried to allocate 30.00 MiB. GPU 0 has a total capacity of 94.97 GiB of which 8.69 MiB is free. Process 2836216 has 82.03 GiB memory in use. Including non-PyTorch memory, this process has 12.93 GiB memory in use. Of the allocated memory 10.70 GiB is allocated by PyTorch, and 409.71 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)). Falling back to in-memory store.
+[LocalRAG Warning] ChromaDB vector retrieval failed (CUDA out of memory. Tried to allocate 36.00 MiB. GPU 0 has a total capacity of 94.97 GiB of which 8.69 MiB is free. Process 2836216 has 82.03 GiB memory in use. Including non-PyTorch memory, this process has 12.93 GiB memory in use. Of the allocated memory 10.71 GiB is allocated by PyTorch, and 397.17 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)). Falling back to in-memory store.
+[LocalRAG Warning] ChromaDB vector retrieval failed (CUDA out of memory. Tried to allocate 42.00 MiB. GPU 0 has a total capacity of 94.97 GiB of which 4.69 MiB is free. Process 2836216 has 82.03 GiB memory in use. Including non-PyTorch memory, this process has 12.94 GiB memory in use. Of the allocated memory 10.14 GiB is allocated by PyTorch, and 984.81 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)). Falling back to in-memory store.
+[LocalRAG Warning] ChromaDB vector retrieval failed (CUDA out of memory. Tried to allocate 58.00 MiB. GPU 0 has a total capacity of 94.97 GiB of which 8.69 MiB is free. Process 2836216 has 82.03 GiB memory in use. Including non-PyTorch memory, this process has 12.93 GiB memory in use. Of the allocated memory 10.50 GiB is allocated by PyTorch, and 612.02 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)). Falling back to in-memory store.
+[LocalRAG Warning] ChromaDB vector retrieval failed (CUDA error: CUBLAS_STATUS_ALLOC_FAILED when calling `cublasCreate(handle)`). Falling back to in-memory store.
+[LocalRAG Warning] ChromaDB vector retrieval failed (CUDA out of memory. Tried to allocate 2.00 MiB. GPU 0 has a total capacity of 94.97 GiB of which 2.69 MiB is free. Process 2836216 has 82.03 GiB memory in use. Including non-PyTorch memory, this process has 12.94 GiB memory in use. Of the allocated memory 10.30 GiB is allocated by PyTorch, and 824.25 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)). Falling back to in-memory store.
+[LocalRAG Warning] ChromaDB vector retrieval failed (CUDA out of memory. Tried to allocate 48.00 MiB. GPU 0 has a total capacity of 94.97 GiB of which 8.69 MiB is free. Process 2836216 has 82.03 GiB memory in use. Including non-PyTorch memory, this process has 12.93 GiB memory in use. Of the allocated memory 10.49 GiB is allocated by PyTorch, and 620.42 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)). Falling back to in-memory store.
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_NGOC_THANH_TRANG/education_certifications/1.txt
+[Timing Log] [CnB - NGUYEN NGOC THANH TRANG] Category 'Education & Certifications' (education_certifications) evaluation took: 39.43s (Median Score: 0)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_HUYNH_NGOC_CHAU/education_certifications/1.txt
+[Timing Log] [CnB - HUYNH NGOC CHAU] Category 'Education & Certifications' (education_certifications) evaluation took: 39.71s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Thu_Lieu/education_certifications/1.txt
+[Timing Log] [CnB - Nguyen Thi Thu Lieu] Category 'Education & Certifications' (education_certifications) evaluation took: 41.40s (Median Score: 0)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Hoang_Tan_Tai/education_certifications/1.txt
+[Timing Log] [CnB - Hoang Tan Tai] Category 'Education & Certifications' (education_certifications) evaluation took: 43.68s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_TUYET_TRINH/education_certifications/1.txt
+[Timing Log] [CnB - TRAN THI TUYET TRINH] Category 'Education & Certifications' (education_certifications) evaluation took: 45.05s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Dang_Thai_Hai_Tram/education_certifications/1.txt
+[Timing Log] [CnB - Dang Thai Hai Tram] Category 'Education & Certifications' (education_certifications) evaluation took: 45.85s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAM_THI_TUYET_MAI/education_certifications/1.txt
+[Timing Log] [CnB - PHAM THI TUYET MAI] Category 'Education & Certifications' (education_certifications) evaluation took: 46.97s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_DOAN_NGUYEN_TRUONG_GIANG/education_certifications/1.txt
+[Timing Log] [CnB - DOAN NGUYEN TRUONG GIANG] Category 'Education & Certifications' (education_certifications) evaluation took: 47.32s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_LE_THI_BICH_PHUONG/education_certifications/1.txt
+[Timing Log] [CnB - LE THI BICH PHUONG] Category 'Education & Certifications' (education_certifications) evaluation took: 47.82s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/education_certifications/1.txt
+[Timing Log] [CnB - BUI THI VAN ANH] Category 'Education & Certifications' (education_certifications) evaluation took: 49.43s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Do_Thi_Minh_Thu/education_certifications/1.txt
+[Timing Log] [CnB - Do Thi Minh Thu] Category 'Education & Certifications' (education_certifications) evaluation took: 49.50s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_QUYNH_HUNG/seniority_title/1.txt
+[Timing Log] [CnB - TRAN THI QUYNH HUNG] Category 'Position & Seniority Match' (seniority_title) evaluation took: 50.33s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Thanh_Tuyen/education_certifications/1.txt
+[Timing Log] [CnB - Bui Thi Thanh Tuyen] Category 'Education & Certifications' (education_certifications) evaluation took: 50.96s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Xuan_Hoa/education_certifications/1.txt
+[Timing Log] [CnB - Bui Thi Xuan Hoa] Category 'Education & Certifications' (education_certifications) evaluation took: 51.81s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Nu_Thanh_Danh/education_certifications/1.txt
+[Timing Log] [CnB - Tran Nu Thanh Danh] Category 'Education & Certifications' (education_certifications) evaluation took: 52.15s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Bich_Phuong/education_certifications/1.txt
+[Timing Log] [CnB - Nguyen Thi Bich Phuong] Category 'Education & Certifications' (education_certifications) evaluation took: 52.30s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_VO_THI_HONG_TUYET/education_certifications/1.txt
+[Timing Log] [CnB - VO THI HONG TUYET] Category 'Education & Certifications' (education_certifications) evaluation took: 53.52s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAN_THI_THUY_LIEU/education_certifications/1.txt
+[Timing Log] [CnB - PHAN THI THUY LIEU] Category 'Education & Certifications' (education_certifications) evaluation took: 53.96s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Doan_Thi_Anh_Tuyet/education_certifications/1.txt
+[Timing Log] [CnB - Doan Thi Anh Tuyet] Category 'Education & Certifications' (education_certifications) evaluation took: 54.83s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Le_Ba_Thuy_Hang/education_certifications/1.txt
+[Timing Log] [CnB - Le Ba Thuy Hang] Category 'Education & Certifications' (education_certifications) evaluation took: 57.49s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_HUYNH_NGOC_CHAU/seniority_title/1.txt
+[Timing Log] [CnB - HUYNH NGOC CHAU] Category 'Position & Seniority Match' (seniority_title) evaluation took: 58.05s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Thanh_Tuyen/seniority_title/1.txt
+[Timing Log] [CnB - Bui Thi Thanh Tuyen] Category 'Position & Seniority Match' (seniority_title) evaluation took: 59.42s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Dang_Thai_Hai_Tram/seniority_title/1.txt
+[Timing Log] [CnB - Dang Thai Hai Tram] Category 'Position & Seniority Match' (seniority_title) evaluation took: 60.00s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Thu_Lieu/seniority_title/1.txt
+[Timing Log] [CnB - Nguyen Thi Thu Lieu] Category 'Position & Seniority Match' (seniority_title) evaluation took: 59.94s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Thu_Lieu/work_experience/1.txt
+[Timing Log] [CnB - Nguyen Thi Thu Lieu] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 60.72s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Nu_Thanh_Danh/seniority_title/1.txt
+[Timing Log] [CnB - Tran Nu Thanh Danh] Category 'Position & Seniority Match' (seniority_title) evaluation took: 62.19s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Nu_Thanh_Danh/work_experience/1.txt
+[Timing Log] [CnB - Tran Nu Thanh Danh] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 63.35s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_HUYNH_NGOC_CHAU/work_experience/1.txt
+[Timing Log] [CnB - HUYNH NGOC CHAU] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 64.04s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Thanh_Tuyen/work_experience/1.txt
+[Timing Log] [CnB - Bui Thi Thanh Tuyen] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 65.44s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAN_THI_THUY_LIEU/seniority_title/1.txt
+[Timing Log] [CnB - PHAN THI THUY LIEU] Category 'Position & Seniority Match' (seniority_title) evaluation took: 65.32s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Hoang_Tan_Tai/work_experience/1.txt
+[Timing Log] [CnB - Hoang Tan Tai] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 66.07s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Xuan_Hoa/seniority_title/1.txt
+[Timing Log] [CnB - Bui Thi Xuan Hoa] Category 'Position & Seniority Match' (seniority_title) evaluation took: 66.43s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAM_THI_TUYET_MAI/seniority_title/1.txt
+[Timing Log] [CnB - PHAM THI TUYET MAI] Category 'Position & Seniority Match' (seniority_title) evaluation took: 66.56s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Doan_Thi_Anh_Tuyet/seniority_title/1.txt
+[Timing Log] [CnB - Doan Thi Anh Tuyet] Category 'Position & Seniority Match' (seniority_title) evaluation took: 67.33s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAM_THI_TUYET_MAI/work_experience/1.txt
+[Timing Log] [CnB - PHAM THI TUYET MAI] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 67.58s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_TUYET_TRINH/work_experience/1.txt
+[Timing Log] [CnB - TRAN THI TUYET TRINH] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 68.15s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Le_Ba_Thuy_Hang/work_experience/1.txt
+[Timing Log] [CnB - Le Ba Thuy Hang] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 70.27s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Do_Thi_Minh_Thu/work_experience/1.txt
+[Timing Log] [CnB - Do Thi Minh Thu] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 70.94s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Xuan_Hoa/work_experience/1.txt
+[Timing Log] [CnB - Bui Thi Xuan Hoa] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 71.37s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_VO_THI_HONG_TUYET/technical_skills/1.txt
+[Timing Log] [CnB - VO THI HONG TUYET] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 71.36s (Median Score: 0)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_TUYET_TRINH/seniority_title/1.txt
+[Timing Log] [CnB - TRAN THI TUYET TRINH] Category 'Position & Seniority Match' (seniority_title) evaluation took: 71.84s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_LE_THI_BICH_PHUONG/seniority_title/1.txt
+[Timing Log] [CnB - LE THI BICH PHUONG] Category 'Position & Seniority Match' (seniority_title) evaluation took: 72.26s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Hoang_Tan_Tai/seniority_title/1.txt
+[Timing Log] [CnB - Hoang Tan Tai] Category 'Position & Seniority Match' (seniority_title) evaluation took: 73.23s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_QUYNH_HUNG/technical_skills/1.txt
+[Timing Log] [CnB - TRAN THI QUYNH HUNG] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 73.29s (Median Score: 17)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Le_Ba_Thuy_Hang/seniority_title/1.txt
+[Timing Log] [CnB - Le Ba Thuy Hang] Category 'Position & Seniority Match' (seniority_title) evaluation took: 73.66s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Dang_Thai_Hai_Tram/work_experience/1.txt
+[Timing Log] [CnB - Dang Thai Hai Tram] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 74.86s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_DOAN_NGUYEN_TRUONG_GIANG/seniority_title/1.txt
+[Timing Log] [CnB - DOAN NGUYEN TRUONG GIANG] Category 'Position & Seniority Match' (seniority_title) evaluation took: 74.71s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_LE_THI_BICH_PHUONG/work_experience/1.txt
+[Timing Log] [CnB - LE THI BICH PHUONG] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 75.27s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/work_experience/1.txt
+[Timing Log] [CnB - BUI THI VAN ANH] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 76.53s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_DOAN_NGUYEN_TRUONG_GIANG/work_experience/1.txt
+[Timing Log] [CnB - DOAN NGUYEN TRUONG GIANG] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 76.43s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Doan_Thi_Anh_Tuyet/work_experience/1.txt
+[Timing Log] [CnB - Doan Thi Anh Tuyet] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 76.86s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TH_I_KIM_HO_NG/education_certifications/1.txt
+[Timing Log] [CnB - THÁI KIM HOÀNG] Category 'Education & Certifications' (education_certifications) evaluation took: 78.06s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Do_Thi_Minh_Thu/seniority_title/1.txt
+[Timing Log] [CnB - Do Thi Minh Thu] Category 'Position & Seniority Match' (seniority_title) evaluation took: 78.88s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Anh_Thu/work_experience/1.txt
+[Timing Log] [CnB - Nguyen Anh Thu] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 78.57s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAM_THI_TUYET_MAI/technical_skills/1.txt
+[Timing Log] [CnB - PHAM THI TUYET MAI] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 79.23s (Median Score: 33)
+[Timing Log] [CnB - PHAM THI TUYET MAI] Total Resume Evaluation Completed in: 79.43s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Dang_Thai_Hai_Tram/technical_skills/1.txt
+[Timing Log] [CnB - Dang Thai Hai Tram] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 79.94s (Median Score: 25)
+[Timing Log] [CnB - Dang Thai Hai Tram] Total Resume Evaluation Completed in: 80.06s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Xuan_Hoa/technical_skills/1.txt
+[Timing Log] [CnB - Bui Thi Xuan Hoa] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 83.92s (Median Score: 25)
+[Timing Log] [CnB - Bui Thi Xuan Hoa] Total Resume Evaluation Completed in: 83.94s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Yen_Minh/education_certifications/1.txt
+[Timing Log] [CnB - Nguyen Yen Minh] Category 'Education & Certifications' (education_certifications) evaluation took: 85.29s (Median Score: 0)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_NGOC_THANH_TRANG/technical_skills/1.txt
+[Timing Log] [CnB - NGUYEN NGOC THANH TRANG] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 88.65s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Nu_Thanh_Danh/technical_skills/1.txt
+[Timing Log] [CnB - Tran Nu Thanh Danh] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 88.62s (Median Score: 50)
+[Timing Log] [CnB - Tran Nu Thanh Danh] Total Resume Evaluation Completed in: 88.74s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Anh_Thu/education_certifications/1.txt
+[Timing Log] [CnB - Nguyen Anh Thu] Category 'Education & Certifications' (education_certifications) evaluation took: 90.26s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Do_Thi_Minh_Thu/technical_skills/1.txt
+[Timing Log] [CnB - Do Thi Minh Thu] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 90.98s (Median Score: 92)
+[Timing Log] [CnB - Do Thi Minh Thu] Total Resume Evaluation Completed in: 91.04s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Thu_Lieu/technical_skills/1.txt
+[Timing Log] [CnB - Nguyen Thi Thu Lieu] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 91.24s (Median Score: 58)
+[Timing Log] [CnB - Nguyen Thi Thu Lieu] Total Resume Evaluation Completed in: 91.35s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thi_Ny_Na/seniority_title/1.txt
+[Timing Log] [CnB - Thai Thi Ny Na] Category 'Position & Seniority Match' (seniority_title) evaluation took: 91.97s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Doan_Thi_Anh_Tuyet/technical_skills/1.txt
+[Timing Log] [CnB - Doan Thi Anh Tuyet] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 92.98s (Median Score: 75)
+[Timing Log] [CnB - Doan Thi Anh Tuyet] Total Resume Evaluation Completed in: 93.13s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Le_Ba_Thuy_Hang/technical_skills/1.txt
+[Timing Log] [CnB - Le Ba Thuy Hang] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 95.29s (Median Score: 67)
+[Timing Log] [CnB - Le Ba Thuy Hang] Total Resume Evaluation Completed in: 95.32s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Hoang_Tan_Tai/technical_skills/1.txt
+[Timing Log] [CnB - Hoang Tan Tai] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 95.62s (Median Score: 58)
+[Timing Log] [CnB - Hoang Tan Tai] Total Resume Evaluation Completed in: 95.64s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_VO_THI_HONG_TUYET/work_experience/1.txt
+[Timing Log] [CnB - VO THI HONG TUYET] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 95.56s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Thanh_Tuyen/technical_skills/1.txt[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_V__TH__PH__NG_KH_NH/education_certifications/1.txt
+
+[Timing Log] [CnB - Bui Thi Thanh Tuyen] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 96.66s (Median Score: 75)
+[Timing Log] [CnB - VÕ THỊ PHƯƠNG KHÁNH] Category 'Education & Certifications' (education_certifications) evaluation took: 96.07s (Median Score: 0)
+[Timing Log] [CnB - Bui Thi Thanh Tuyen] Total Resume Evaluation Completed in: 96.75s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAN_THI_THUY_LIEU/technical_skills/1.txt
+[Timing Log] [CnB - PHAN THI THUY LIEU] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 96.80s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_QUYNH_HUNG/work_experience/1.txt
+[Timing Log] [CnB - TRAN THI QUYNH HUNG] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 97.25s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_LE_THI_BICH_PHUONG/technical_skills/1.txt
+[Timing Log] [CnB - LE THI BICH PHUONG] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 97.70s (Median Score: 83)
+[Timing Log] [CnB - LE THI BICH PHUONG] Total Resume Evaluation Completed in: 97.79s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thi_Ny_Na/education_certifications/1.txt
+[Timing Log] [CnB - Thai Thi Ny Na] Category 'Education & Certifications' (education_certifications) evaluation took: 97.48s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_VO_THI_HONG_TUYET/seniority_title/1.txt
+[Timing Log] [CnB - VO THI HONG TUYET] Category 'Position & Seniority Match' (seniority_title) evaluation took: 98.59s (Median Score: 25)
+[Timing Log] [CnB - VO THI HONG TUYET] Total Resume Evaluation Completed in: 98.84s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_HUYNH_NGOC_CHAU/technical_skills/1.txt
+[Timing Log] [CnB - HUYNH NGOC CHAU] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 99.94s (Median Score: 83)
+[Timing Log] [CnB - HUYNH NGOC CHAU] Total Resume Evaluation Completed in: 99.97s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Bich_Phuong/work_experience/1.txt
+[Timing Log] [CnB - Nguyen Thi Bich Phuong] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 99.50s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TH_I_KIM_HO_NG/work_experience/1.txt
+[Timing Log] [CnB - THÁI KIM HOÀNG] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 101.12s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAN_THI_THUY_LIEU/work_experience/1.txt
+[Timing Log] [CnB - PHAN THI THUY LIEU] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 102.22s (Median Score: 25)
+[Timing Log] [CnB - PHAN THI THUY LIEU] Total Resume Evaluation Completed in: 102.39s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thi_Ny_Na/work_experience/1.txt
+[Timing Log] [CnB - Thai Thi Ny Na] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 104.29s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngoc_Thien_Trang/education_certifications/1.txt
+[Timing Log] [CnB - Tran Ngoc Thien Trang] Category 'Education & Certifications' (education_certifications) evaluation took: 104.73s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Vo_Thu_Kien_Tran_-_20241031/seniority_title/1.txt
+[Timing Log] [CnB - Vo Thu Kien Tran - 20241031] Category 'Position & Seniority Match' (seniority_title) evaluation took: 106.38s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Vo_Thu_Kien_Tran_-_20241031/work_experience/1.txt
+[Timing Log] [CnB - Vo Thu Kien Tran - 20241031] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 107.24s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Ho_Mi_Sa/education_certifications/1.txt
+[Timing Log] [CnB - Nguyen Ho Mi Sa] Category 'Education & Certifications' (education_certifications) evaluation took: 107.40s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Bich_Phuong/seniority_title/1.txt
+[Timing Log] [CnB - Nguyen Thi Bich Phuong] Category 'Position & Seniority Match' (seniority_title) evaluation took: 107.71s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Vo_Thu_Kien_Tran_-_20241031/education_certifications/1.txt
+[Timing Log] [CnB - Vo Thu Kien Tran - 20241031] Category 'Education & Certifications' (education_certifications) evaluation took: 107.98s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TH_I_KIM_HO_NG/seniority_title/1.txt
+[Timing Log] [CnB - THÁI KIM HOÀNG] Category 'Position & Seniority Match' (seniority_title) evaluation took: 109.25s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/education_certifications/1.txt
+[Timing Log] [CnB - Tran Ngo Minh The] Category 'Education & Certifications' (education_certifications) evaluation took: 111.83s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/technical_skills/1.txt
+[Timing Log] [CnB - BUI THI VAN ANH] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 113.30s (Median Score: 92)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUY_N_L__MAI_LINH/education_certifications/1.txt
+[Timing Log] [CnB - NGUYỄN LÊ MAI LINH] Category 'Education & Certifications' (education_certifications) evaluation took: 114.11s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_DOAN_NGUYEN_TRUONG_GIANG/technical_skills/1.txt
+[Timing Log] [CnB - DOAN NGUYEN TRUONG GIANG] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 115.18s (Median Score: 67)
+[Timing Log] [CnB - DOAN NGUYEN TRUONG GIANG] Total Resume Evaluation Completed in: 115.46s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Yen_Minh/work_experience/1.txt
+[Timing Log] [CnB - Nguyen Yen Minh] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 116.64s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Duc_Nham/education_certifications/1.txt
+[Timing Log] [CnB - Nguyen Duc Nham] Category 'Education & Certifications' (education_certifications) evaluation took: 118.00s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_V__TH__PH__NG_KH_NH/work_experience/1.txt
+[Timing Log] [CnB - VÕ THỊ PHƯƠNG KHÁNH] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 118.89s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_V__TH__PH__NG_KH_NH/seniority_title/1.txt
+[Timing Log] [CnB - VÕ THỊ PHƯƠNG KHÁNH] Category 'Position & Seniority Match' (seniority_title) evaluation took: 121.72s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngoc_Thien_Trang/seniority_title/1.txt
+[Timing Log] [CnB - Tran Ngoc Thien Trang] Category 'Position & Seniority Match' (seniority_title) evaluation took: 122.90s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Anh_Thu/seniority_title/1.txt
+[Timing Log] [CnB - Nguyen Anh Thu] Category 'Position & Seniority Match' (seniority_title) evaluation took: 124.65s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Bich_Phuong/technical_skills/1.txt
+[Timing Log] [CnB - Nguyen Thi Bich Phuong] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 124.64s (Median Score: 17)
+[Timing Log] [CnB - Nguyen Thi Bich Phuong] Total Resume Evaluation Completed in: 124.96s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_THANH_TRUNG/education_certifications/1.txt
+[Timing Log] [CnB - NGUYEN THANH TRUNG] Category 'Education & Certifications' (education_certifications) evaluation took: 126.69s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Ho_Mi_Sa/seniority_title/1.txt
+[Timing Log] [CnB - Nguyen Ho Mi Sa] Category 'Position & Seniority Match' (seniority_title) evaluation took: 129.14s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Duc_Nham/seniority_title/1.txt
+[Timing Log] [CnB - Nguyen Duc Nham] Category 'Position & Seniority Match' (seniority_title) evaluation took: 131.78s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_THANH_TRUNG/work_experience/1.txt
+[Timing Log] [CnB - NGUYEN THANH TRUNG] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 133.05s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/HR_-_Pham_Thi_Khanh_Ly/education_certifications/1.txt
+[Timing Log] [HR - Pham Thi Khanh Ly] Category 'Education & Certifications' (education_certifications) evaluation took: 135.40s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thi_Ny_Na/technical_skills/1.txt
+[Timing Log] [CnB - Thai Thi Ny Na] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 137.21s (Median Score: 67)
+[Timing Log] [CnB - Thai Thi Ny Na] Total Resume Evaluation Completed in: 137.52s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Anh_Thu/technical_skills/1.txt
+[Timing Log] [CnB - Nguyen Anh Thu] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 137.42s (Median Score: 42)
+[Timing Log] [CnB - Nguyen Anh Thu] Total Resume Evaluation Completed in: 137.65s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thuy/education_certifications/1.txt
+[Timing Log] [CnB - Nguyen Thuy] Category 'Education & Certifications' (education_certifications) evaluation took: 139.80s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUY_N_L__MAI_LINH/work_experience/1.txt
+[Timing Log] [CnB - NGUYỄN LÊ MAI LINH] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 142.21s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Pham_Truong_Hoai_Tram/seniority_title/1.txt
+[Timing Log] [CnB - Pham Truong Hoai Tram] Category 'Position & Seniority Match' (seniority_title) evaluation took: 143.53s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_TUYET_TRINH/technical_skills/1.txt
+[Timing Log] [CnB - TRAN THI TUYET TRINH] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 145.30s (Median Score: 67)
+[Timing Log] [CnB - TRAN THI TUYET TRINH] Total Resume Evaluation Completed in: 145.41s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Phung_Thi_Kim_Chi/education_certifications/1.txt
+[Timing Log] [CnB - Phung Thi Kim Chi] Category 'Education & Certifications' (education_certifications) evaluation took: 146.14s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_V__TH__PH__NG_KH_NH/technical_skills/1.txt
+[Timing Log] [CnB - VÕ THỊ PHƯƠNG KHÁNH] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 147.53s (Median Score: 58)
+[Timing Log] [CnB - VÕ THỊ PHƯƠNG KHÁNH] Total Resume Evaluation Completed in: 147.96s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Duc_Nham/work_experience/1.txt
+[Timing Log] [CnB - Nguyen Duc Nham] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 147.60s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TH_I_KIM_HO_NG/technical_skills/1.txt
+[Timing Log] [CnB - THÁI KIM HOÀNG] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 150.57s (Median Score: 92)
+[Timing Log] [CnB - THÁI KIM HOÀNG] Total Resume Evaluation Completed in: 150.79s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Pham_Truong_Hoai_Tram/education_certifications/1.txt
+[Timing Log] [CnB - Pham Truong Hoai Tram] Category 'Education & Certifications' (education_certifications) evaluation took: 151.34s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Yen_Minh/seniority_title/1.txt
+[Timing Log] [CnB - Nguyen Yen Minh] Category 'Position & Seniority Match' (seniority_title) evaluation took: 154.04s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUY_N_L__MAI_LINH/seniority_title/1.txt
+[Timing Log] [CnB - NGUYỄN LÊ MAI LINH] Category 'Position & Seniority Match' (seniority_title) evaluation took: 154.08s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Tram/education_certifications/1.txt
+[Timing Log] [CnB - Nguyen Tram] Category 'Education & Certifications' (education_certifications) evaluation took: 156.55s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Tram/work_experience/1.txt
+[Timing Log] [CnB - Nguyen Tram] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 156.67s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thanh_Giang/education_certifications/1.txt
+[Timing Log] [CnB - Thai Thanh Giang] Category 'Education & Certifications' (education_certifications) evaluation took: 156.73s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Duc_Nham/technical_skills/1.txt
+[Timing Log] [CnB - Nguyen Duc Nham] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 158.36s (Median Score: 17)
+[Timing Log] [CnB - Nguyen Duc Nham] Total Resume Evaluation Completed in: 158.80s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_QUYNH_HUNG/education_certifications/1.txt
+[Timing Log] [CnB - TRAN THI QUYNH HUNG] Category 'Education & Certifications' (education_certifications) evaluation took: 162.32s (Median Score: 100)
+[Timing Log] [CnB - TRAN THI QUYNH HUNG] Total Resume Evaluation Completed in: 162.57s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngoc_Thien_Trang/work_experience/1.txt
+[Timing Log] [CnB - Tran Ngoc Thien Trang] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 164.82s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Ho_Mi_Sa/technical_skills/1.txt
+[Timing Log] [CnB - Nguyen Ho Mi Sa] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 165.31s (Median Score: 58)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/work_experience/1.txt
+[Timing Log] [CnB - Tran Ngo Minh The] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 166.47s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Tram/seniority_title/1.txt
+[Timing Log] [CnB - Nguyen Tram] Category 'Position & Seniority Match' (seniority_title) evaluation took: 169.14s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/HR_-_Pham_Thi_Khanh_Ly/work_experience/1.txt
+[Timing Log] [HR - Pham Thi Khanh Ly] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 170.07s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thuy/seniority_title/1.txt
+[Timing Log] [CnB - Nguyen Thuy] Category 'Position & Seniority Match' (seniority_title) evaluation took: 171.53s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUY_N_L__MAI_LINH/technical_skills/1.txt
+[Timing Log] [CnB - NGUYỄN LÊ MAI LINH] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 176.86s (Median Score: 92)
+[Timing Log] [CnB - NGUYỄN LÊ MAI LINH] Total Resume Evaluation Completed in: 177.48s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngoc_Thien_Trang/technical_skills/1.txt
+[Timing Log] [CnB - Tran Ngoc Thien Trang] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 177.08s (Median Score: 58)
+[Timing Log] [CnB - Tran Ngoc Thien Trang] Total Resume Evaluation Completed in: 177.63s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Yen_Minh/technical_skills/1.txt
+[Timing Log] [CnB - Nguyen Yen Minh] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 178.51s (Median Score: 58)
+[Timing Log] [CnB - Nguyen Yen Minh] Total Resume Evaluation Completed in: 179.02s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Phung_Thi_Kim_Chi/work_experience/1.txt
+[Timing Log] [CnB - Phung Thi Kim Chi] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 178.73s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Pham_Truong_Hoai_Tram/work_experience/1.txt
+[Timing Log] [CnB - Pham Truong Hoai Tram] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 180.55s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/HR_-_Pham_Thi_Khanh_Ly/seniority_title/1.txt
+[Timing Log] [HR - Pham Thi Khanh Ly] Category 'Position & Seniority Match' (seniority_title) evaluation took: 181.77s (Median Score: 0)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Phung_Thi_Kim_Chi/technical_skills/1.txt
+[Timing Log] [CnB - Phung Thi Kim Chi] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 183.29s (Median Score: 42)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/technical_skills/1.txt
+[Timing Log] [CnB - Tran Ngo Minh The] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 183.53s (Median Score: 92)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Vo_Thu_Kien_Tran_-_20241031/technical_skills/1.txt
+[Timing Log] [CnB - Vo Thu Kien Tran - 20241031] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 185.26s (Median Score: 67)
+[Timing Log] [CnB - Vo Thu Kien Tran - 20241031] Total Resume Evaluation Completed in: 185.61s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_NGOC_THANH_TRANG/work_experience/1.txt
+[Timing Log] [CnB - NGUYEN NGOC THANH TRANG] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 187.73s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_NGOC_THANH_TRANG/seniority_title/1.txt
+[Timing Log] [CnB - NGUYEN NGOC THANH TRANG] Category 'Position & Seniority Match' (seniority_title) evaluation took: 187.82s (Median Score: 50)
+[Timing Log] [CnB - NGUYEN NGOC THANH TRANG] Total Resume Evaluation Completed in: 187.86s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_THANH_TRUNG/seniority_title/1.txt
+[Timing Log] [CnB - NGUYEN THANH TRUNG] Category 'Position & Seniority Match' (seniority_title) evaluation took: 188.65s (Median Score: 25)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Ho_Mi_Sa/work_experience/1.txt
+[Timing Log] [CnB - Nguyen Ho Mi Sa] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 190.20s (Median Score: 50)
+[Timing Log] [CnB - Nguyen Ho Mi Sa] Total Resume Evaluation Completed in: 190.62s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/seniority_title/1.txt
+[Timing Log] [CnB - Tran Ngo Minh The] Category 'Position & Seniority Match' (seniority_title) evaluation took: 191.80s (Median Score: 50)
+[Timing Log] [CnB - Tran Ngo Minh The] Total Resume Evaluation Completed in: 192.42s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Phung_Thi_Kim_Chi/seniority_title/1.txt
+[Timing Log] [CnB - Phung Thi Kim Chi] Category 'Position & Seniority Match' (seniority_title) evaluation took: 193.05s (Median Score: 25)
+[Timing Log] [CnB - Phung Thi Kim Chi] Total Resume Evaluation Completed in: 193.82s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Pham_Truong_Hoai_Tram/technical_skills/1.txt
+[Timing Log] [CnB - Pham Truong Hoai Tram] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 193.95s (Median Score: 75)
+[Timing Log] [CnB - Pham Truong Hoai Tram] Total Resume Evaluation Completed in: 194.68s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Tram/technical_skills/1.txt
+[Timing Log] [CnB - Nguyen Tram] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 197.88s (Median Score: 92)
+[Timing Log] [CnB - Nguyen Tram] Total Resume Evaluation Completed in: 198.57s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thuy/technical_skills/1.txt
+[Timing Log] [CnB - Nguyen Thuy] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 199.80s (Median Score: 50)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thanh_Giang/seniority_title/1.txt
+[Timing Log] [CnB - Thai Thanh Giang] Category 'Position & Seniority Match' (seniority_title) evaluation took: 205.61s (Median Score: 75)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thanh_Giang/work_experience/1.txt
+[Timing Log] [CnB - Thai Thanh Giang] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 208.17s (Median Score: 100)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thuy/work_experience/1.txt
+[Timing Log] [CnB - Nguyen Thuy] Category 'Work Experience & Project Relevance' (work_experience) evaluation took: 211.78s (Median Score: 50)
+[Timing Log] [CnB - Nguyen Thuy] Total Resume Evaluation Completed in: 212.69s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Dang_Thai_Hai_Tram/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAM_THI_TUYET_MAI/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Dang_Thai_Hai_Tram/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Nu_Thanh_Danh/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_THANH_TRUNG/technical_skills/1.txt
+[Timing Log] [CnB - NGUYEN THANH TRUNG] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 220.46s (Median Score: 83)
+[Timing Log] [CnB - NGUYEN THANH TRUNG] Total Resume Evaluation Completed in: 221.31s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAM_THI_TUYET_MAI/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAM_THI_TUYET_MAI/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Nu_Thanh_Danh/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Xuan_Hoa/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Xuan_Hoa/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/HR_-_Pham_Thi_Khanh_Ly/technical_skills/1.txt
+[Timing Log] [HR - Pham Thi Khanh Ly] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 232.77s (Median Score: 92)
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thanh_Giang/technical_skills/1.txt
+[Timing Log] [CnB - Thai Thanh Giang] Category 'Technical Skills & Competencies' (technical_skills) evaluation took: 232.73s (Median Score: 33)
+[Timing Log] [HR - Pham Thi Khanh Ly] Total Resume Evaluation Completed in: 233.68s
+[Timing Log] [CnB - Thai Thanh Giang] Total Resume Evaluation Completed in: 233.71s
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Thu_Lieu/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Do_Thi_Minh_Thu/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Thu_Lieu/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Hoang_Tan_Tai/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Xuan_Hoa/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Le_Ba_Thuy_Hang/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Thanh_Tuyen/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Thanh_Tuyen/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Thanh_Tuyen/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_VO_THI_HONG_TUYET/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Doan_Thi_Anh_Tuyet/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Dang_Thai_Hai_Tram/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_LE_THI_BICH_PHUONG/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_LE_THI_BICH_PHUONG/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Le_Ba_Thuy_Hang/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Hoang_Tan_Tai/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Le_Ba_Thuy_Hang/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Do_Thi_Minh_Thu/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Thu_Lieu/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Nu_Thanh_Danh/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Do_Thi_Minh_Thu/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_HUYNH_NGOC_CHAU/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Hoang_Tan_Tai/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAN_THI_THUY_LIEU/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Doan_Thi_Anh_Tuyet/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Doan_Thi_Anh_Tuyet/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_LE_THI_BICH_PHUONG/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_HUYNH_NGOC_CHAU/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAN_THI_THUY_LIEU/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_VO_THI_HONG_TUYET/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_HUYNH_NGOC_CHAU/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Bich_Phuong/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Bich_Phuong/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAN_THI_THUY_LIEU/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_VO_THI_HONG_TUYET/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Anh_Thu/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Bich_Phuong/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_DOAN_NGUYEN_TRUONG_GIANG/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thi_Ny_Na/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_DOAN_NGUYEN_TRUONG_GIANG/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thi_Ny_Na/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thi_Ny_Na/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_DOAN_NGUYEN_TRUONG_GIANG/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Anh_Thu/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_V__TH__PH__NG_KH_NH/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_TUYET_TRINH/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Anh_Thu/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_TUYET_TRINH/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_TUYET_TRINH/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_V__TH__PH__NG_KH_NH/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TH_I_KIM_HO_NG/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Duc_Nham/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TH_I_KIM_HO_NG/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Duc_Nham/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_QUYNH_HUNG/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Duc_Nham/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TH_I_KIM_HO_NG/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_QUYNH_HUNG/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUY_N_L__MAI_LINH/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_V__TH__PH__NG_KH_NH/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Vo_Thu_Kien_Tran_-_20241031/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUY_N_L__MAI_LINH/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngoc_Thien_Trang/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Yen_Minh/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_NGOC_THANH_TRANG/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Yen_Minh/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUY_N_L__MAI_LINH/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Vo_Thu_Kien_Tran_-_20241031/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Ho_Mi_Sa/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_NGOC_THANH_TRANG/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngoc_Thien_Trang/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Vo_Thu_Kien_Tran_-_20241031/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Phung_Thi_Kim_Chi/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Pham_Truong_Hoai_Tram/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Pham_Truong_Hoai_Tram/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Ho_Mi_Sa/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Tram/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Phung_Thi_Kim_Chi/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Pham_Truong_Hoai_Tram/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_NGOC_THANH_TRANG/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Phung_Thi_Kim_Chi/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Tram/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Yen_Minh/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAM_THI_TUYET_MAI/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Ho_Mi_Sa/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngoc_Thien_Trang/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Tram/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_QUYNH_HUNG/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_THANH_TRUNG/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAM_THI_TUYET_MAI/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thuy/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_THANH_TRUNG/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAM_THI_TUYET_MAI/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thuy/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Xuan_Hoa/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thanh_Giang/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thuy/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Dang_Thai_Hai_Tram/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/HR_-_Pham_Thi_Khanh_Ly/review_panel_domain_expertise/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thanh_Giang/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Xuan_Hoa/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Xuan_Hoa/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/HR_-_Pham_Thi_Khanh_Ly/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Thu_Lieu/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Thanh_Tuyen/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Thu_Lieu/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Thanh_Tuyen/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Thanh_Tuyen/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thanh_Giang/review_panel_leadership/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Le_Ba_Thuy_Hang/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Dang_Thai_Hai_Tram/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Dang_Thai_Hai_Tram/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Nu_Thanh_Danh/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Thu_Lieu/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Nu_Thanh_Danh/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_THANH_TRUNG/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Le_Ba_Thuy_Hang/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Le_Ba_Thuy_Hang/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/HR_-_Pham_Thi_Khanh_Ly/review_panel_people_culture/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAN_THI_THUY_LIEU/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_HUYNH_NGOC_CHAU/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Hoang_Tan_Tai/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_LE_THI_BICH_PHUONG/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Do_Thi_Minh_Thu/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Nu_Thanh_Danh/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Hoang_Tan_Tai/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Doan_Thi_Anh_Tuyet/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_LE_THI_BICH_PHUONG/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Hoang_Tan_Tai/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Do_Thi_Minh_Thu/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Doan_Thi_Anh_Tuyet/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_HUYNH_NGOC_CHAU/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Doan_Thi_Anh_Tuyet/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Do_Thi_Minh_Thu/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAN_THI_THUY_LIEU/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_LE_THI_BICH_PHUONG/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_HUYNH_NGOC_CHAU/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_VO_THI_HONG_TUYET/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_VO_THI_HONG_TUYET/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAN_THI_THUY_LIEU/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_VO_THI_HONG_TUYET/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Bich_Phuong/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thi_Ny_Na/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Anh_Thu/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Bich_Phuong/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_DOAN_NGUYEN_TRUONG_GIANG/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_V__TH__PH__NG_KH_NH/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Duc_Nham/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Duc_Nham/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TH_I_KIM_HO_NG/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TH_I_KIM_HO_NG/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Duc_Nham/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Vo_Thu_Kien_Tran_-_20241031/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_TUYET_TRINH/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_V__TH__PH__NG_KH_NH/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Bich_Phuong/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thi_Ny_Na/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Anh_Thu/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_TUYET_TRINH/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_TUYET_TRINH/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thi_Ny_Na/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_V__TH__PH__NG_KH_NH/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUY_N_L__MAI_LINH/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TH_I_KIM_HO_NG/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUY_N_L__MAI_LINH/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_DOAN_NGUYEN_TRUONG_GIANG/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_DOAN_NGUYEN_TRUONG_GIANG/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Anh_Thu/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUY_N_L__MAI_LINH/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Pham_Truong_Hoai_Tram/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Vo_Thu_Kien_Tran_-_20241031/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_NGOC_THANH_TRANG/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAM_THI_TUYET_MAI/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_PHAM_THI_TUYET_MAI_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - PHAM THI TUYET MAI_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Pham_Truong_Hoai_Tram/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_NGOC_THANH_TRANG/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Pham_Truong_Hoai_Tram/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Xuan_Hoa/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Bui_Thi_Xuan_Hoa_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Bui Thi Xuan Hoa_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_NGOC_THANH_TRANG/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Vo_Thu_Kien_Tran_-_20241031/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Dang_Thai_Hai_Tram/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Dang_Thai_Hai_Tram_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Dang Thai Hai Tram_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Bui_Thi_Thanh_Tuyen/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Bui_Thi_Thanh_Tuyen_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Bui Thi Thanh Tuyen_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Phung_Thi_Kim_Chi/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Phung_Thi_Kim_Chi/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Phung_Thi_Kim_Chi/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Thu_Lieu/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Nguyen_Thi_Thu_Lieu_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Nguyen Thi Thu Lieu_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Ho_Mi_Sa/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Yen_Minh/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Hoang_Tan_Tai/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Hoang_Tan_Tai_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Hoang Tan Tai_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Le_Ba_Thuy_Hang/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Le_Ba_Thuy_Hang_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Le Ba Thuy Hang_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Yen_Minh/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Doan_Thi_Anh_Tuyet/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Doan_Thi_Anh_Tuyet_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Doan Thi Anh Tuyet_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_PHAN_THI_THUY_LIEU/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_PHAN_THI_THUY_LIEU_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - PHAN THI THUY LIEU_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Yen_Minh/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Ho_Mi_Sa/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Duc_Nham/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Nguyen_Duc_Nham_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Nguyen Duc Nham_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Nu_Thanh_Danh/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Tran_Nu_Thanh_Danh_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Tran Nu Thanh Danh_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_VO_THI_HONG_TUYET/review_panel_coordinator/1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thi_Bich_Phuong/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_VO_THI_HONG_TUYET_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - VO THI HONG TUYET_evaluation.json
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Nguyen_Thi_Bich_Phuong_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Nguyen Thi Bich Phuong_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_QUYNH_HUNG/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_QUYNH_HUNG/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Do_Thi_Minh_Thu/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Do_Thi_Minh_Thu_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Do Thi Minh Thu_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thi_Ny_Na/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Thai_Thi_Ny_Na_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Thai Thi Ny Na_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_TUYET_TRINH/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_TRAN_THI_TUYET_TRINH_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - TRAN THI TUYET TRINH_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_HUYNH_NGOC_CHAU/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_HUYNH_NGOC_CHAU_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - HUYNH NGOC CHAU_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngoc_Thien_Trang/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Tram/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_LE_THI_BICH_PHUONG/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_LE_THI_BICH_PHUONG_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - LE THI BICH PHUONG_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TH_I_KIM_HO_NG/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_TH_I_KIM_HO_NG_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - THÁI KIM HOÀNG_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Anh_Thu/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Nguyen_Anh_Thu_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Nguyen Anh Thu_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_V__TH__PH__NG_KH_NH/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_V__TH__PH__NG_KH_NH_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - VÕ THỊ PHƯƠNG KHÁNH_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Tram/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_DOAN_NGUYEN_TRUONG_GIANG/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_DOAN_NGUYEN_TRUONG_GIANG_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - DOAN NGUYEN TRUONG GIANG_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngoc_Thien_Trang/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Tram/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_QUYNH_HUNG/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thanh_Giang/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_THANH_TRUNG/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngoc_Thien_Trang/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thuy/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thuy/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUY_N_L__MAI_LINH/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_NGUY_N_L__MAI_LINH_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - NGUYỄN LÊ MAI LINH_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Vo_Thu_Kien_Tran_-_20241031/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Vo_Thu_Kien_Tran_-_20241031_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Vo Thu Kien Tran - 20241031_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Ho_Mi_Sa/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thuy/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_NGOC_THANH_TRANG/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_NGUYEN_NGOC_THANH_TRANG_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - NGUYEN NGOC THANH TRANG_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thanh_Giang/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Phung_Thi_Kim_Chi/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Phung_Thi_Kim_Chi_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Phung Thi Kim Chi_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/HR_-_Pham_Thi_Khanh_Ly/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_THANH_TRUNG/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thanh_Giang/review_panel_domain_expertise/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Pham_Truong_Hoai_Tram/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Pham_Truong_Hoai_Tram_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Pham Truong Hoai Tram_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/HR_-_Pham_Thi_Khanh_Ly/review_panel_leadership/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_THANH_TRUNG/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Yen_Minh/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Nguyen_Yen_Minh_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Nguyen Yen Minh_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/HR_-_Pham_Thi_Khanh_Ly/review_panel_people_culture/2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Tram/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Nguyen_Tram_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Nguyen Tram_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngoc_Thien_Trang/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Tran_Ngoc_Thien_Trang_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Tran Ngoc Thien Trang_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_TRAN_THI_QUYNH_HUNG/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_TRAN_THI_QUYNH_HUNG_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - TRAN THI QUYNH HUNG_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Thuy/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Nguyen_Thuy_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Nguyen Thuy_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Nguyen_Ho_Mi_Sa/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Nguyen_Ho_Mi_Sa_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Nguyen Ho Mi Sa_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Thai_Thanh_Giang/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Thai_Thanh_Giang_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Thai Thanh Giang_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/HR_-_Pham_Thi_Khanh_Ly/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/HR_-_Pham_Thi_Khanh_Ly_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/HR - Pham Thi Khanh Ly_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_NGUYEN_THANH_TRUNG/review_panel_coordinator/1.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_NGUYEN_THANH_TRUNG_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - NGUYEN THANH TRUNG_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 1/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_1.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/review_panel_coordinator/1.txt
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_Tran_Ngo_Minh_The/review_panel_coordinator/1.txt
+[Review Panel] Attempt 1/2 for 'CnB - Tran Ngo Minh The' failed: ValueError: Coordinator output does not match the Candidate Feedback schema
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/review_panel_domain_expertise/3.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/review_panel_leadership/3.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/review_panel_people_culture/3.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/review_panel_people_culture/4.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/review_panel_leadership/4.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/review_panel_domain_expertise/4.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_Tran_Ngo_Minh_The/review_panel_coordinator/2.txt
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_Tran_Ngo_Minh_The_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - Tran Ngo Minh The_evaluation.json
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 2/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_2.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 3/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_3.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 4/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_4.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 5/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_5.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 6/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_6.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 7/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_7.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 8/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_8.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 9/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_9.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 10/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_10.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 11/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_11.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 12/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_12.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 13/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_13.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 14/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_14.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 15/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_15.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 16/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_16.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 17/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_17.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 18/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_18.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 19/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_19.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 20/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_20.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 21/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_21.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 22/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_22.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 23/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_23.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 24/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_24.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 25/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_25.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 26/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_26.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 27/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_27.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 28/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_28.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 29/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_29.txt
+[Logging] Saved model prompt context to /home/slurmdang14/resume-scanning/logging/CnB_-_BUI_THI_VAN_ANH/seniority_title/1.txt
+[Eval Retry] Attempt 30/30 for category 'seniority_title' failed. Retrying...
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_30.txt
+[FATAL] Category 'Position & Seniority Match' failed after 30 retries.
+[Broken JSON Logged] Saved invalid model output and prompt to /home/slurmdang14/resume-scanning/broken-json/CnB_-_BUI_THI_VAN_ANH/seniority_title/1_attempt_30.txt
+[Timing Log] [CnB - BUI THI VAN ANH] Category 'Position & Seniority Match' (seniority_title) evaluation took: 13146.05s (Median Score: 0)
+[FAILED EVALUATION] Evaluation failed in categories: [Position & Seniority Match] for resume 'CnB - BUI THI VAN ANH'. Failed categories zeroed; partial scores kept for debugging.
+[Timing Log] [CnB - BUI THI VAN ANH] Total Resume Evaluation Completed in: 13146.12s
+[Evaluation Complete] Report saved to /home/slurmdang14/resume-scanning/evaluation_json/CnB_-_BUI_THI_VAN_ANH_evaluation.json
+  Saved evaluation result to: /home/slurmdang14/resume-scanning/evaluation_json/CnB - BUI THI VAN ANH_evaluation.json
+
+Batch processing completed in 13146.21 seconds. Output folder: /home/slurmdang14/resume-scanning/evaluation_json
+[vLLM Helper] Cleaning up vLLM Server (PID: 2836103) and child workers...
+=====================================================================
+=== [2026-10-06 20:06:24] Combined Extract & Eval Job Finished Successfully ===
+=====================================================================

@@ -23,8 +23,8 @@ from src.providers.llm_backend import (
     run_local_inference,
     run_vllm_inference,
     run_mock_extraction,
-    vllm_discover_model,
 )
+from src.providers import vllm_client
 
 
 def clean_markdown_and_symbols(text: str) -> str:
@@ -102,7 +102,7 @@ def is_text_in_markdown(val: str, norm_markdown: str, words_markdown: str) -> bo
 def check_extracted_fields_in_markdown(extracted_dict: dict, markdown_content: str) -> list[str]:
     """
     Traverses extracted JSON and checks all text values against source markdown
-    (excluding 'skills_and_specialties' and 'warning' fields).
+    (excluding the 'warning' field).
     Returns a list of warning messages for missing extraction texts.
     """
     norm_markdown = clean_markdown_and_symbols(markdown_content)
@@ -112,7 +112,7 @@ def check_extracted_fields_in_markdown(extracted_dict: dict, markdown_content: s
     def traverse(obj, path: str):
         if isinstance(obj, dict):
             for key, val in obj.items():
-                if key in ("skills_and_specialties", "warning"):
+                if key == "warning":
                     continue
                 current_path = f"{path}.{key}" if path else key
                 traverse(val, current_path)
@@ -371,7 +371,7 @@ class ResumeExtractor:
         if not self.mock and self.backend == "transformers":
             self.model, self.tokenizer_or_processor = load_local_model(self.model_name or "Qwen/Qwen3.5-9B")
         elif self.backend == "vllm" and not self.model_name:
-            self.model_name = vllm_discover_model(self.vllm_url)
+            self.model_name = vllm_client.discover_model(self.vllm_url)
 
     def extract_single_pass(self, resume_text: str, pdf_path: str, language: str = "vietnamese", max_retries: int = 5) -> tuple[Optional[dict], str]:
         """Runs a single LLM extraction pass with retry logic for invalid JSON."""

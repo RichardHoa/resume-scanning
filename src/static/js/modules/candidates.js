@@ -10,10 +10,68 @@
 import { API } from './api.js';
 import { CATEGORY_NAMES } from './criteria-editor.js';
 
+const FAILED_EVALUATION_LABEL = 'Lỗi – cần chạy lại';
+const FEEDBACK_TITLE = 'Nhận xét của hội đồng đánh giá';
+const FEEDBACK_FAILED_LABEL = 'Không thể tạo nhận xét';
+
+// Review Panel Panelists, in display order (keys match candidate_feedback.panelist_views)
+const PANELIST_NAMES = {
+    leadership: 'Lãnh đạo',
+    domain_expertise: 'Chuyên môn',
+    people_culture: 'Con người & Văn hóa'
+};
+
+/**
+ * A Failed Evaluation (any Category failed) keeps its partial score in the report, but is
+ * never ranked or shown as a result. HR reruns it by selecting it and clicking Evaluate again.
+ */
+function isFailedEvaluation(cand) {
+    return cand.status === 'error';
+}
+
+const MISSING_POSITION_LABEL = 'Thiếu vị trí ứng tuyển';
+
+/**
+ * A Missing Position resume states no applied-for position. It is never evaluated or ranked;
+ * HR previews the CV here and resolves it outside the app.
+ */
+function isMissingPosition(cand) {
+    return cand.status === 'missing_position';
+}
+
+/**
+ * The label shown instead of a score for an unscored report (Failed Evaluation or Missing Position).
+ * @returns {string} The label, or '' for a scored report.
+ */
+function unscoredLabel(cand) {
+    if (isMissingPosition(cand)) return MISSING_POSITION_LABEL;
+    if (isFailedEvaluation(cand)) return FAILED_EVALUATION_LABEL;
+    return '';
+}
+
+/**
+ * The name and email to show once per candidate. Without an extracted name the email is the heading,
+ * and is not repeated under it.
+ * @returns {{name: string, email: string, contactEmail: string}} contactEmail is the email whether or not it is the heading.
+ */
+function candidateIdentity(cand) {
+    const identifier = cand.candidate_identifier || '';
+    const rawEmail = cand.candidate_email || cand.email || (identifier.includes('@') ? identifier : '');
+    const contactEmail = rawEmail === 'N/A' ? '' : rawEmail;
+    const extractedName = (cand.candidate_name || '').trim();
+    return {
+        name: extractedName || contactEmail || identifier || cand.resume_name || 'Ứng viên',
+        email: extractedName ? contactEmail : '',
+        contactEmail
+    };
+}
+
 export class CandidatePoolController {
     constructor() {
         this.allCandidatesData = [];
         this.currentModalCandidate = null;
+        this.modalEvaluationHtml = '';
+        this.modalShowingResume = false;
 
         this.initDOMElements();
         this.initEvents();
@@ -31,10 +89,12 @@ export class CandidatePoolController {
 
         this.candModal = document.getElementById('cand-detail-modal');
         this.modalCandName = document.getElementById('modal-cand-name');
-        this.modalCandRole = document.getElementById('modal-cand-role') || document.getElementById('modal-cand-file');
+        this.modalCandRole = document.getElementById('modal-cand-role');
+        this.modalCandScore = document.getElementById('modal-cand-score');
         this.modalCandBody = document.getElementById('modal-cand-body');
         this.modalCloseBtn = document.getElementById('modal-close-btn');
         this.modalBtnDownload = document.getElementById('modal-btn-download');
+        this.modalBtnResume = document.getElementById('modal-btn-resume');
     }
 
     /**
@@ -68,7 +128,10 @@ export class CandidatePoolController {
         });
 
         if (this.modalBtnDownload) {
-            this.modalBtnDownload.addEventListener('click', () => this.downloadModalCandidate());
+            this.modalBtnDownload.addEventListener('click', () => this.downloadModalReportPdf());
+        }
+        if (this.modalBtnResume) {
+            this.modalBtnResume.addEventListener('click', () => this.toggleModalResumeView());
         }
     }
 
@@ -95,10 +158,11 @@ export class CandidatePoolController {
      */
     updateSummaryStats(candidates) {
         const total = candidates.length;
+        const scored = candidates.filter(c => !unscoredLabel(c));
         let strong = 0, potential = 0, low = 0, reject = 0;
         let scoreSum = 0;
 
-        candidates.forEach(c => {
+        scored.forEach(c => {
             const score = c.overall_score || 0;
             scoreSum += score;
             const rec = c.match_recommendation || '';
@@ -108,7 +172,7 @@ export class CandidatePoolController {
             else reject++;
         });
 
-        const avgScore = total > 0 ? (scoreSum / total).toFixed(1) : '0.0';
+        const avgScore = scored.length > 0 ? (scoreSum / scored.length).toFixed(1) : '0.0';
 
         if (document.getElementById('cand-stat-total')) document.getElementById('cand-stat-total').textContent = total;
         if (document.getElementById('cand-stat-strong')) document.getElementById('cand-stat-strong').textContent = strong;
@@ -130,6 +194,7 @@ export class CandidatePoolController {
 
         let filtered = this.allCandidatesData.filter(cand => {
             if (statusFilter !== 'ALL') {
+                if (unscoredLabel(cand)) return false;
                 const rec = cand.match_recommendation || '';
                 const score = cand.overall_score || 0;
                 if (statusFilter === 'STRONG_MATCH' && rec !== 'STRONG_MATCH' && score < 85) return false;
@@ -139,10 +204,8 @@ export class CandidatePoolController {
             }
 
             if (query) {
-                const name = (cand.candidate_identifier || cand.candidate_name || '').toLowerCase();
-                const title = (cand.title || '').toLowerCase();
-                const email = (cand.candidate_email || cand.email || '').toLowerCase();
-                if (!name.includes(query) && !title.includes(query) && !email.includes(query)) {
+                const { name, contactEmail } = candidateIdentity(cand);
+                if (!name.toLowerCase().includes(query) && !contactEmail.toLowerCase().includes(query)) {
                     return false;
                 }
             }
@@ -150,10 +213,15 @@ export class CandidatePoolController {
         });
 
         filtered.sort((a, b) => {
+            // Unscored reports are unranked: they always sort after scored candidates by score
+            if (sortBy === 'score_desc' || sortBy === 'score_asc') {
+                const unscoredDiff = !!unscoredLabel(a) - !!unscoredLabel(b);
+                if (unscoredDiff !== 0) return unscoredDiff;
+            }
             const scoreA = a.overall_score || 0;
             const scoreB = b.overall_score || 0;
-            const nameA = (a.candidate_identifier || a.candidate_name || '').toLowerCase();
-            const nameB = (b.candidate_identifier || b.candidate_name || '').toLowerCase();
+            const nameA = candidateIdentity(a).name.toLowerCase();
+            const nameB = candidateIdentity(b).name.toLowerCase();
             const dateA = new Date(a.evaluated_at || 0).getTime();
             const dateB = new Date(b.evaluated_at || 0).getTime();
             const tierA = a.tier || 3;
@@ -245,9 +313,7 @@ export class CandidatePoolController {
         card.setAttribute('tabindex', '0');
         card.setAttribute('role', 'button');
 
-        const name = cand.candidate_identifier || cand.candidate_name || cand.resume_name || 'Ứng viên';
-        const title = cand.title || 'Hồ sơ ứng viên';
-        const email = cand.candidate_email || cand.email || (cand.candidate_identifier && cand.candidate_identifier.includes('@') ? cand.candidate_identifier : '');
+        const { name, email, contactEmail } = candidateIdentity(cand);
         const numScore = parseFloat(cand.overall_score !== undefined ? cand.overall_score : 0) || 0;
         const score = numScore.toFixed(1);
         const rec = cand.match_recommendation || (numScore >= 85 ? 'STRONG_MATCH' : (numScore >= 70 ? 'POTENTIAL_MATCH' : (numScore >= 55 ? 'LOW_MATCH' : 'REJECT')));
@@ -259,10 +325,15 @@ export class CandidatePoolController {
         else if (rec === 'LOW_MATCH' || numScore >= 55) { recClass = 'match-low'; recText = 'PHÙ HỢP THẤP'; }
         else { recClass = 'match-reject'; recText = 'LOẠI'; }
 
+        const unscored = unscoredLabel(cand);
+        if (unscored) { recClass = 'match-error'; recText = unscored; }
+
         const tierBadgeClass = cand.tier === 1 ? 'tier-badge-1' : (cand.tier === 2 ? 'tier-badge-2' : 'tier-badge-3');
         const tierLabel = cand.tier ? `Nhóm ${cand.tier}` : 'Nhóm 3';
 
-        card.setAttribute('aria-label', `Ứng viên: ${name}, Vị trí: ${title}, Email: ${email || 'Không có'}, Điểm: ${score}/100, ${recText}`);
+        card.setAttribute('aria-label', unscored
+            ? `Ứng viên: ${name}, Email: ${contactEmail || 'Không có'}, ${recText}`
+            : `Ứng viên: ${name}, Email: ${contactEmail || 'Không có'}, Điểm: ${score}/100, ${recText}`);
 
         // Vital Info: Breakdown of Match Score Progress Bars
         const dims = cand.dimension_scores || {};
@@ -277,7 +348,7 @@ export class CandidatePoolController {
         };
 
         dimKeys.forEach(k => {
-            if (dims[k]) {
+            if (dims[k] && !unscored) {
                 const dScore = Math.round(dims[k].score || 0);
                 let fillClass = 'fill-cyan';
                 if (dScore >= 85) fillClass = 'fill-emerald';
@@ -302,22 +373,20 @@ export class CandidatePoolController {
         const isOcrReview = cand.ocr_applied || cand.intensive_hr_review_required || (Array.isArray(cand.warning) && cand.warning.some(w => typeof w === 'string' && w.includes('OCR')));
         const ocrPillHtml = isOcrReview ? `<span class="badge-ocr-review" title="PDF không có lớp văn bản. Đã dùng OCR để trích xuất văn bản. Cần HR kiểm tra thủ công kỹ lưỡng.">⚠️ CẦN HR KIỂM TRA KỸ (OCR)</span>` : '';
 
-        const emailChipHtml = email ? `
-            <a href="mailto:${this.escapeHtml(email)}" class="cand-email-chip" onclick="event.stopPropagation()" title="Gửi email tới ${this.escapeHtml(email)}">
-                <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
-                ${this.escapeHtml(email)}
-            </a>
+        const emailHtml = email ? `
+            <a href="mailto:${this.escapeHtml(email)}" class="cand-email" onclick="event.stopPropagation()" title="Gửi email tới ${this.escapeHtml(email)}">${this.escapeHtml(email)}</a>
         ` : '';
 
         card.innerHTML = `
             <div class="cand-card-header">
                 <div class="cand-info-group">
                     <h3>${this.escapeHtml(name)}</h3>
-                    <span class="cand-role">${this.escapeHtml(title)}</span>
-                    ${emailChipHtml}
+                    ${emailHtml}
                 </div>
                 <div class="cand-score-badge">
-                    <span class="cand-score-val" style="color: ${numScore >= 85 ? '#059669' : numScore >= 70 ? '#0284C7' : numScore >= 55 ? '#D97706' : '#DC2626'};">${score}</span>
+                    ${unscored
+                        ? `<span class="cand-score-val" style="color: #64748B;">—</span>`
+                        : `<span class="cand-score-val" style="color: ${numScore >= 85 ? '#059669' : numScore >= 70 ? '#0284C7' : numScore >= 55 ? '#D97706' : '#DC2626'};">${score}</span>`}
                     <span class="cand-score-lbl">Điểm</span>
                 </div>
             </div>
@@ -331,10 +400,6 @@ export class CandidatePoolController {
             ${dimsBreakdownHtml ? `<div class="cand-dimensions-breakdown">${dimsBreakdownHtml}</div>` : ''}
 
             <div class="cand-card-footer">
-                <div class="summary-badges">
-                    <span class="badge-strength-cnt">✓ ${cand.summary?.total_strengths || 0} điểm mạnh</span>
-                    <span class="badge-gap-cnt">⚠ ${cand.summary?.total_gaps || 0} thiếu sót</span>
-                </div>
                 <button class="btn btn-sm btn-secondary cand-inspect-btn" type="button" tabindex="-1">Xem hồ sơ →</button>
             </div>
         `;
@@ -361,15 +426,10 @@ export class CandidatePoolController {
         this.currentModalCandidate = cand;
         if (!this.candModal || !this.modalCandBody) return;
 
-        const name = cand.candidate_identifier || cand.candidate_name || cand.resume_name || 'Ứng viên';
-        const title = cand.title || 'Hồ sơ ứng viên';
-        const email = cand.candidate_email || cand.email || (cand.candidate_identifier && cand.candidate_identifier.includes('@') ? cand.candidate_identifier : '');
+        const { name, email } = candidateIdentity(cand);
         const numScore = parseFloat(cand.overall_score || 0);
         const score = numScore.toFixed(1);
         const rec = cand.match_recommendation || 'POTENTIAL_MATCH';
-
-        if (this.modalCandName) this.modalCandName.textContent = name;
-        if (this.modalCandRole) this.modalCandRole.textContent = email ? `${title} • ${email}` : title;
 
         let recClass = 'match-potential';
         let recText = 'CÓ TIỀM NĂNG';
@@ -378,7 +438,30 @@ export class CandidatePoolController {
         else if (rec === 'LOW_MATCH' || numScore >= 55) { recClass = 'match-low'; recText = 'PHÙ HỢP THẤP'; }
         else { recClass = 'match-reject'; recText = 'LOẠI'; }
 
-        const dims = cand.dimension_scores || {};
+        const unscored = unscoredLabel(cand);
+        if (unscored) { recClass = 'match-error'; recText = unscored; }
+        const failed = isFailedEvaluation(cand);
+
+        // Name, email, match, score and evaluation time appear once, in the modal header
+        const evaluatedAt = cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleString('vi-VN') : 'Không có';
+        if (this.modalCandName) {
+            this.modalCandName.innerHTML = `${this.escapeHtml(name)} <span class="match-pill ${recClass}">${recText}</span>`;
+        }
+        if (this.modalCandRole) {
+            const emailLink = email ? `<a href="mailto:${this.escapeHtml(email)}" class="modal-email-link">${this.escapeHtml(email)}</a> • ` : '';
+            this.modalCandRole.innerHTML = `${emailLink}Đánh giá lúc ${this.escapeHtml(evaluatedAt)}`;
+        }
+        if (this.modalCandScore) {
+            this.modalCandScore.innerHTML = `
+                ${unscored
+                    ? `<span class="modal-score-number" style="color: #64748B;">—</span>`
+                    : `<span class="modal-score-number" style="color: ${numScore >= 85 ? '#059669' : numScore >= 70 ? '#0284C7' : numScore >= 55 ? '#D97706' : '#DC2626'};">${score}</span>`}
+                <span class="modal-score-label">Tổng điểm</span>
+            `;
+        }
+
+        // An unscored report has no Category scores to show; a Failed Evaluation's partial ones are hidden
+        const dims = unscored ? {} : (cand.dimension_scores || {});
         let dimCardsHtml = '';
 
         Object.keys(dims).forEach(catKey => {
@@ -393,10 +476,7 @@ export class CandidatePoolController {
             else if (d.score >= 55) fillClass = 'fill-low';
             else fillClass = 'fill-reject';
 
-            const strengthsList = (d.strengths || []).map(s => `<li>${this.escapeHtml(s)}</li>`).join('');
             const gapsList = (d.gaps || []).map(g => `<li>${this.escapeHtml(g)}</li>`).join('');
-            const quotesList = (d.evidence_quotes || []).map(q => `<div class="modal-quote-box">"${this.escapeHtml(q)}"</div>`).join('');
-            const reasoningText = d.reasoning_summary ? this.escapeHtml(d.reasoning_summary) : '';
 
             dimCardsHtml += `
                 <div class="modal-dim-card">
@@ -412,10 +492,9 @@ export class CandidatePoolController {
                     <div class="modal-dim-progress">
                         <div class="modal-dim-progress-fill ${fillClass}" style="width: ${Math.min(100, Math.max(5, d.score))}%;"></div>
                     </div>
-                    ${reasoningText ? `<div class="modal-reasoning-title">🧠 Lập luận đánh giá của AI:</div><div class="modal-reasoning-box">${reasoningText}</div>` : ''}
-                    ${strengthsList ? `<div class="modal-section-title">Điểm mạnh chính:</div><ul class="modal-bullets strengths">${strengthsList}</ul>` : ''}
+                    ${this.renderCategoryStrengths(d)}
+                    ${this.renderCategoryNoEvidence(d)}
                     ${gapsList ? `<div class="modal-section-title">Thiếu sót đã xác định:</div><ul class="modal-bullets gaps">${gapsList}</ul>` : ''}
-                    ${quotesList ? `<div class="modal-section-title">Trích dẫn bằng chứng:</div>${quotesList}` : ''}
                 </div>
             `;
         });
@@ -431,22 +510,39 @@ export class CandidatePoolController {
             </div>
         ` : '';
 
-        const emailLink = email ? `<a href="mailto:${this.escapeHtml(email)}" style="color: var(--color-secondary); font-weight: 700; text-decoration: underline;">${this.escapeHtml(email)}</a>` : '';
-
-        this.modalCandBody.innerHTML = `
-            ${ocrAlertBanner}
-            <div class="modal-hero-banner">
-                <div>
-                    <h2>${this.escapeHtml(name)} <span class="match-pill ${recClass}">${recText}</span></h2>
-                    <p>${this.escapeHtml(title)} ${emailLink ? `• ${emailLink}` : ''} • Đánh giá lúc ${cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleString('vi-VN') : 'Không có'}</p>
-                </div>
-                <div class="modal-score-box">
-                    <span class="modal-score-number" style="color: ${numScore >= 85 ? '#059669' : numScore >= 70 ? '#0284C7' : numScore >= 55 ? '#D97706' : '#DC2626'};">${score}</span>
-                    <span style="font-size:0.82rem; color:#334155; font-weight:800; text-transform:uppercase; font-family:var(--font-mono);">Tổng điểm</span>
+        const failedCategoryNames = (cand.failed_categories || []).map(k => CATEGORY_NAMES[k] || k);
+        const failedEvaluationBanner = failed ? `
+            <div class="modal-ocr-alert-banner">
+                <div class="modal-ocr-alert-icon">⛔</div>
+                <div class="modal-ocr-alert-content">
+                    <strong>${FAILED_EVALUATION_LABEL.toUpperCase()}</strong>
+                    <p>Không thể chấm điểm ${failedCategoryNames.length > 0 ? `các mục: ${this.escapeHtml(failedCategoryNames.join(', '))}` : 'một số mục đánh giá'}. Kết quả này không được xếp hạng. Hãy chọn lại ứng viên này và bấm Đánh giá để chạy lại.</p>
                 </div>
             </div>
+        ` : '';
+
+        const missingPositionBanner = isMissingPosition(cand) ? `
+            <div class="modal-ocr-alert-banner">
+                <div class="modal-ocr-alert-icon">⛔</div>
+                <div class="modal-ocr-alert-content">
+                    <strong>${MISSING_POSITION_LABEL.toUpperCase()}</strong>
+                    <p>CV không ghi vị trí ứng tuyển nên không được đánh giá và không được xếp hạng. Bấm "Xem CV" để xem trước; HR tự xử lý ứng viên này ngoài hệ thống.</p>
+                </div>
+            </div>
+        ` : '';
+
+        const feedbackHtml = unscored ? '' : this.renderCandidateFeedback(cand.candidate_feedback);
+
+        this.modalEvaluationHtml = `
+            ${missingPositionBanner}
+            ${failedEvaluationBanner}
+            ${ocrAlertBanner}
+            ${feedbackHtml}
             <div class="modal-dim-grid">${dimCardsHtml}</div>
         `;
+        this.showModalEvaluation();
+        // A Missing Position has no evaluation report to download
+        if (this.modalBtnDownload) this.modalBtnDownload.style.display = isMissingPosition(cand) ? 'none' : '';
 
         this.candModal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
@@ -457,6 +553,131 @@ export class CandidatePoolController {
     }
 
     /**
+     * Renders a Category's strengths, each followed by the resume quotes that support it: the criteria judged
+     * STRONG or PARTIAL. Reports saved before per-criterion results were kept show the evaluator's strength
+     * sentences instead, without quotes.
+     * @param {Object} d - One entry of the report's dimension_scores.
+     * @returns {string} HTML for the section, or '' when there are no strengths.
+     */
+    renderCategoryStrengths(d) {
+        const criteria = d.criteria_evaluations || [];
+        const items = criteria.length > 0
+            ? criteria
+                .filter(c => c.verdict === 'STRONG_EVIDENCE' || c.verdict === 'PARTIAL_EVIDENCE')
+                .map(c => ({ text: c.criterion, partial: c.verdict === 'PARTIAL_EVIDENCE', quotes: c.evidence_quotes || [] }))
+            : (d.strengths || []).map(s => ({ text: s, partial: false, quotes: [] }));
+        if (items.length === 0) return '';
+
+        const list = items.map(item => `
+            <li>
+                ${this.escapeHtml(item.text)}${item.partial ? '<span class="modal-partial-tag">Đáp ứng một phần</span>' : ''}
+                ${item.quotes.map(q => `<div class="modal-quote-box">"${this.escapeHtml(q)}"</div>`).join('')}
+            </li>
+        `).join('');
+        return `<div class="modal-section-title">Điểm mạnh chính:</div><ul class="modal-bullets strengths">${list}</ul>`;
+    }
+
+    /**
+     * Renders a Category's criteria judged NO_EVIDENCE: requirements the resume shows nothing for.
+     * Reports saved before per-criterion results were kept render nothing.
+     * @param {Object} d - One entry of the report's dimension_scores.
+     * @returns {string} HTML for the section, or '' when no criterion lacks evidence.
+     */
+    renderCategoryNoEvidence(d) {
+        const list = (d.criteria_evaluations || [])
+            .filter(c => c.verdict === 'NO_EVIDENCE')
+            .map(c => `<li>${this.escapeHtml(c.criterion)}</li>`)
+            .join('');
+        return list ? `<div class="modal-section-title">Tiêu chí chưa có bằng chứng:</div><ul class="modal-bullets gaps">${list}</ul>` : '';
+    }
+
+    /**
+     * Shows the evaluation in the modal body (the default view).
+     */
+    showModalEvaluation() {
+        this.modalShowingResume = false;
+        this.modalCandBody.classList.remove('modal-body-resume');
+        this.modalCandBody.innerHTML = this.modalEvaluationHtml || '';
+        this.modalCandBody.scrollTop = 0;
+        if (this.modalBtnResume) this.modalBtnResume.textContent = 'Xem CV';
+    }
+
+    /**
+     * Replaces the evaluation in the modal body with the candidate's original resume PDF.
+     */
+    showModalResume() {
+        const cand = this.currentModalCandidate;
+        if (!cand) return;
+        this.modalShowingResume = true;
+        this.modalCandBody.classList.add('modal-body-resume');
+        if (this.modalBtnResume) this.modalBtnResume.textContent = '← Quay lại đánh giá';
+
+        if (!cand.has_resume_pdf || !cand.filename) {
+            this.modalCandBody.innerHTML = '<div class="modal-resume-missing">Chưa lưu PDF cho ứng viên này — hãy tải lên lại.</div>';
+            return;
+        }
+        const url = API.resumePdfUrl(cand.filename);
+        this.modalCandBody.innerHTML = `
+            <div class="modal-resume-toolbar">
+                <a class="btn btn-secondary btn-sm" href="${url}" target="_blank" rel="noopener">Mở trong tab mới ↗</a>
+            </div>
+            <iframe class="modal-resume-frame" src="${url}" title="CV của ${this.escapeHtml(candidateIdentity(cand).name)}"></iframe>
+        `;
+    }
+
+    /**
+     * Switches the modal body between the evaluation and the resume PDF.
+     */
+    toggleModalResumeView() {
+        if (this.modalShowingResume) this.showModalEvaluation();
+        else this.showModalResume();
+    }
+
+    /**
+     * Renders the Review Panel's Candidate Feedback card, with each Panelist's final view collapsed.
+     * Skipped or absent feedback (scoring-only runs, older reports) renders nothing.
+     * @param {Object} feedback - The report's candidate_feedback object.
+     * @returns {string} HTML for the card, or '' when there is nothing to show.
+     */
+    renderCandidateFeedback(feedback) {
+        if (!feedback) return '';
+        if (feedback.status === 'failed') {
+            return `
+                <div class="modal-feedback-card">
+                    <div class="modal-dim-title">${FEEDBACK_TITLE}</div>
+                    <div class="modal-feedback-failed">${FEEDBACK_FAILED_LABEL}</div>
+                </div>
+            `;
+        }
+        if (feedback.status !== 'ok') return '';
+
+        // A titled bullet list, or nothing when the list is empty
+        const section = (title, items, cls) => {
+            const list = (items || []).map(i => `<li>${this.escapeHtml(i)}</li>`).join('');
+            return list ? `<div class="modal-section-title">${title}</div><ul class="modal-bullets ${cls}">${list}</ul>` : '';
+        };
+        const views = feedback.panelist_views || {};
+        const panelistViewsHtml = Object.keys(PANELIST_NAMES)
+            .filter(key => views[key])
+            .map(key => `
+                <details class="modal-panelist-view">
+                    <summary>${PANELIST_NAMES[key]}</summary>
+                    <div class="modal-panelist-view-text">${this.escapeHtml(views[key])}</div>
+                </details>
+            `).join('');
+
+        return `
+            <div class="modal-feedback-card">
+                <div class="modal-dim-title">${FEEDBACK_TITLE}</div>
+                ${feedback.summary ? `<div class="modal-reasoning-box">${this.escapeHtml(feedback.summary)}</div>` : ''}
+                ${section('Điểm mạnh:', feedback.strengths, 'strengths')}
+                ${section('Điểm yếu và kỹ năng còn thiếu:', feedback.weaknesses, 'gaps')}
+                ${panelistViewsHtml ? `<div class="modal-section-title">Ý kiến từng thành viên hội đồng:</div>${panelistViewsHtml}` : ''}
+            </div>
+        `;
+    }
+
+    /**
      * Closes candidate detail modal dialog and restores keyboard focus.
      */
     closeCandidateModal() {
@@ -464,6 +685,9 @@ export class CandidatePoolController {
         this.candModal.style.display = 'none';
         document.body.style.overflow = '';
         this.currentModalCandidate = null;
+        // Drops the resume iframe, so the next candidate opens on the evaluation view
+        this.modalEvaluationHtml = '';
+        this.showModalEvaluation();
 
         if (this.lastFocusedElement && typeof this.lastFocusedElement.focus === 'function') {
             this.lastFocusedElement.focus();
@@ -471,18 +695,32 @@ export class CandidatePoolController {
     }
 
     /**
-     * Downloads candidate evaluation JSON report file.
+     * Downloads the candidate's evaluation report as a PDF, with the resume PDF appended when stored.
      */
-    downloadModalCandidate() {
-        if (!this.currentModalCandidate) return;
-        const candidateName = (this.currentModalCandidate.candidate_identifier || this.currentModalCandidate.candidate_name || 'candidate').replace(/\s+/g, '_');
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.currentModalCandidate, null, 2));
-        const anchor = document.createElement('a');
-        anchor.setAttribute("href", dataStr);
-        anchor.setAttribute("download", `${candidateName}_evaluation.json`);
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
+    async downloadModalReportPdf() {
+        const cand = this.currentModalCandidate;
+        const btn = this.modalBtnDownload;
+        if (!cand || !cand.filename || !btn) return;
+
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.textContent = 'Đang tạo PDF…';
+        try {
+            const blob = await API.getReportPdf(cand.filename);
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `${cand.filename.replace(/\.json$/i, '')}_danh_gia.pdf`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
     }
 
     escapeHtml(str) {

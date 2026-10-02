@@ -77,6 +77,7 @@ echo "[$(date +'%H:%M:%S')] Step 2 complete. Active Python: $(which python3 2>/d
 SCRIPT_DIR="$FIND_CONFIG_DIR"
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/vllm_utils.sh"
+source "$SCRIPT_DIR/model_profiles.sh"
 
 if [ -z "$PROJECT_ROOT" ]; then
   echo "[CRITICAL ERROR] PROJECT_ROOT is not set after sourcing config.sh!" >&2
@@ -92,13 +93,6 @@ setup_vllm_env
 # Ensure output & log directories exist at project root
 mkdir -p "$PROJECT_ROOT/logs" "$PROJECT_ROOT/logging" "$PROJECT_ROOT/prompts"
 
-# Ensure critical optimization dependencies (dspy-ai, optuna) are installed
-if ! python3 -c "import dspy, optuna" 2>/dev/null; then
-  echo "[NOTICE] 'dspy-ai' or 'optuna' package missing in Conda environment 'resume_env'."
-  echo "[NOTICE] Auto-installing missing optimization dependencies (dspy-ai, optuna) via pip..."
-  python3 -m pip install "dspy-ai[optuna]" optuna 2>/dev/null || pip install "dspy-ai[optuna]" optuna 2>/dev/null || true
-fi
-
 # Print GPU info on compute node immediately
 echo "====================================================================="
 echo "[$(date +'%Y-%m-%d %H:%M:%S')] STEP 4: Inspecting GPU hardware allocation..."
@@ -106,7 +100,7 @@ nvidia-smi 2>/dev/null || echo "nvidia-smi not available"
 echo "====================================================================="
 
 PORT=$(find_free_port)
-MODEL="${RAW_MODEL:-Qwen/Qwen3.5-35B-A3B}"
+resolve_model_arg "$RAW_MODEL" || exit 1
 
 echo "[$(date +'%H:%M:%S')] Project Root: $PROJECT_ROOT"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL"

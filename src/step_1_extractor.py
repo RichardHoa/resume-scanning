@@ -18,8 +18,6 @@ from src.providers.llm_backend import (
     run_local_inference,
     run_vllm_inference,
     run_mock_extraction,
-    vllm_discover_model as _vllm_discover_model,
-    vllm_chat_request as _vllm_chat_request,
 )
 from src.pipelines.extractor import extract_text_from_pdf, ResumeExtractor
 from src.cli.extract import parse_args, main

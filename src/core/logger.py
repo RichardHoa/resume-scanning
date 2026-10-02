@@ -94,6 +94,8 @@ def log_broken_json(
     attempt: int = 1,
     error_reason: str = "",
     run_index: Optional[int] = None,
+    finish_reason: Optional[str] = None,
+    completion_tokens: Optional[int] = None,
     log_dir: Optional[str] = None
 ) -> str:
     """
@@ -134,6 +136,9 @@ def log_broken_json(
         content.append(f"RUN INDEX: {run_index}")
     content.extend([
         f"ERROR REASON: {error_reason or 'JSON parse failed or returned empty object'}",
+        # "length" means the response hit the max_tokens limit and was cut off
+        f"FINISH REASON: {finish_reason or 'unknown'}",
+        f"COMPLETION TOKENS: {completion_tokens if completion_tokens is not None else 'unknown'}",
         "=" * 80,
         "\n--- FULL LLM INPUT PROMPT CONTEXT ---\n",
         str(prompt_text or ""),

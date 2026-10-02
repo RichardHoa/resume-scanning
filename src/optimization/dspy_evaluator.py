@@ -1,6 +1,11 @@
 """
 DSPy Prompt Optimizer & Metric Evaluation Engine (Technique A)
 
+OUTDATED: this optimizer predates the current category evaluation format, in which the model writes a
+per-criterion "reasoning" before each "verdict" (see CATEGORY_EVALUATION_SCHEMA in
+src/prompts/evaluator_prompts.py). Its signature and exemplars still use the old output shape, so update it
+to the current format before running it again.
+
 This module implements Stanford DSPy teleprompter compilation for training 
 and optimizing evaluation prompts against candidate ground truth target categories.
 """

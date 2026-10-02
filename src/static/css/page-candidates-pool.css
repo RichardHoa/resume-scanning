@@ -176,46 +176,18 @@
     margin-bottom: 4px;
 }
 
-.cand-role {
-    font-size: 0.9rem;
-    color: #334155; /* High contrast dark slate */
-    font-weight: 700;
-    display: block;
-    margin-bottom: 8px;
+.cand-email {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #334155;
     overflow-wrap: break-word;
     word-break: break-word;
+    text-decoration: none;
 }
 
-/* Candidate Contact Info Chip (Vital Info: Email) */
-.cand-email-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: #F1F5F9;
-    border: 1px solid #CBD5E1;
-    color: #1E3A5F;
-    font-size: 0.82rem;
-    font-weight: 700;
-    font-family: var(--font-mono);
-    padding: 4px 10px;
-    border-radius: var(--radius-sm);
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    transition: background-color var(--transition-fast);
-}
-
-.cand-email-chip:hover {
-    background: #E2E8F0;
+.cand-email:hover {
     color: var(--color-secondary);
-}
-
-.cand-email-chip svg {
-    width: 14px;
-    height: 14px;
-    fill: currentColor;
-    flex-shrink: 0;
+    text-decoration: underline;
 }
 
 /* Score Circle / Badge */
@@ -295,6 +267,12 @@
     border: 1.5px solid #FECACA;
 }
 
+.match-error {
+    background: #F8FAFC;
+    color: #334155;
+    border: 1.5px solid #CBD5E1;
+}
+
 .tier-badge {
     display: inline-flex;
     align-items: center;
@@ -366,32 +344,13 @@
 /* Card Footer */
 .cand-card-footer {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
     border-top: 1.5px solid #E2E8F0;
     padding-top: 0.85rem;
     font-size: 0.85rem;
     margin-top: auto;
     gap: 0.5rem;
-}
-
-.summary-badges {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.badge-strength-cnt {
-    color: #047857; /* WCAG AAA high-contrast dark emerald */
-    font-weight: 800;
-    font-size: 0.84rem;
-}
-
-.badge-gap-cnt {
-    color: #B91C1C; /* WCAG AAA high-contrast dark red */
-    font-weight: 800;
-    font-size: 0.84rem;
 }
 
 .cand-inspect-btn {

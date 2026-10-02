@@ -26,6 +26,37 @@ const RECOMMENDATION_LABELS = {
     REJECT: 'LOẠI'
 };
 
+const FAILED_EVALUATION_LABEL = 'Lỗi – cần chạy lại';
+
+/**
+ * A Failed Evaluation (any Category failed) keeps its partial score in the report, but is
+ * never ranked or shown as a result. HR reruns it by selecting it and clicking Evaluate again.
+ */
+function isFailedEvaluation(res) {
+    return res.status === 'error';
+}
+
+const MISSING_POSITION_LABEL = 'Thiếu vị trí ứng tuyển';
+const MISSING_POSITION_MESSAGE = 'CV không ghi vị trí ứng tuyển nên không được đánh giá. HR xem trước CV ở trang Ứng viên và tự xử lý.';
+
+/**
+ * A Missing Position resume states no applied-for position. It is never evaluated or ranked;
+ * HR previews it and resolves it outside the app.
+ */
+function isMissingPosition(res) {
+    return res.status === 'missing_position';
+}
+
+/**
+ * The label shown instead of a score for an unscored result (Failed Evaluation or Missing Position).
+ * @returns {string} The label, or '' for a scored result.
+ */
+function unscoredLabel(res) {
+    if (isMissingPosition(res)) return MISSING_POSITION_LABEL;
+    if (isFailedEvaluation(res)) return FAILED_EVALUATION_LABEL;
+    return '';
+}
+
 export class EvaluatorController {
     constructor() {
         this.scannedResumes = [];
@@ -600,7 +631,9 @@ export class EvaluatorController {
                     <input type="checkbox" class="chk-resume" data-file="${resItem.filename}" ${isSel ? 'checked' : ''}>
                     <div class="resume-info">
                         <span class="resume-title">${this.escapeHtml(resItem.filename)}</span>
-                        <span class="resume-meta">✉ ${this.escapeHtml(resItem.email)} • ${this.escapeHtml(resItem.title)}</span>
+                        <span class="resume-meta">✉ ${this.escapeHtml(resItem.email)} • ${resItem.missing_position
+                            ? `<span class="badge-rec rec-ERROR" title="${MISSING_POSITION_MESSAGE}">${MISSING_POSITION_LABEL}</span>`
+                            : this.escapeHtml(resItem.title)}</span>
                     </div>
                 `;
 
@@ -705,9 +738,10 @@ export class EvaluatorController {
 
         // Update KPI summary stats
         const totalCount = results.length;
-        const strongCount = results.filter(r => r.match_recommendation === 'STRONG_MATCH').length;
-        const potentialCount = results.filter(r => r.match_recommendation === 'POTENTIAL_MATCH').length;
-        const avgScore = totalCount > 0 ? (results.reduce((acc, curr) => acc + (curr.overall_score || 0), 0) / totalCount).toFixed(1) : '0.0';
+        const scored = results.filter(r => !unscoredLabel(r));
+        const strongCount = scored.filter(r => r.match_recommendation === 'STRONG_MATCH').length;
+        const potentialCount = scored.filter(r => r.match_recommendation === 'POTENTIAL_MATCH').length;
+        const avgScore = scored.length > 0 ? (scored.reduce((acc, curr) => acc + (curr.overall_score || 0), 0) / scored.length).toFixed(1) : '0.0';
 
         if (this.kpiTotalVal) this.kpiTotalVal.textContent = totalCount;
         if (this.kpiStrongVal) this.kpiStrongVal.textContent = strongCount;
@@ -769,6 +803,7 @@ export class EvaluatorController {
             group.items.forEach((res, idx) => {
                 const evalOrderNum = idx + 1;
                 const tr = document.createElement('tr');
+                const unscored = unscoredLabel(res);
 
                 tr.innerHTML = `
                     <td><span class="rank-badge rank-${evalOrderNum}">${evalOrderNum}</span></td>
@@ -776,12 +811,16 @@ export class EvaluatorController {
                         <strong style="color: var(--brand-legacy-blue); font-size: 0.95rem;">${this.escapeHtml(res.resume_name)}</strong><br>
                         <span style="font-size:0.78rem; color: var(--text-muted);">✉ ${this.escapeHtml(res.candidate_email || res.candidate_identifier || 'Không có')}</span>
                     </td>
-                    <td><strong style="color: var(--brand-azure); font-size:1.2rem; font-family:var(--font-mono);">${res.overall_score || 0}</strong><span style="font-size:0.8rem; color:var(--text-muted);">/100</span></td>
-                    <td><span class="badge-rec rec-${res.match_recommendation}">${this.recommendationLabel(res.match_recommendation)}</span></td>
-                    <td style="font-size:0.82rem; font-weight:600;">
+                    <td>${unscored
+                        ? '<strong style="color: var(--text-muted); font-size:1.2rem; font-family:var(--font-mono);">—</strong>'
+                        : `<strong style="color: var(--brand-azure); font-size:1.2rem; font-family:var(--font-mono);">${res.overall_score || 0}</strong><span style="font-size:0.8rem; color:var(--text-muted);">/100</span>`}</td>
+                    <td>${unscored
+                        ? `<span class="badge-rec rec-ERROR">${unscored}</span>`
+                        : `<span class="badge-rec rec-${res.match_recommendation}">${this.recommendationLabel(res.match_recommendation)}</span>`}</td>
+                    <td style="font-size:0.82rem; font-weight:600;">${unscored ? '' : `
                         <span style="color:#15803D;">✓ ${res.summary?.total_strengths || 0}</span> • 
                         <span style="color:#B91C1C;">✗ ${res.summary?.total_gaps || 0}</span>
-                    </td>
+                    `}</td>
                     <td>
                         <button class="btn btn-sm btn-secondary btn-inspect">Xem hồ sơ</button>
                     </td>
@@ -817,40 +856,50 @@ export class EvaluatorController {
         const summaryEl = document.getElementById('det-cand-summary');
         const strengthsListEl = document.getElementById('det-cand-strengths-list');
         const gapsListEl = document.getElementById('det-cand-gaps-list');
+        const unscored = unscoredLabel(cand);
 
         if (nameEl) nameEl.textContent = cand.candidate_identifier || cand.resume_name;
         if (fileEl) fileEl.textContent = `${cand.resume_name}.json • Đánh giá lúc ${cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleTimeString('vi-VN') : 'vừa xong'}`;
-        if (scoreEl) scoreEl.textContent = cand.overall_score || '0.0';
+        if (scoreEl) scoreEl.textContent = unscored ? '—' : (cand.overall_score || '0.0');
 
         if (recBadge) {
-            recBadge.textContent = this.recommendationLabel(cand.match_recommendation);
-            recBadge.className = `badge-rec rec-${cand.match_recommendation}`;
+            recBadge.textContent = unscored || this.recommendationLabel(cand.match_recommendation);
+            recBadge.className = `badge-rec rec-${unscored ? 'ERROR' : cand.match_recommendation}`;
         }
 
         // Executive summary body
         if (summaryEl) {
-            summaryEl.textContent = cand.summary?.executive_summary || `Ứng viên đạt ${cand.overall_score}/100 điểm, mức độ phù hợp: ${this.recommendationLabel(cand.match_recommendation)}. Được đánh giá theo 5 chiều vector RAG.`;
+            if (isMissingPosition(cand)) {
+                summaryEl.textContent = MISSING_POSITION_MESSAGE;
+            } else if (unscored) {
+                const failedNames = (cand.failed_categories || []).map(k => CATEGORY_NAMES[k] || k);
+                const what = failedNames.length > 0 ? `các mục: ${failedNames.join(', ')}` : 'một số mục đánh giá';
+                summaryEl.textContent = `Không thể chấm điểm ${what}. Kết quả này không được xếp hạng. Hãy chọn lại ứng viên này và bấm Đánh giá để chạy lại.`;
+            } else {
+                summaryEl.textContent = cand.summary?.executive_summary || `Ứng viên đạt ${cand.overall_score}/100 điểm, mức độ phù hợp: ${this.recommendationLabel(cand.match_recommendation)}. Được đánh giá theo 5 chiều vector RAG.`;
+            }
         }
+
+        // An unscored result has no Category results to show; a Failed Evaluation's partial ones are hidden
+        const dims = unscored ? {} : (cand.dimension_scores || {});
 
         // Populate Strengths & Gaps lists
         if (strengthsListEl) {
             const allStrengths = [];
-            const dims = cand.dimension_scores || {};
             Object.values(dims).forEach(d => {
                 (d.strengths || []).forEach(s => allStrengths.push(s));
             });
-            strengthsListEl.innerHTML = allStrengths.length > 0
+            strengthsListEl.innerHTML = unscored ? '<li>—</li>' : allStrengths.length > 0
                 ? allStrengths.map(s => `<li>${this.escapeHtml(s)}</li>`).join('')
                 : '<li>Chưa ghi nhận điểm mạnh rõ ràng.</li>';
         }
 
         if (gapsListEl) {
             const allGaps = [];
-            const dims = cand.dimension_scores || {};
             Object.values(dims).forEach(d => {
                 (d.gaps || []).forEach(g => allGaps.push(g));
             });
-            gapsListEl.innerHTML = allGaps.length > 0
+            gapsListEl.innerHTML = unscored ? '<li>—</li>' : allGaps.length > 0
                 ? allGaps.map(g => `<li>${this.escapeHtml(g)}</li>`).join('')
                 : '<li>Không có thiếu sót hay rủi ro lớn.</li>';
         }
@@ -859,7 +908,6 @@ export class EvaluatorController {
         const dimensionsContainer = document.getElementById('dimensions-container');
         if (dimensionsContainer) {
             dimensionsContainer.innerHTML = '';
-            const dims = cand.dimension_scores || {};
             Object.keys(dims).forEach(key => {
                 const d = dims[key];
                 const card = document.createElement('div');

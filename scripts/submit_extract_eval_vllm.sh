@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=extract_eval_vllm
-#SBATCH --partition=student
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=32G
-#SBATCH --gres=gpu:1
-#SBATCH --time=03:00:00
+#SBATCH --mem=64G
+#SBATCH --partition=student9696
+#SBATCH --gres=gpu:nvidia_rtx_pro_6000_blackwell_server_edition_4g.96gb:1
+#SBATCH --time=3:00:00
 #SBATCH --output=logging/slurm_extract_eval_%j.out
 #SBATCH --error=logging/slurm_extract_eval_%j.err
 
@@ -89,6 +89,7 @@ echo "[$(date +'%H:%M:%S')] Active Python: $(which python3 2>/dev/null || echo '
 # -----------------------------------------------------------------------------
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/vllm_utils.sh"
+source "$SCRIPT_DIR/model_profiles.sh"
 
 if [ -z "$PROJECT_ROOT" ]; then
   echo "[CRITICAL ERROR] PROJECT_ROOT is not set after sourcing config.sh!" >&2
@@ -100,13 +101,6 @@ cd "$PROJECT_ROOT" || exit 1
 
 # Setup optimization & threading environment variables
 setup_vllm_env
-
-# Ensure critical evaluation dependencies (sentence-transformers, chromadb) are installed
-if ! python3 -c "import sentence_transformers, chromadb" 2>/dev/null; then
-  echo "[NOTICE] 'sentence-transformers' or 'chromadb' package missing in Conda environment 'resume_env'."
-  echo "[NOTICE] Auto-installing missing evaluation dependencies via pip..."
-  python3 -m pip install sentence-transformers chromadb 2>/dev/null || pip install sentence-transformers chromadb 2>/dev/null || true
-fi
 
 # -----------------------------------------------------------------------------
 # STEP 3: Resolve Parameters & Validate Input Paths
@@ -124,8 +118,8 @@ else
   PDF_DIR="$PROJECT_ROOT/Vietnamese-dataset/CnB"
 fi
 
-# Target Model Name (Default: Qwen/Qwen3.5-35B-A3B)
-MODEL="${RAW_MODEL:-Qwen/Qwen3.5-35B-A3B}"
+# Target model: a profile key or HuggingFace model ID (default: the DEFAULT_MODEL_KEY profile)
+resolve_model_arg "$RAW_MODEL" || exit 1
 
 # Target Extraction Output Directory (Default: output_jsons inside project root)
 if [ -n "$RAW_OUTPUT_DIR" ]; then
@@ -205,6 +199,7 @@ rm -rf "$PROJECT_ROOT/broken-json"/*
 rm -rf "$PROJECT_ROOT/approved_jsons"/*
 rm -rf "$PROJECT_ROOT/rag"/*
 rm -f "$PROJECT_ROOT/hr_rag.txt"
+rm -f "$PROJECT_ROOT/logging/token_usage.jsonl"
 
 # -----------------------------------------------------------------------------
 # STEP 5: Logging Setup & Server Startup
@@ -276,8 +271,7 @@ python3 -u "$PROJECT_ROOT/src/step_2_evaluate.py" \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --dir "$OUTPUT_DIR" \
   --job-req "$JOB_REQ" \
-  --output "$EVAL_DIR" \
-  --workers 6 2>&1 | tee "$EVAL_LOG" | tee -a "$JOB_LOG"
+  --output "$EVAL_DIR" 2>&1 | tee "$EVAL_LOG" | tee -a "$JOB_LOG"
 
 EVAL_STATUS=${PIPESTATUS[0]}
 if [ "$EVAL_STATUS" -ne 0 ]; then
@@ -287,6 +281,7 @@ if [ "$EVAL_STATUS" -ne 0 ]; then
 fi
 
 stop_vllm_server
+python3 "$PROJECT_ROOT/scripts/token_stats.py" 2>&1 | tee -a "$JOB_LOG"
 echo "=====================================================================" | tee -a "$JOB_LOG"
 echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Combined Extract & Eval Job Finished Successfully ===" | tee -a "$JOB_LOG"
 echo "=====================================================================" | tee -a "$JOB_LOG"

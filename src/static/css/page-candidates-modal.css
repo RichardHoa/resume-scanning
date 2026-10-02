@@ -39,51 +39,95 @@
     margin: 0;
 }
 
-.modal-hero-banner {
-    background: #F8FAFC;
-    border: 1.5px solid #CBD5E1;
-    border-radius: var(--radius-md);
-    padding: 1.35rem 1.5rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 1rem;
-    box-shadow: var(--shadow-sm);
+/* Candidate modal: wider than the shared modal card, with one header holding name, email, match, score and actions */
+#cand-detail-modal .modal-card {
+    max-width: 1200px;
 }
 
-.modal-hero-banner h2 {
-    font-size: 1.35rem;
-    font-weight: 800;
-    color: #0F172A; /* WCAG AAA primary heading */
+#cand-detail-modal .modal-header {
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+#cand-detail-modal .modal-header-info h2 {
     display: flex;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
 }
 
-.modal-hero-banner p {
-    font-size: 0.88rem;
-    color: #334155; /* WCAG AAA secondary text */
+#cand-detail-modal .modal-subtext {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.85rem;
+    color: #334155;
     font-weight: 600;
-    margin-top: 6px;
+}
+
+.modal-email-link {
+    color: var(--color-secondary);
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+.modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 .modal-score-box {
     display: flex;
     align-items: center;
-    gap: 0.85rem;
+    gap: 0.6rem;
     background: #FFFFFF;
-    padding: 10px 18px;
+    padding: 4px 14px;
     border-radius: var(--radius-md);
     border: 1.5px solid #CBD5E1;
-    box-shadow: var(--shadow-sm);
 }
 
 .modal-score-number {
-    font-size: 2.1rem;
+    font-size: 1.6rem;
     font-weight: 800;
     font-family: var(--font-mono);
+}
+
+.modal-score-label {
+    font-size: 0.75rem;
+    color: #334155;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-family: var(--font-mono);
+}
+
+/* Resume PDF view, replacing the evaluation in the modal body */
+.modal-body.modal-body-resume {
+    padding: 1rem 1.25rem;
+    gap: 0.75rem;
+}
+
+.modal-resume-toolbar {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.modal-resume-frame {
+    width: 100%;
+    height: 70vh;
+    border: 1.5px solid #CBD5E1;
+    border-radius: var(--radius-md);
+    background: #F1F5F9;
+}
+
+.modal-resume-missing {
+    padding: 2rem;
+    text-align: center;
+    color: #334155;
+    font-weight: 700;
+    background: #F8FAFC;
+    border: 1.5px dashed #CBD5E1;
+    border-radius: var(--radius-md);
 }
 
 .modal-dim-grid {
@@ -156,13 +200,6 @@
 .fill-low { background: #D97706; }
 .fill-reject { background: #DC2626; }
 
-.modal-reasoning-title {
-    font-weight: 800;
-    font-size: 0.9rem;
-    color: #1E3A5F;
-    margin-top: 6px;
-}
-
 .modal-reasoning-box {
     background: #F8FAFC;
     border: 1px solid #CBD5E1;
@@ -200,6 +237,18 @@
     padding: 3px 0;
 }
 
+.modal-partial-tag {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #92400E;
+    background: #FEF3C7;
+    border: 1px solid #FCD34D;
+    border-radius: var(--radius-sm);
+    padding: 1px 6px;
+    margin-left: 6px;
+    font-style: normal;
+}
+
 .modal-quote-box {
     background: #F1F5F9;
     border: 1px solid #CBD5E1;
@@ -213,3 +262,44 @@
     margin-top: 6px;
 }
 
+
+/* Review Panel Candidate Feedback */
+.modal-feedback-card {
+    background: #FFFFFF;
+    border: 1.5px solid #CBD5E1;
+    border-left: 4px solid #7C3AED;
+    border-radius: var(--radius-md);
+    padding: 1.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    box-shadow: var(--shadow-sm);
+}
+
+.modal-feedback-failed {
+    color: #7F1D1D;
+    font-size: 0.88rem;
+    font-weight: 700;
+}
+
+.modal-panelist-view {
+    border: 1px solid #CBD5E1;
+    border-radius: var(--radius-sm);
+    background: #F8FAFC;
+}
+
+.modal-panelist-view summary {
+    cursor: pointer;
+    padding: 8px 14px;
+    font-weight: 700;
+    font-size: 0.88rem;
+    color: #0F172A;
+}
+
+.modal-panelist-view-text {
+    padding: 0 14px 12px;
+    font-size: 0.88rem;
+    line-height: 1.6;
+    color: #0F172A;
+    white-space: pre-wrap;
+}

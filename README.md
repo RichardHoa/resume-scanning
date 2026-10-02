@@ -91,6 +91,8 @@ source activate resume_env
 pip install -r requirements.txt
 ```
 
+> **Note:** `requirements.txt` pins `vllm` and the CUDA packages, and some shared dependencies (e.g. `fastapi`, `numpy`) are held at the versions `vllm` requires. It is meant to be installed only in this GPU compute-node environment.
+
 ### Step 3: Open an Interactive Shell on the Compute Node
 
 Model inference must be performed on the GPU compute node (`fuvaiislurm0`). Do not run inference workloads directly on the shared login node.

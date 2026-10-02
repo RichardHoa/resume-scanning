@@ -43,12 +43,14 @@ class LocalCriteriaRAG:
 
         try:
             from sentence_transformers import SentenceTransformer
-            print(f"[LocalRAG] Loading embedding model: {model_name}", file=sys.stderr)
+            print(f"[LocalRAG] Loading embedding model: {model_name} (CPU)", file=sys.stderr)
+            # CPU on purpose: vLLM reserves most of the GPU up front, and embedding short Criteria queries
+            # on the GPU alongside it ran out of memory and silently degraded retrieval to unranked Criteria
             try:
-                self.model = SentenceTransformer(model_name)
+                self.model = SentenceTransformer(model_name, device="cpu")
             except Exception as load_err:
                 print(f"[LocalRAG Warning] Direct load failed ({load_err}). Retrying with local_files_only=True...", file=sys.stderr)
-                self.model = SentenceTransformer(model_name, local_files_only=True)
+                self.model = SentenceTransformer(model_name, device="cpu", local_files_only=True)
         except Exception as e:
             print(f"[LocalRAG Warning] SentenceTransformer model unavailable ({e}). Using mock/text fallback mode.", file=sys.stderr)
             self.model = None

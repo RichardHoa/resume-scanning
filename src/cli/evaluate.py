@@ -13,8 +13,8 @@ import json
 import argparse
 import time
 import re
-from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL
-from src.pipelines.evaluator import ResumeEvaluator
+from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, VLLM_MAX_CONCURRENT_REQUESTS
+from src.pipelines.evaluator import ResumeEvaluator, TRANSFORMERS_BACKEND_REFUSED
 
 
 def parse_args():
@@ -25,16 +25,20 @@ def parse_args():
     parser.add_argument("--hidden-req", type=str, default="", help="Hidden Job Requirements text or file path")
     parser.add_argument("--hr-req", type=str, default="", help="Path to HR requirement file containing normal and hidden requirements separated by '---'")
     parser.add_argument("--model-name", type=str, default=DEFAULT_LLM_MODEL, help="LLM model repository or local path")
-    parser.add_argument("--backend", type=str, default="transformers", choices=["transformers", "vllm"], help="Inference backend")
+    parser.add_argument("--backend", type=str, default="vllm", choices=["transformers", "vllm"], help="Inference backend ('transformers' is refused)")
     parser.add_argument("--vllm-url", type=str, default=DEFAULT_VLLM_URL, help="Base URL of the vLLM OpenAI-compatible server (only used with --backend vllm)")
     parser.add_argument("--mock", action="store_true", help="Mock run without loading model weights")
     parser.add_argument("--output", type=str, help="Path to save evaluation JSON result (file path or output directory for batch mode)")
     parser.add_argument("--arr", type=str, help="Comma-separated list of resume numbers to process (e.g., --arr=6,7,8)")
-    parser.add_argument("--workers", type=int, default=1, help="Number of concurrent worker threads for candidate evaluation (useful with vLLM backend)")
+    parser.add_argument("--workers", type=int, default=VLLM_MAX_CONCURRENT_REQUESTS, help="Max candidates evaluated at once (default: the vLLM request limit, which does the throttling)")
     parser.add_argument("--num-evaluations", "--runs", type=int, default=1, help="Number of evaluation iterations per category to calculate median (default: 1)")
     parser.add_argument("--force-reingest", action="store_true", help="Force re-ingesting HR requirements into RAG vector database")
+    parser.add_argument("--no-feedback", action="store_true", help="Skip the Review Panel's Candidate Feedback (scores only)")
     parser.add_argument("--language", type=str, default="vietnamese", choices=["vietnamese", "english"], help="Output language for evaluation reasoning, strengths, and gaps ('vietnamese' or 'english')")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.backend == "transformers":
+        parser.error(TRANSFORMERS_BACKEND_REFUSED)
+    return args
 
 
 def load_requirements(args):
@@ -176,7 +180,9 @@ def main():
                     hidden_req,
                     resume_name=resume_name,
                     output_dir=output_dir,
-                    num_evaluations=args.num_evaluations
+                    num_evaluations=args.num_evaluations,
+                    resume_path=file_path,
+                    generate_feedback=not args.no_feedback
                 )
                 out_path = os.path.join(output_dir, f"{resume_name}_evaluation.json")
                 print(f"  Saved evaluation result to: {out_path}", file=sys.stderr)
@@ -226,7 +232,9 @@ def main():
                 resume_name=resume_name,
                 output_dir=target_dir,
                 output_path=target_path,
-                num_evaluations=args.num_evaluations
+                num_evaluations=args.num_evaluations,
+                resume_path=single_file,
+                generate_feedback=not args.no_feedback
             )
             print(f"Saved evaluation result to: {target_path}")
         else:
@@ -235,7 +243,9 @@ def main():
                 standard_req,
                 hidden_req,
                 resume_name=resume_name,
-                num_evaluations=args.num_evaluations
+                num_evaluations=args.num_evaluations,
+                resume_path=single_file,
+                generate_feedback=not args.no_feedback
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
 

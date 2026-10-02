@@ -153,11 +153,13 @@
             <div class="modal-header">
                 <div class="modal-header-info">
                     <h2 id="modal-cand-name">Tên ứng viên</h2>
-                    <span class="modal-subtext" id="modal-cand-role">Hồ sơ đánh giá</span>
+                    <span class="modal-subtext" id="modal-cand-role"></span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px;">
+                <div class="modal-header-actions">
+                    <div class="modal-score-box" id="modal-cand-score"></div>
+                    <button class="btn btn-secondary btn-sm" id="modal-btn-resume" type="button">Xem CV</button>
                     <button class="btn btn-secondary btn-sm" id="modal-btn-download" type="button">
-                        <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Xuất JSON
+                        <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Tải PDF
                     </button>
                     <button class="modal-close-btn" id="modal-close-btn" aria-label="Đóng chi tiết ứng viên" type="button">&times;</button>
                 </div>

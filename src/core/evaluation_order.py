@@ -7,7 +7,7 @@ import json
 import re
 from typing import Dict, List, Optional, Any, Set
 
-from src.core.config import ROOT_DIR, EVAL_RESULTS_DIR, EVALUATION_JSON_DIR
+from src.core.config import ROOT_DIR, EVAL_RESULTS_DIR, EVALUATION_JSON_DIR, APPROVED_DIR, OUTPUT_DIR
 
 SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -222,6 +222,47 @@ def get_candidate_tier(data: dict, fname: str, order_data: dict) -> dict:
         "tier_order": 9999,
         "resolved_email": c_email
     }
+
+
+def _load_source_resume(report: dict) -> Optional[tuple]:
+    """
+    The extracted resume an evaluation report was made from, as (data, filename), or None when it is gone.
+    Looked up by the report's resume_path, then by resume_name in approved_jsons/ and output_jsons/.
+    """
+    candidates: List[str] = []
+    resume_path = report.get("resume_path")
+    if isinstance(resume_path, str) and resume_path:
+        candidates.append(resume_path)
+        candidates += [os.path.join(d, os.path.basename(resume_path)) for d in (APPROVED_DIR, OUTPUT_DIR)]
+    resume_name = report.get("resume_name")
+    if isinstance(resume_name, str) and resume_name:
+        json_name = os.path.splitext(os.path.basename(resume_name))[0] + ".json"
+        candidates += [os.path.join(d, json_name) for d in (APPROVED_DIR, OUTPUT_DIR)]
+
+    for path in candidates:
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            continue
+        if isinstance(data, dict):
+            return data, os.path.basename(path)
+    return None
+
+
+def get_report_tier(report: dict, fname: str, order_data: dict) -> dict:
+    """
+    Tier of the candidate behind an evaluation report. Reports no longer carry the candidate's email
+    (candidate_identifier is now the extracted name), so matching runs against the source resume,
+    falling back to the report itself when that resume is gone.
+    """
+    source = _load_source_resume(report)
+    if source:
+        resume_data, resume_fname = source
+        return get_candidate_tier(resume_data, resume_fname, order_data)
+    return get_candidate_tier(report, fname, order_data)
 
 
 def get_eval_search_dirs() -> List[str]:

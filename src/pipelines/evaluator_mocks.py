@@ -2,7 +2,7 @@
 Mock data and mock requirement decomposition handlers for Resume Evaluator pipeline.
 """
 import json
-from typing import Dict, List
+from typing import Any, Dict, List
 
 
 def get_mock_category_response(category: str, language: str = "vietnamese") -> str:
@@ -101,7 +101,7 @@ def get_mock_category_response(category: str, language: str = "vietnamese") -> s
     return json.dumps(mock_data.get(category, default_resp), ensure_ascii=False)
 
 
-def get_mock_scrutiny_response(standard_req: str, hidden_req: str, language: str = "vietnamese", max_questions: int = 5) -> Dict[str, List[Dict[str, str]]]:
+def get_mock_scrutiny_response(standard_req: str, hidden_req: str, language: str = "vietnamese", max_questions: int = 3) -> Dict[str, List[Dict[str, str]]]:
     """Generates a mock Implicit Assumption / Clarification Question response via simple keyword heuristics."""
     is_english = language.lower() in ("english", "en")
     vague_terms = ["senior", "junior", "good", "strong", "fast-paced", "flexible", "team player", "cấp cao", "tốt", "linh hoạt"]
@@ -156,3 +156,25 @@ def get_mock_decomposed_requirements(standard_req: str, hidden_req: str) -> Dict
             result["work_experience"].append(line)
 
     return result
+
+
+def get_mock_candidate_feedback() -> Dict[str, Any]:
+    """Canned Vietnamese Candidate Feedback content, in the shape the Review Panel produces (without status/timing)."""
+    return {
+        "summary": "Ứng viên có nền tảng chuyên môn phù hợp với vị trí và kinh nghiệm làm việc liên quan, nhưng kinh nghiệm dẫn dắt đội nhóm còn hạn chế. Các thành viên hội đồng đồng ý rằng ứng viên đáp ứng phần lớn yêu cầu chuẩn; điểm còn bàn cãi là mức độ phù hợp với văn hóa làm việc nhịp độ cao.",
+        "strengths": [
+            "Kỹ năng chuyên môn cốt lõi đáp ứng yêu cầu của vị trí",
+            "Kinh nghiệm làm việc liên quan trực tiếp đến công việc",
+            "Có bằng cấp phù hợp với lĩnh vực tuyển dụng"
+        ],
+        "weaknesses": [
+            "Kinh nghiệm quản lý hoặc dẫn dắt đội nhóm còn ít",
+            "Chưa thể hiện rõ thành tích định lượng trong các dự án",
+            "Thiếu bằng chứng về khả năng làm việc trong môi trường nhịp độ cao"
+        ],
+        "panelist_views": {
+            "leadership": "Ứng viên chưa có vai trò quản lý chính thức, nhưng đã chủ động đảm nhận một số phần việc quan trọng. Tôi đồng ý với thành viên Chuyên môn rằng nền tảng kỹ năng vững, và đây là cơ sở tốt để phát triển năng lực lãnh đạo.",
+            "domain_expertise": "Kỹ năng chuyên môn của ứng viên khớp với phần lớn yêu cầu chuẩn. Tôi không hoàn toàn đồng ý với thành viên Con người & Văn hóa: hồ sơ có dấu hiệu làm việc nhóm tốt qua các dự án chung.",
+            "people_culture": "Hồ sơ cho thấy ứng viên làm việc nhóm ổn định, nhưng chưa có bằng chứng rõ về khả năng thích nghi với môi trường nhịp độ cao. Tôi đồng ý với thành viên Lãnh đạo rằng cần kiểm tra thêm trong phỏng vấn."
+        }
+    }

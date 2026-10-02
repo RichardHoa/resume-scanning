@@ -1,7 +1,7 @@
 #!/bin/bash
 # -----------------------------------------------------------------------------
 # Modular Web Server & vLLM Engine Manager
-# Model: Qwen/Qwen3.5-35B-A3B-FP8
+# Model: the DEFAULT_MODEL_KEY profile in scripts/model_profiles.sh
 #
 # Usage:
 #   ./scripts/server.sh                 -> Starts both vLLM + FastAPI web server
@@ -21,8 +21,10 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/vllm_utils.sh"
+source "$SCRIPT_DIR/model_profiles.sh"
 
-MODEL="Qwen/Qwen3.5-35B-A3B-FP8"
+# Sets MODEL, VLLM_EXTRA_ARGS and the CONCURRENCY request limit the web server inherits
+load_model_profile "$DEFAULT_MODEL_KEY" || exit 1
 DEFAULT_VLLM_PORT=8100
 WEB_PORT=8005
 

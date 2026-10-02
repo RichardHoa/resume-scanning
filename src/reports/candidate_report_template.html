@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>{{ name }} – Báo cáo đánh giá</title>
+<style>
+    @page { size: A4; margin: 16mm 14mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+        font-family: "Be Vietnam Pro", "Noto Sans", "DejaVu Sans", "Liberation Sans", Arial, sans-serif;
+        font-size: 10pt;
+        color: #0F172A;
+        line-height: 1.5;
+    }
+    .header {
+        border: 1.5px solid #CBD5E1;
+        border-radius: 8px;
+        background: #F8FAFC;
+        padding: 12pt 14pt;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12pt;
+        margin-bottom: 12pt;
+    }
+    .header h1 { font-size: 16pt; font-weight: 800; color: #1E3A5F; }
+    .header .meta { font-size: 9pt; color: #334155; font-weight: 600; margin-top: 4pt; }
+    .match-pill {
+        display: inline-block;
+        font-size: 8pt;
+        font-weight: 800;
+        padding: 2pt 8pt;
+        border-radius: 4px;
+        border: 1px solid;
+        margin-top: 6pt;
+    }
+    .match-strong { background: #DCFCE7; color: #14532D; border-color: #86EFAC; }
+    .match-potential { background: #E0F2FE; color: #075985; border-color: #7DD3FC; }
+    .match-low { background: #FEF3C7; color: #92400E; border-color: #FCD34D; }
+    .match-reject, .match-error { background: #FEE2E2; color: #7F1D1D; border-color: #FCA5A5; }
+    .score-box { text-align: center; border: 1.5px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; padding: 6pt 12pt; }
+    .score-box .num { font-size: 22pt; font-weight: 800; line-height: 1.1; }
+    .score-box .lbl { font-size: 7.5pt; font-weight: 800; color: #334155; text-transform: uppercase; }
+    .alert {
+        border: 1.5px solid #F59E0B;
+        background: #FFFBEB;
+        color: #78350F;
+        border-radius: 8px;
+        padding: 8pt 12pt;
+        margin-bottom: 10pt;
+        font-size: 9pt;
+    }
+    .alert strong { display: block; font-weight: 800; }
+    .card {
+        border: 1.5px solid #CBD5E1;
+        border-radius: 8px;
+        padding: 10pt 12pt;
+        margin-bottom: 10pt;
+        page-break-inside: avoid;
+    }
+    .card.feedback { border-left: 4px solid #7C3AED; }
+    .card-title { font-weight: 800; font-size: 11pt; display: flex; justify-content: space-between; align-items: center; }
+    .weight { font-size: 8pt; font-weight: 700; color: #334155; background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 4px; padding: 1pt 6pt; margin-left: 6pt; }
+    .dim-score { font-size: 9.5pt; font-weight: 800; color: #0369A1; background: #E0F2FE; border: 1px solid #7DD3FC; border-radius: 4px; padding: 2pt 8pt; }
+    .progress { height: 5pt; background: #E2E8F0; border-radius: 3px; margin: 6pt 0 4pt; overflow: hidden; }
+    .progress div { height: 100%; }
+    .fill-high { background: #15803D; }
+    .fill-mid { background: #0284C7; }
+    .fill-low { background: #D97706; }
+    .fill-reject { background: #DC2626; }
+    .summary { background: #F8FAFC; border: 1px solid #CBD5E1; border-left: 4px solid #2563EB; border-radius: 4px; padding: 7pt 10pt; margin-top: 6pt; }
+    .section-title { font-weight: 800; font-size: 9.5pt; margin-top: 7pt; }
+    ul { margin-left: 14pt; margin-top: 2pt; }
+    li { padding: 1.5pt 0; font-weight: 600; }
+    .strengths li { color: #14532D; }
+    .gaps li { color: #7F1D1D; }
+    .partial-tag { font-size: 7.5pt; font-weight: 700; color: #92400E; background: #FEF3C7; border-radius: 3px; padding: 0 4pt; margin-left: 4pt; }
+    .quote {
+        background: #F1F5F9;
+        border-left: 3px solid #475569;
+        border-radius: 3px;
+        padding: 4pt 8pt;
+        margin-top: 3pt;
+        font-style: italic;
+        font-weight: 500;
+        color: #0F172A;
+        font-size: 9pt;
+    }
+    .failed-text { color: #7F1D1D; font-weight: 700; margin-top: 6pt; }
+</style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>{{ name }}</h1>
+            <div class="meta">{% if email %}{{ email }} • {% endif %}Đánh giá lúc {{ evaluated_at }}</div>
+            <span class="match-pill {{ match.cls }}">{{ match.text }}</span>
+        </div>
+        <div class="score-box">
+            <div class="num" style="color: {{ score_color }};">{{ score }}</div>
+            <div class="lbl">Tổng điểm</div>
+        </div>
+    </div>
+
+    {% if failed %}
+    <div class="alert">
+        <strong>{{ "Lỗi – cần chạy lại" | upper }}</strong>
+        Không thể chấm điểm {% if failed_categories %}các mục: {{ failed_categories | join(", ") }}{% else %}một số mục đánh giá{% endif %}. Kết quả này không được xếp hạng.
+    </div>
+    {% endif %}
+
+    {% if ocr %}
+    <div class="alert">
+        <strong>CẦN HR KIỂM TRA KỸ (ĐÃ DÙNG OCR)</strong>
+        CV này không có lớp văn bản gốc (PDF scan hoặc ảnh). Hệ thống đã dùng OCR để trích xuất thông tin ứng viên. Vui lòng kiểm tra thủ công kỹ các thông tin đã trích xuất.
+    </div>
+    {% endif %}
+
+    {% if feedback %}
+    <div class="card feedback">
+        <div class="card-title">Nhận xét của hội đồng đánh giá</div>
+        {% if feedback.status == "failed" %}
+        <div class="failed-text">Không thể tạo nhận xét</div>
+        {% else %}
+            {% if feedback.summary %}<div class="summary">{{ feedback.summary }}</div>{% endif %}
+            {% if feedback.strengths %}
+            <div class="section-title">Điểm mạnh:</div>
+            <ul class="strengths">{% for s in feedback.strengths %}<li>{{ s }}</li>{% endfor %}</ul>
+            {% endif %}
+            {% if feedback.weaknesses %}
+            <div class="section-title">Điểm yếu và kỹ năng còn thiếu:</div>
+            <ul class="gaps">{% for w in feedback.weaknesses %}<li>{{ w }}</li>{% endfor %}</ul>
+            {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% for cat in categories %}
+    <div class="card">
+        <div class="card-title">
+            <span>{{ cat.name }}<span class="weight">Trọng số: {{ cat.weight }}%</span></span>
+            <span class="dim-score">{{ cat.score }} / 100</span>
+        </div>
+        <div class="progress"><div class="{{ cat.fill_class }}" style="width: {{ cat.fill_width }}%;"></div></div>
+        {% if cat.strengths %}
+        <div class="section-title">Điểm mạnh chính:</div>
+        <ul class="strengths">
+            {% for s in cat.strengths %}
+            <li>
+                {{ s.text }}{% if s.partial %}<span class="partial-tag">Đáp ứng một phần</span>{% endif %}
+                {% for q in s.quotes %}<div class="quote">“{{ q }}”</div>{% endfor %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% if cat.gaps %}
+        <div class="section-title">Thiếu sót đã xác định:</div>
+        <ul class="gaps">{% for g in cat.gaps %}<li>{{ g }}</li>{% endfor %}</ul>
+        {% endif %}
+    </div>
+    {% endfor %}
+</body>
+</html>

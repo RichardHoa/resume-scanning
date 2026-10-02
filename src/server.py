@@ -22,7 +22,8 @@ Usage:
 
     # Then start this web server
     python src/server.py                            # defaults to vLLM
-    python src/server.py --backend transformers      # or use HF directly
+
+    Evaluation refuses the transformers backend, so the server does too.
 """
 import os
 import sys
@@ -42,6 +43,7 @@ if PARENT_DIR not in sys.path:
 
 from step_1_extractor import ResumeExtractor
 from step_2_evaluate import ResumeEvaluator
+from src.pipelines.evaluator import TRANSFORMERS_BACKEND_REFUSED
 from src.core.state import state
 from src.core.evaluation_order import load_evaluation_order
 from src.api import include_api_routers
@@ -63,6 +65,8 @@ parser.add_argument("--port", type=int, default=8005,
 
 # Use parse_known_args so that uvicorn flags like --reload do not crash our parser
 args, unknown_args = parser.parse_known_args()
+if args.backend == "transformers":
+    parser.error(TRANSFORMERS_BACKEND_REFUSED)
 
 # Populate global state
 state.args = args
@@ -79,7 +83,7 @@ state.extractor = ResumeExtractor(
 )
 
 state.evaluator = ResumeEvaluator(
-    model_name=args.model or "Qwen/Qwen3.5-9B", mock=args.mock,
+    model_name=args.model, mock=args.mock,
     backend=args.backend, vllm_url=args.vllm_url
 )
 

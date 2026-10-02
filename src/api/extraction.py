@@ -11,7 +11,9 @@ from fastapi.responses import JSONResponse
 from src.core.config import APPROVED_DIR, OUTPUT_DIR
 from src.core.state import state
 from src.core.durations import record_duration
+from src.core.resume_pdfs import store_resume_pdf
 from src.core.evaluation_order import load_evaluation_order, get_candidate_tier
+from src.pipelines.evaluator_utils import is_missing_position
 
 router = APIRouter(prefix="/api", tags=["extraction"])
 
@@ -47,6 +49,7 @@ async def extract_resume(file: UploadFile = File(...), language: str = Form("vie
             base_name = os.path.splitext(safe_filename)[0]
             with open(os.path.join(output_dir, f"{base_name}.json"), "w", encoding="utf-8") as f:
                 json.dump(extracted_data, f, ensure_ascii=False, indent=2)
+            store_resume_pdf(temp_file_path, base_name)
 
             record_duration("extract", elapsed_time)
             return JSONResponse(content=extracted_data, headers=headers)
@@ -94,7 +97,7 @@ def get_scanned_resumes():
                         data = json.load(f)
                     
                     pos_info = data.get("position_applied", {}) if isinstance(data, dict) else {}
-                    skills = data.get("skills_and_specialties", []) if isinstance(data, dict) else []
+                    skills = data.get("skills", []) if isinstance(data, dict) else []
                     
                     tier_info = get_candidate_tier(data, fname, order_data)
                     
@@ -102,6 +105,7 @@ def get_scanned_resumes():
                         "filename": fname,
                         "path": fpath,
                         "title": pos_info.get("title", "N/A"),
+                        "missing_position": is_missing_position(data),
                         "level": pos_info.get("level", "unknown"),
                         "email": tier_info["resolved_email"],
                         "skills_count": len(skills),

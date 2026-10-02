@@ -24,6 +24,9 @@ def clean_and_deduplicate_list(items: Any, max_items: int = 10) -> List[str]:
     return cleaned
 
 
+EMPTY_QUOTE_PLACEHOLDERS = ("null", "none", "n/a", "na", "", "không có", "không", "none.", "nil")
+
+
 def validate_category_evaluation(parsed: Any) -> Optional[Dict[str, Any]]:
     """
     Validates that parsed JSON contains valid evaluation data.
@@ -35,6 +38,7 @@ def validate_category_evaluation(parsed: Any) -> Optional[Dict[str, Any]]:
 
     # 1. Process atomic criteria_evaluations if present for deterministic scoring
     cleaned_criteria = []
+    all_criteria_quotes: List[str] = []
     deterministic_score: Optional[int] = None
     raw_criteria = parsed.get("criteria_evaluations")
     if isinstance(raw_criteria, list) and len(raw_criteria) > 0:
@@ -44,14 +48,18 @@ def validate_category_evaluation(parsed: Any) -> Optional[Dict[str, Any]]:
             if isinstance(item, dict):
                 crit_text = str(item.get("criterion", "")).strip()
                 verdict = str(item.get("verdict", "")).strip().upper()
-                quote = item.get("evidence_quote")
-                
+                # Current format lists quotes under "evidence_quotes"; older outputs hold one string in "evidence_quote"
+                raw_quotes = item.get("evidence_quotes", item.get("evidence_quote"))
+                if not isinstance(raw_quotes, list):
+                    raw_quotes = [] if raw_quotes is None else [raw_quotes]
+
                 # Filter out null, none, n/a, or empty placeholders
-                quote_str: Optional[str] = None
-                if quote is not None:
-                    raw_q = str(quote).strip()
-                    if raw_q.lower() not in ("null", "none", "n/a", "na", "", "không có", "không", "none.", "nil"):
-                        quote_str = raw_q
+                item_quotes = clean_and_deduplicate_list(
+                    [q for q in raw_quotes if q is not None and str(q).strip().lower() not in EMPTY_QUOTE_PLACEHOLDERS],
+                    max_items=6
+                )
+                all_criteria_quotes.extend(item_quotes)
+                quote_str: Optional[str] = " | ".join(item_quotes) or None
 
                 # Strict discrete verdict scoring mapping based on prompt specification
                 if verdict == "STRONG_EVIDENCE":
@@ -67,7 +75,10 @@ def validate_category_evaluation(parsed: Any) -> Optional[Dict[str, Any]]:
                     "criterion": crit_text,
                     "verdict": verdict if verdict in ("STRONG_EVIDENCE", "PARTIAL_EVIDENCE", "NO_EVIDENCE") else ("STRONG_EVIDENCE" if s >= 0.9 else "PARTIAL_EVIDENCE" if s >= 0.4 else "NO_EVIDENCE"),
                     "score": round(s, 2),
-                    "evidence_quote": quote_str
+                    "evidence_quote": quote_str,
+                    "evidence_quotes": item_quotes,
+                    # The model's reasoning written before the verdict; absent from outputs older than that format
+                    "reasoning": str(item.get("reasoning", "")).strip()
                 })
 
         if valid_count > 0:
@@ -96,8 +107,7 @@ def validate_category_evaluation(parsed: Any) -> Optional[Dict[str, Any]]:
     gaps = clean_and_deduplicate_list(parsed.get("gaps", []), max_items=8)
     quotes = clean_and_deduplicate_list(parsed.get("evidence_quotes", []), max_items=6)
     if not quotes and cleaned_criteria:
-        extracted_quotes = [c["evidence_quote"] for c in cleaned_criteria if c.get("evidence_quote")]
-        quotes = clean_and_deduplicate_list(extracted_quotes, max_items=6)
+        quotes = clean_and_deduplicate_list(all_criteria_quotes, max_items=6)
     reasoning = str(parsed.get("reasoning_summary", "")).strip()
 
     result: Dict[str, Any] = {
@@ -113,86 +123,33 @@ def validate_category_evaluation(parsed: Any) -> Optional[Dict[str, Any]]:
     return result
 
 
+# The raw resume keys each Category is judged on, passed through unchanged
+CATEGORY_RESUME_KEYS = {
+    "seniority_title": ("position_applied", "self_evaluation", "work_experience"),
+    "technical_skills": ("skills", "work_experience", "projects", "languages"),
+    "work_experience": ("work_experience", "projects"),
+    "education_certifications": ("education_background", "certifications", "languages"),
+    "hidden_culture": ("position_applied", "self_evaluation", "work_experience", "projects"),
+}
+
+
+def strip_identity(resume: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    The resume without basic_information. It only identifies the candidate (name, contacts, location,
+    profile links), and the LLM can't follow a link, so no LLM call after extraction sees it.
+    """
+    return {k: v for k, v in resume.items() if k != "basic_information"}
+
+
+def is_missing_position(resume: Dict[str, Any]) -> bool:
+    """A Missing Position: the resume states no position the candidate is applying for."""
+    position = resume.get("position_applied") if isinstance(resume, dict) else None
+    title = position.get("title") if isinstance(position, dict) else None
+    return not (isinstance(title, str) and title.strip())
+
+
 def extract_relevant_resume_field(category: str, resume: Dict[str, Any]) -> Dict[str, Any]:
-    """Extracts and sanitizes relevant resume sections tailored for each evaluation dimension."""
+    """The raw resume keys a Category is judged on, unchanged; basic_information is never one of them."""
     resume = resume if isinstance(resume, dict) else {}
-    work_exp = resume.get("work_experience", [])
-    work_exp_list = work_exp if isinstance(work_exp, list) else []
-
-    if category == "seniority_title":
-        work_exp_summary = []
-        for w in work_exp_list:
-            if isinstance(w, dict):
-                pos = w.get("position", "")
-                comp = w.get("company_name", "")
-                dur = w.get("duration", "")
-                comp_info = w.get("company_description") or w.get("company_size") or w.get("industry") or ""
-                if comp_info:
-                    work_exp_summary.append(f"{pos} tại {comp} ({comp_info}) ({dur})")
-                else:
-                    work_exp_summary.append(f"{pos} tại {comp} ({dur})")
-            elif isinstance(w, str):
-                work_exp_summary.append(w)
-        return {
-            "position_applied": resume.get("position_applied", {}),
-            "self_evaluation": resume.get("self_evaluation", ""),
-            "work_experience_history": work_exp_summary,
-            "work_experience_details": work_exp_list
-        }
-    elif category == "technical_skills":
-        return {
-            "skills_and_specialties": resume.get("skills_and_specialties", []),
-            "languages": resume.get("languages", [])
-        }
-    elif category == "work_experience":
-        return {
-            "work_experience": work_exp_list,
-            "projects": resume.get("projects", []),
-            "skills_and_specialties": resume.get("skills_and_specialties", [])
-        }
-    elif category == "education_certifications":
-        return {
-            "education_background": resume.get("education_background", []),
-            "certifications": resume.get("certifications", []),
-            "languages": resume.get("languages", [])
-        }
-    else:
-        summary_lines = []
-        for w in work_exp_list:
-            if isinstance(w, dict):
-                pos = w.get("position", "")
-                comp = w.get("company_name", "")
-                dur = w.get("duration", "")
-                resp = w.get("responsibilities") or w.get("responsabilities") or w.get("description") or ""
-                if isinstance(resp, list):
-                    resp_str = "\n".join(str(x) for x in resp if x)
-                else:
-                    resp_str = str(resp).strip() if resp else ""
-                header = f"{pos} tại {comp} ({dur})".strip() if (pos or comp) else ""
-                if header and resp_str:
-                    summary_lines.append(f"{header}:\n{resp_str}")
-                elif resp_str:
-                    summary_lines.append(resp_str)
-                elif header:
-                    summary_lines.append(header)
-            elif isinstance(w, str):
-                summary_lines.append(w)
-
-        basic_info = resume.get("basic_information", {})
-        sanitized_basic_info = {}
-        if isinstance(basic_info, dict):
-            # Programmatically filter out email and phone to prevent name/PII leakage in LLM evaluation
-            sanitized_basic_info = {
-                k: v for k, v in basic_info.items()
-                if k not in ("email", "phone", "name", "full_name")
-            }
-
-        return {
-            "position_applied": resume.get("position_applied", {}),
-            "self_evaluation": resume.get("self_evaluation", ""),
-            "basic_information": sanitized_basic_info,
-            "skills_and_specialties": resume.get("skills_and_specialties", []),
-            "projects": resume.get("projects", []),
-            "work_experience_summary": summary_lines,
-            "work_experience_details": work_exp_list
-        }
+    keys = CATEGORY_RESUME_KEYS.get(category, CATEGORY_RESUME_KEYS["hidden_culture"])
+    return {key: resume[key] for key in keys if key in resume}

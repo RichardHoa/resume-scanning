@@ -257,6 +257,26 @@ export const API = {
     },
 
     /**
+     * URL of the candidate's original resume PDF, served inline.
+     * @param {string} filename - Evaluation report filename.
+     * @returns {string} The PDF URL.
+     */
+    resumePdfUrl(filename) {
+        return `/api/eval_results/${encodeURIComponent(filename)}/resume_pdf`;
+    },
+
+    /**
+     * Builds the evaluation report PDF (with the resume PDF appended when stored).
+     * @param {string} filename - Evaluation report filename.
+     * @returns {Promise<Blob>} The PDF file.
+     */
+    async getReportPdf(filename) {
+        const res = await fetch(`/api/eval_results/${encodeURIComponent(filename)}/report_pdf`);
+        if (!res.ok) throw new Error('Không tạo được báo cáo PDF.');
+        return await res.blob();
+    },
+
+    /**
      * Deletes an evaluation report JSON file.
      * @param {string} filename - Target evaluation report filename to delete.
      * @returns {Promise<Object>} Operation success result.

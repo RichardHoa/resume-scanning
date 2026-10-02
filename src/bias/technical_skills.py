@@ -1,3 +1,4 @@
+# STALE: still built on the removed skills_and_specialties field. See .scratch/extraction-verbatim-only/issues/01-stale-skills-bias-suites.md
 """
 Technical Skills & Competencies Bias & Positional Sensitivity Experiment Builder.
 Corresponds to Part 1 of docs/bias_detection_plan.md (5,587 unique iterations).
@@ -37,6 +38,10 @@ class TechnicalSkillsBiasBuilder(BaseCategoryBiasBuilder):
         return "Technical Skills & Competencies"
 
     def extract_candidate_data(self, resume_dict: Dict[str, Any]) -> Dict[str, Any]:
+        raise RuntimeError(
+            "STALE: the technical_skills bias suite still targets the removed skills_and_specialties field. "
+            "See .scratch/extraction-verbatim-only/issues/01-stale-skills-bias-suites.md"
+        )
         return {
             "skills_and_specialties": resume_dict.get("skills_and_specialties", []),
             "languages": resume_dict.get("languages", [])

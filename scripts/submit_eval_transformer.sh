@@ -14,6 +14,10 @@
 # SLURM Batch Job Script for Resume Evaluation (Transformers Backend)
 # -----------------------------------------------------------------------------
 
+# Evaluation no longer supports the transformers backend; use scripts/submit_eval_vllm.sh instead
+echo "[ERROR] The transformers backend is no longer supported for evaluation. Submit scripts/submit_eval_vllm.sh instead." >&2
+exit 1
+
 RAW_MODEL="$1"
 INITIAL_CWD="$(pwd)"
 

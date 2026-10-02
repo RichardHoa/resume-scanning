@@ -30,6 +30,33 @@ def load_schema_from_file(model_name: str = "qwen") -> dict:
         return {}
 
 
+def example_to_json_schema(example: Any) -> Dict[str, Any]:
+    """
+    Converts an example-shaped template (objects of field descriptions, single-item lists showing the item
+    shape) into a JSON Schema that requires every field and forbids extra ones. String leaves are the
+    field descriptions, which the prompt carries, so they become plain string types here.
+    """
+    if isinstance(example, dict):
+        return {
+            "type": "object",
+            "properties": {key: example_to_json_schema(value) for key, value in example.items()},
+            "required": list(example.keys()),
+            "additionalProperties": False
+        }
+    if isinstance(example, list):
+        return {"type": "array", "items": example_to_json_schema(example[0]) if example else {}}
+    return {"type": "string"}
+
+
+def load_extraction_json_schema() -> Dict[str, Any]:
+    """
+    The JSON Schema vLLM enforces on extraction output, derived from qwen_schema.json so the enforced
+    structure and the example shown in the extraction prompt cannot drift apart.
+    """
+    example = load_schema_from_file()
+    return example_to_json_schema(example) if example else {"type": "object"}
+
+
 
 def extract_json_substring(text: str) -> str:
     """
@@ -173,11 +200,11 @@ def repair_truncated_json(text: str) -> str:
     REQUIRED_KEYS = {
         "position_applied":       '{"title": ""}',
         "self_evaluation":        '""',
-        "skills_and_specialties": '[]',
+        "skills":                 '[]',
         "languages":              '[]',
         "certifications":         '[]',
         "work_experience":        '[]',
-        "basic_information":      '{"email": "", "phone": "", "location": "", "other_info": ""}',
+        "basic_information":      '{"full_name": "", "email": "", "phone": "", "location": "", "other_info": ""}',
         "education_background":   '[]',
         "projects":               '[]',
     }
@@ -251,6 +278,65 @@ def sanitize_json_string_newlines(text: str) -> str:
     return "".join(result)
 
 
+def merge_adjacent_string_literals(text: str) -> str:
+    """
+    Merges string literals that sit next to each other in value position into one string:
+      "quote A"; "quote B"  -> "quote A; quote B"
+      "quote A" "quote B"   -> "quote A quote B"
+    Models listing several evidence quotes for one field emit this (e.g. Muse-Glimmer).
+    A comma separator is left alone (that is valid JSON), and so is a following string
+    that is an object key (followed by ':'), which is a missing-comma case instead.
+    """
+    if not text:
+        return ""
+    result = []
+    in_string = False
+    escape = False
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if in_string:
+            result.append(ch)
+            if escape:
+                escape = False
+            elif ch == '\\':
+                escape = True
+            elif ch == '"':
+                in_string = False
+                # Look past whitespace / ';' for another string literal
+                j = i + 1
+                while j < n and (text[j].isspace() or text[j] == ';'):
+                    j += 1
+                if j < n and text[j] == '"' and not _string_is_key(text, j):
+                    gap = text[i + 1:j]
+                    result[-1] = '; ' if ';' in gap else ' '
+                    in_string = True
+                    i = j
+            i += 1
+            continue
+        if ch == '"':
+            in_string = True
+        result.append(ch)
+        i += 1
+    return "".join(result)
+
+
+def _string_is_key(text: str, start: int) -> bool:
+    """True if the string literal opening at text[start] is followed by ':' (an object key)."""
+    escape = False
+    for k in range(start + 1, len(text)):
+        ch = text[k]
+        if escape:
+            escape = False
+        elif ch == '\\':
+            escape = True
+        elif ch == '"':
+            rest = text[k + 1:].lstrip()
+            return rest.startswith(':')
+    return False
+
+
 def clean_and_parse_json(text: str) -> Optional[Dict[str, Any]]:
     """
     Safely extracts and parses JSON dict from LLM string output.
@@ -297,8 +383,17 @@ def clean_and_parse_json(text: str) -> Optional[Dict[str, Any]]:
         except Exception:
             pass
 
-        # 4. Key-value array syntax fix
-        kv_fixed = fix_array_key_value_syntax(sanitized)
+        # 4. Merge adjacent string literals ("a"; "b" -> "a; b")
+        merged = merge_adjacent_string_literals(sanitized)
+        try:
+            p = json.loads(merged)
+            if isinstance(p, dict):
+                return p
+        except Exception:
+            pass
+
+        # 5. Key-value array syntax fix
+        kv_fixed = fix_array_key_value_syntax(merged)
         try:
             p = json.loads(kv_fixed)
             if isinstance(p, dict):
@@ -306,7 +401,7 @@ def clean_and_parse_json(text: str) -> Optional[Dict[str, Any]]:
         except Exception:
             pass
 
-        # 5. Internal unescaped double quote repair
+        # 6. Internal unescaped double quote repair
         try:
             quote_fixed = re.sub(r'(?<=[a-zA-Z0-9_])"(?=[a-zA-Z0-9_])', "'", kv_fixed)
             p = json.loads(quote_fixed)

@@ -10,11 +10,10 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 import json
-import urllib.request
-import urllib.error
-from typing import Any, Tuple, Optional
-from src.core.config import MAX_NEW_TOKENS, DEFAULT_VLLM_URL
-from src.core.json_utils import load_schema_from_file
+from typing import Any, Tuple
+from src.core.config import MAX_NEW_TOKENS
+from src.providers import vllm_client
+from src.core.json_utils import load_extraction_json_schema
 from src.prompts.extractor_prompts import get_system_prompt
 
 
@@ -97,78 +96,7 @@ def run_local_inference(resume_text: str, model: Any, tokenizer: Any, language: 
 
 
 
-def vllm_discover_model(vllm_url: str) -> str:
-    """Query the vLLM server's `/v1/models` endpoint and return the first model ID."""
-    url = vllm_url.rstrip("/") + "/models"
-    req = urllib.request.Request(url, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.URLError as e:
-        raise RuntimeError(
-            f"Cannot connect to vLLM server at {vllm_url} ({e.reason or e}). "
-            f"Please verify the vLLM server is running (e.g. './scripts/server.sh --start-vllm') "
-            f"or switch to '--backend transformers' or '--mock'."
-        ) from e
-    except Exception as e:
-        raise RuntimeError(f"Failed to query vLLM server models at {url}: {e}") from e
-
-    models = body.get("data", [])
-    if not models:
-        raise RuntimeError(f"No models found on vLLM server at {vllm_url}")
-    model_id = models[0]["id"]
-    print(f"  [vLLM] Auto-discovered model: {model_id}", file=sys.stderr)
-    return model_id
-
-
-def vllm_chat_request(vllm_url: str, model_name: Optional[str], messages: list) -> str:
-    """Send a chat completion request to a vLLM OpenAI-compatible server."""
-    if not model_name:
-        model_name = vllm_discover_model(vllm_url)
-
-    schema = load_schema_from_file(model_name)
-
-    url = vllm_url.rstrip("/") + "/chat/completions"
-    payload = json.dumps({
-        "model": model_name,
-        "messages": messages,
-        "temperature": 0.0,
-        "repetition_penalty": 1.05,
-        "max_tokens": MAX_NEW_TOKENS,
-        "guided_json": schema,
-        "chat_template_kwargs": {
-            "enable_thinking": False
-        }
-    }).encode("utf-8")
-
-    req = urllib.request.Request(
-        url, data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST"
-    )
-
-    try:
-        with urllib.request.urlopen(req, timeout=600) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-        return body["choices"][0]["message"]["content"]
-    except urllib.error.HTTPError as e:
-        error_body = ""
-        try:
-            error_body = e.read().decode("utf-8")
-        except Exception:
-            pass
-        raise RuntimeError(
-            f"vLLM request failed (HTTP {e.code}): {error_body}"
-        ) from e
-    except urllib.error.URLError as e:
-        raise RuntimeError(
-            f"Cannot connect to vLLM server at {vllm_url} ({e.reason or e}). "
-            f"Please verify the vLLM server is running (e.g. './scripts/server.sh --start-vllm') "
-            f"or switch to '--backend transformers' or '--mock'."
-        ) from e
-
-
-def run_vllm_inference(resume_text: str, model_name: Optional[str], vllm_url: str, language: str = "vietnamese") -> str:
+def run_vllm_inference(resume_text: str, model_name: str, vllm_url: str, language: str = "vietnamese") -> str:
     """Run text-based extraction via a running vLLM server."""
     messages = [
         {"role": "system", "content": get_system_prompt(language)},
@@ -176,7 +104,9 @@ def run_vllm_inference(resume_text: str, model_name: Optional[str], vllm_url: st
     ]
 
     print("Generating structured output (vLLM)...", file=sys.stderr)
-    return vllm_chat_request(vllm_url, model_name, messages)
+    return vllm_client.chat(
+        vllm_url, model_name, messages, json_schema=load_extraction_json_schema(), timeout=600, step="extraction"
+    ).content
 
 
 def run_mock_extraction(resume_text: str, language: str = "vietnamese") -> str:
@@ -194,11 +124,10 @@ def run_mock_extraction(resume_text: str, language: str = "vietnamese") -> str:
             "title": "Nhân viên phát triển phần mềm"
         },
         "self_evaluation": "Lập trình viên nhiệt huyết với kinh nghiệm phát triển hệ thống web, mong muốn đóng góp cho các dự án lớn.",
-        "skills_and_specialties": [
-            "- Python: Quản lý và phát triển hệ thống backend web service với FastAPI và Django trong 3.5 năm. Thiết kế kiến trúc RESTful API hiệu năng cao xử lý hàng ngàn lượt truy cập song song. Tối ưu hóa mã nguồn Python bằng async I/O và cấu trúc dữ liệu hiệu quả.",
-            "- SQL & PostgreSQL: Thiết kế và quản lý hệ thống cơ sở dữ liệu PostgreSQL quy mô lớn trong 3 năm. Thực hiện tối ưu hóa truy vấn phức tạp, lập chỉ mục phù hợp và điều chỉnh hiệu năng database. Đảm bảo tính toàn vẹn dữ liệu và xây dựng quy trình sao lưu tự động.",
-            "- Docker & Containerization: Đóng gói và triển khai ứng dụng bằng Docker và Docker Compose trong 2 năm. Xây dựng môi trường phát triển và sản xuất đồng nhất giúp giảm thiểu lỗi phát sinh. Tối ưu hóa dung lượng image và thiết lập mạng container an toàn.",
-            "- Git & CI/CD: Quản lý phiên bản mã nguồn bằng Git và xây dựng quy trình tự động hóa CI/CD trong 3 năm. Tự động hóa kiểm thử mã nguồn, đóng gói và triển khai phần mềm lên máy chủ. Xây dựng quy trình làm việc GitFlow hiệu quả cho đội ngũ phát triển."
+        "skills": [
+            "Ngôn ngữ lập trình: Python, SQL",
+            "Công cụ: Docker, Docker Compose, Git, GitLab CI/CD",
+            "Cơ sở dữ liệu: PostgreSQL"
         ],
         "languages": [
             {
@@ -225,6 +154,7 @@ def run_mock_extraction(resume_text: str, language: str = "vietnamese") -> str:
             }
         ],
         "basic_information": {
+            "full_name": "Nguyễn Văn A",
             "email": "example@email.com",
             "phone": "0987654321",
             "location": "Hà Nội",

@@ -12,7 +12,8 @@ if _PROJECT_ROOT not in sys.path:
 import argparse
 import time
 import re
-from src.core.config import DEFAULT_VLLM_URL, APPROVED_DIR
+from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, APPROVED_DIR
+from src.core.resume_pdfs import store_resume_pdf
 from src.pipelines.extractor import ResumeExtractor
 
 
@@ -20,7 +21,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Vietnamese Resume Extractor (Step 1)")
     parser.add_argument("--pdf", type=str, help="Path to a single PDF resume file")
     parser.add_argument("--dir", type=str, help="Path to a directory containing PDF resumes to scan")
-    parser.add_argument("--model-name", type=str, default="Qwen/Qwen3.5-9B",
+    parser.add_argument("--model-name", type=str, default=DEFAULT_LLM_MODEL,
                         help="Model repository name or local path")
     parser.add_argument("--mock", action="store_true",
                         help="Mock run: performs text extraction and returns mock JSON output without loading the model")
@@ -87,6 +88,7 @@ def main():
         if args.output:
             with open(args.output, "w", encoding="utf-8") as f:
                 f.write(formatted_json)
+            store_resume_pdf(args.pdf, args.output)
             elapsed = time.time() - start_time
             print(f"Successfully saved JSON extraction to {args.output} (took {elapsed:.2f} seconds)", file=sys.stderr)
         else:
@@ -144,6 +146,7 @@ def main():
                 formatted_json = extractor.extract(pdf_path, language=args.language)
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write(formatted_json)
+                store_resume_pdf(pdf_path, output_filename)
                 elapsed = time.time() - start_time
                 print(f"[{idx}/{len(pdf_files)}] Successfully saved JSON extraction to {output_path} (took {elapsed:.2f} seconds)", file=sys.stderr)
             except Exception as e:

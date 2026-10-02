@@ -1,3 +1,4 @@
+# STALE: still built on the removed skills_and_specialties field. See .scratch/extraction-verbatim-only/issues/01-stale-skills-bias-suites.md
 """
 Work Experience & Project Relevance Bias & Positional Sensitivity Experiment Builder.
 Corresponds to Part 4 of docs/bias_detection_plan.md (5,589 unique iterations).
@@ -37,6 +38,10 @@ class WorkExperienceBiasBuilder(BaseCategoryBiasBuilder):
         return "Work Experience & Project Relevance"
 
     def extract_candidate_data(self, resume_dict: Dict[str, Any]) -> Dict[str, Any]:
+        raise RuntimeError(
+            "STALE: the work_experience bias suite still targets the removed skills_and_specialties field. "
+            "See .scratch/extraction-verbatim-only/issues/01-stale-skills-bias-suites.md"
+        )
         return {
             "work_experience": resume_dict.get("work_experience", []),
             "projects": resume_dict.get("projects", []),

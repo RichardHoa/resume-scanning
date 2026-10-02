@@ -12,11 +12,11 @@ import threading
 import concurrent.futures
 from typing import Dict, List, Any, Tuple, Optional
 
-from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, RAG_DIR
+from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, RAG_DIR, CATEGORY_EVAL_MAX_TOKENS
 from src.core.json_utils import clean_and_parse_json
 from src.pipelines.evaluator import ResumeEvaluator
 from src.pipelines.evaluator_utils import validate_category_evaluation
-from src.prompts.evaluator_prompts import get_evaluator_system_prompt
+from src.prompts.evaluator_prompts import get_evaluator_system_prompt, CATEGORY_EVALUATION_SCHEMA
 from src.bias.base import BaseCategoryBiasBuilder
 from src.bias.registry import get_bias_builder
 
@@ -24,8 +24,7 @@ from src.bias.registry import get_bias_builder
 # =============================================================================
 # BIAS DETECTION ENGINE EXECUTION CONFIGURATION
 # =============================================================================
-DEFAULT_CONCURRENCY: int = int(os.environ.get("CONCURRENCY", "70"))
-MAX_EVAL_PER_SHUFFLE_KIND: Optional[int] = int(os.environ.get("MAX_EVAL_PER_SHUFFLE_KIND", "100"))
+MAX_EVAL_PER_SHUFFLE_KIND: int = 200
 NUM_TEST_ITERATIONS: int = 5
 
 def get_csv_fieldnames(num_criteria: int) -> List[str]:
@@ -213,7 +212,7 @@ def run_single_category_bias_test(
     resume_data: Dict[str, Any],
     resume_path: str,
     project_root: str,
-    concurrency: int = DEFAULT_CONCURRENCY,
+    concurrency: int,
     seed: int = 42,
     atomic_sample_size: int = 300,
     max_eval_per_shuffle_kind: Optional[int] = MAX_EVAL_PER_SHUFFLE_KIND,
@@ -342,11 +341,11 @@ def run_single_category_bias_test(
 
         try:
             if evaluator.mock:
-                raw_response = evaluator._call_llm(user_prompt, category_key, language=evaluator.language)
+                raw_response = evaluator._call_llm(user_prompt, category_key, language=evaluator.language).text
             elif evaluator.backend == "transformers":
-                raw_response = evaluator._call_transformers_backend(user_prompt, messages)
+                raw_response = evaluator._call_transformers_backend(user_prompt, messages, max_tokens=CATEGORY_EVAL_MAX_TOKENS)
             elif evaluator.backend == "vllm":
-                raw_response = evaluator._call_vllm_backend(category_key, messages)
+                raw_response = evaluator._call_vllm_backend(messages, json_schema=CATEGORY_EVALUATION_SCHEMA, max_tokens=CATEGORY_EVAL_MAX_TOKENS, step=f"bias_{category_key}").text
             else:
                 raw_response = ""
 

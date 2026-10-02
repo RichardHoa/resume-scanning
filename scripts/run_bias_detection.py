@@ -34,6 +34,7 @@ os.chdir(_PROJECT_ROOT)
 
 from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, RAG_DIR
 from src.pipelines.evaluator import ResumeEvaluator
+from src.bias.runner import MAX_EVAL_PER_SHUFFLE_KIND
 from src.bias import (
     get_bias_builder,
     get_all_category_keys,
@@ -114,8 +115,8 @@ def parse_cli_args() -> argparse.Namespace:
     exec_group.add_argument(
         "--concurrency",
         type=int,
-        default=int(os.environ.get("CONCURRENCY", "70")),
-        help="Number of concurrent worker threads (default: 70 or CONCURRENCY env var)"
+        default=os.environ.get("CONCURRENCY"),
+        help="Number of concurrent worker threads (default: CONCURRENCY env var, set per model by model_profiles.sh)"
     )
     exec_group.add_argument(
         "--model", "-m",
@@ -151,9 +152,9 @@ def parse_cli_args() -> argparse.Namespace:
     exec_group.add_argument(
         "--max-eval-per-shuffle-kind", "--max-eval-per-shuffle",
         type=int,
-        default=int(os.environ.get("MAX_EVAL_PER_SHUFFLE_KIND", "100")),
+        default=int(os.environ.get("MAX_EVAL_PER_SHUFFLE_KIND", MAX_EVAL_PER_SHUFFLE_KIND)),
         dest="max_eval_per_shuffle_kind",
-        help="Maximum evaluations for any shuffle kind / permutation group (default: 100)"
+        help=f"Maximum evaluations for any shuffle kind / permutation group (default: {MAX_EVAL_PER_SHUFFLE_KIND})"
     )
     exec_group.add_argument(
         "--dry-run",
@@ -161,7 +162,10 @@ def parse_cli_args() -> argparse.Namespace:
         help="Dry run mode: validates permutation generation and prompt rendering without sending LLM requests"
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.concurrency is None:
+        parser.error("--concurrency is required (or set CONCURRENCY); each model has its own value in scripts/model_profiles.sh")
+    return args
 
 
 def resolve_categories(args: argparse.Namespace) -> List[str]:

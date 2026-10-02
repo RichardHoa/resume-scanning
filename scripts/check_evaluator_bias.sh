@@ -22,8 +22,7 @@
 #   sbatch scripts/check_evaluator_bias.sh --work_experience
 #   sbatch scripts/check_evaluator_bias.sh --technical_skills
 #
-# --model keys (default: qwen3.5-35b-a3b) are defined in scripts/model_profiles.sh:
-#   qwen3.5-35b-a3b | qwen2.5-32b | gemma4-26b-a4b | glm4.7-flash
+# --model keys (default: DEFAULT_MODEL_KEY) are listed in MODEL_PROFILE_KEYS in scripts/model_profiles.sh.
 # Results go to bias-result/<model-key>/.
 # -----------------------------------------------------------------------------
 
@@ -128,12 +127,6 @@ eval "$(conda shell.bash hook 2>/dev/null)" || true
 source activate resume_env 2>/dev/null || conda activate resume_env 2>/dev/null || true
 echo "[$(date +'%H:%M:%S')] Step 2 complete. Active Python: $(which python3 2>/dev/null || echo 'python3 not found')"
 
-# Ensure critical evaluation dependencies are present
-if ! python3 -c "import sentence_transformers, chromadb" 2>/dev/null; then
-  echo "[NOTICE] Auto-installing missing evaluation dependencies via pip..."
-  python3 -m pip install sentence-transformers chromadb 2>/dev/null || pip install sentence-transformers chromadb 2>/dev/null || true
-fi
-
 # Print GPU info
 echo "====================================================================="
 echo "[$(date +'%Y-%m-%d %H:%M:%S')] STEP 3: Inspecting GPU hardware allocation..."
@@ -144,7 +137,7 @@ PORT=$(find_free_port)
 
 echo "[$(date +'%H:%M:%S')] Project Root: $PROJECT_ROOT"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL (profile: $MODEL_KEY)"
-echo "[$(date +'%H:%M:%S')] Profile: CONCURRENCY=$CONCURRENCY MAX_EVAL_PER_SHUFFLE_KIND=$MAX_EVAL_PER_SHUFFLE_KIND VLLM_ENABLE_THINKING=$VLLM_ENABLE_THINKING"
+echo "[$(date +'%H:%M:%S')] Profile: CONCURRENCY=$CONCURRENCY MAX_EVAL_PER_SHUFFLE_KIND=$MAX_EVAL_PER_SHUFFLE_KIND VLLM_ENABLE_THINKING=$VLLM_ENABLE_THINKING VLLM_REASONING_STRENGTH=${VLLM_REASONING_STRENGTH:-(unset)}"
 echo "[$(date +'%H:%M:%S')] Extra vLLM Args: ${VLLM_EXTRA_ARGS[*]:-(none)}"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT"
 

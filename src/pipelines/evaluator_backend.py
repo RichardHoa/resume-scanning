@@ -5,23 +5,31 @@ import os
 import sys
 import json
 import re
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, NamedTuple, Optional
 
 from src.core.config import (
-    DIMENSION_WEIGHTS, VLLM_REQUEST_TIMEOUT, FALLBACK_ERROR_SCORE, MATCH_THRESHOLDS, MAX_NEW_TOKENS,
+    DIMENSION_WEIGHTS, FALLBACK_ERROR_SCORE, MATCH_THRESHOLDS, MAX_NEW_TOKENS,
+    REQUIREMENTS_DECOMPOSITION_MAX_TOKENS,
     SCRUTINY_TEMPERATURE, SCRUTINY_MAX_QUESTIONS_PER_FIELD
 )
 from src.core.logger import log_broken_json
 from src.core.json_utils import clean_and_parse_json
+from src.providers import vllm_client
 from src.prompts.evaluator_prompts import (
     get_requirements_decomposition_prompt,
     get_requirements_scrutiny_prompt
 )
 from src.pipelines.evaluator_mocks import (
-    get_mock_category_response,
     get_mock_decomposed_requirements,
     get_mock_scrutiny_response
 )
+
+class LLMReply(NamedTuple):
+    text: str
+    # Set only by the vLLM backend, which reports why generation stopped and how many tokens it produced
+    finish_reason: Optional[str] = None
+    completion_tokens: Optional[int] = None
+
 
 CATEGORY_LABELS = {
     "seniority_title": "Position & Seniority Match",
@@ -32,7 +40,7 @@ CATEGORY_LABELS = {
 }
 
 
-def call_transformers_backend(evaluator_inst: Any, prompt: str, messages: List[Dict[str, str]], temperature: float = 0.0) -> str:
+def call_transformers_backend(evaluator_inst: Any, prompt: str, messages: List[Dict[str, str]], temperature: float = 0.0, max_tokens: int = MAX_NEW_TOKENS) -> str:
     """Helper to call HuggingFace transformers model backend."""
     import torch
     if evaluator_inst.model is None or evaluator_inst.tokenizer is None:
@@ -55,7 +63,7 @@ def call_transformers_backend(evaluator_inst: Any, prompt: str, messages: List[D
     with evaluator_inst._llm_lock, torch.no_grad():
         outputs = evaluator_inst.model.generate(
             **inputs,
-            max_new_tokens=MAX_NEW_TOKENS,
+            max_new_tokens=max_tokens,
             temperature=temperature,
             top_p=0.95,
             repetition_penalty=1.05,
@@ -66,63 +74,23 @@ def call_transformers_backend(evaluator_inst: Any, prompt: str, messages: List[D
     return evaluator_inst.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
 
 
-def call_vllm_backend(evaluator_inst: Any, category: str, messages: List[Dict[str, str]], temperature: float = 0.0) -> str:
+def call_vllm_backend(
+    evaluator_inst: Any,
+    messages: List[Dict[str, str]],
+    temperature: float = 0.0,
+    json_schema: Optional[Dict[str, Any]] = None,
+    max_tokens: int = MAX_NEW_TOKENS,
+    step: str = "unlabeled"
+) -> LLMReply:
     """Helper to call vLLM HTTP server backend."""
-    import urllib.request
-    import urllib.error
-    url = f"{evaluator_inst.vllm_url.rstrip('/')}/chat/completions"
-    payload = {
-        "model": evaluator_inst.model_name,
-        "messages": messages,
-        "temperature": temperature,
-        "top_p": 0.95,
-        "repetition_penalty": 1.05,
-        "max_tokens": MAX_NEW_TOKENS,
-        "response_format": {"type": "json_object"},
-        # Thinking is off unless the model profile opts in (VLLM_ENABLE_THINKING=1); e.g. GLM-4.7 thinks by default
-        "chat_template_kwargs": {"enable_thinking": os.environ.get("VLLM_ENABLE_THINKING", "0") == "1"}
-    }
-    # On HTTP 400, retry without optional fields the server/model may not support, one at a time
-    optional_fields = ["response_format", "chat_template_kwargs"]
-    try:
-        while True:
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"}
-            )
-            try:
-                resp_obj = urllib.request.urlopen(req, timeout=VLLM_REQUEST_TIMEOUT)
-                break
-            except urllib.error.HTTPError as he:
-                if he.code != 400 or not optional_fields:
-                    raise he
-                try:
-                    err_text = he.read().decode("utf-8", errors="replace")
-                except Exception:
-                    err_text = ""
-                # Prompt too long is not an unsupported-field problem; retrying without fields won't help
-                if "context length" in err_text or "max_model_len" in err_text:
-                    raise he
-                # Drop the field the server complained about, else the next one in order
-                culprit = next((f for f in optional_fields if f in err_text), optional_fields[0])
-                optional_fields.remove(culprit)
-                payload.pop(culprit, None)
-
-        with resp_obj as resp:
-            res_data = json.loads(resp.read().decode("utf-8"))
-            choice_msg = res_data["choices"][0]["message"]
-            content = choice_msg.get("content", "") or ""
-            reasoning = choice_msg.get("reasoning_content", "") or ""
-            
-            if reasoning.strip():
-                return f"<think>\n{reasoning.strip()}\n</think>\n{content.strip()}"
-            return content.strip()
-    except Exception as e:
-        print(f"[vLLM Call Error] Failed to call vLLM server at {url}: {e}", file=sys.stderr)
-        if evaluator_inst.mock:
-            return get_mock_category_response(category, language=getattr(evaluator_inst, 'language', 'vietnamese'))
-        raise RuntimeError(f"[vLLM Call Fatal Error] Connection to vLLM server at {url} failed: {e}") from e
+    result = vllm_client.chat(
+        evaluator_inst.vllm_url, evaluator_inst.model_name, messages,
+        temperature=temperature, top_p=0.95, json_schema=json_schema, max_tokens=max_tokens, step=step
+    )
+    text = result.content.strip()
+    if result.reasoning.strip():
+        text = f"<think>\n{result.reasoning.strip()}\n</think>\n{text}"
+    return LLMReply(text, result.finish_reason, result.completion_tokens)
 
 
 def decompose_requirements_with_llm(
@@ -144,7 +112,10 @@ def decompose_requirements_with_llm(
         return get_mock_decomposed_requirements(standard_req, hidden_req)
 
     prompt = get_requirements_decomposition_prompt(standard_req, hidden_req, evaluator_inst.model_name)
-    raw_out = evaluator_inst._call_llm(prompt, "requirements_decomposition", resume_name, log_dir=log_dir)
+    reply = evaluator_inst._call_llm(
+        prompt, "requirements_decomposition", resume_name, log_dir=log_dir, max_tokens=REQUIREMENTS_DECOMPOSITION_MAX_TOKENS
+    )
+    raw_out = reply.text
     parsed = clean_and_parse_json(raw_out)
 
     if parsed and isinstance(parsed, dict):
@@ -156,7 +127,7 @@ def decompose_requirements_with_llm(
     # Fallback text parsing for header-formatted responses
     if raw_out and any(cat in raw_out for cat in categories):
         print("[LocalRAG Warning] JSON parse failed, parsing text headers from LLM output...", file=sys.stderr)
-        log_broken_json(prompt, raw_out, "requirements_decomposition", resume_name, attempt=1, error_reason="Decomposition JSON parse failed, header fallback used", log_dir=log_dir)
+        log_broken_json(prompt, raw_out, "requirements_decomposition", resume_name, attempt=1, error_reason="Decomposition JSON parse failed, header fallback used", finish_reason=reply.finish_reason, completion_tokens=reply.completion_tokens, log_dir=log_dir)
         fallback_dict = {cat: [] for cat in categories}
         current_cat = None
         for line in raw_out.split('\n'):
@@ -172,7 +143,7 @@ def decompose_requirements_with_llm(
         if any(fallback_dict.values()):
             return fallback_dict
 
-    log_broken_json(prompt, raw_out, "requirements_decomposition", resume_name, attempt=1, error_reason="Decomposition JSON parse failed completely", log_dir=log_dir)
+    log_broken_json(prompt, raw_out, "requirements_decomposition", resume_name, attempt=1, error_reason="Decomposition JSON parse failed completely", finish_reason=reply.finish_reason, completion_tokens=reply.completion_tokens, log_dir=log_dir)
     return None
 
 
@@ -230,21 +201,21 @@ def scrutinize_requirements_with_llm(
 
     prompt = get_requirements_scrutiny_prompt(standard_req, hidden_req, evaluator_inst.model_name, language=eff_language)
 
-    raw_out = ""
+    reply = LLMReply("")
     for attempt in range(1, max_retries + 1):
-        raw_out = evaluator_inst._call_llm(
+        reply = evaluator_inst._call_llm(
             prompt, "requirements_scrutiny", resume_name,
             language=eff_language, temperature=SCRUTINY_TEMPERATURE, log_dir=log_dir
         )
-        parsed = clean_and_parse_json(raw_out)
+        parsed = clean_and_parse_json(reply.text)
         validated = _validate_scrutiny_response(parsed, max_questions)
         if validated is not None:
             return validated
 
         print(f"[Scrutiny Retry] Attempt {attempt}/{max_retries} failed to parse. Retrying...", file=sys.stderr)
-        log_broken_json(prompt, raw_out, "requirements_scrutiny", resume_name, attempt=attempt, error_reason="Scrutiny JSON parse failed", log_dir=log_dir)
+        log_broken_json(prompt, reply.text, "requirements_scrutiny", resume_name, attempt=attempt, error_reason="Scrutiny JSON parse failed", finish_reason=reply.finish_reason, completion_tokens=reply.completion_tokens, log_dir=log_dir)
 
-    log_broken_json(prompt, raw_out, "requirements_scrutiny", resume_name, attempt=max_retries, error_reason=f"Max retries ({max_retries}) reached", log_dir=log_dir)
+    log_broken_json(prompt, reply.text, "requirements_scrutiny", resume_name, attempt=max_retries, error_reason=f"Max retries ({max_retries}) reached", finish_reason=reply.finish_reason, completion_tokens=reply.completion_tokens, log_dir=log_dir)
     raise RuntimeError(f"Requirement scrutiny failed to produce valid output after {max_retries} attempts.")
 
 
@@ -253,12 +224,16 @@ def aggregate_evaluation_results(
     resume_name: str,
     num_evaluations: int
 ) -> tuple:
-    """Helper to aggregate dimension scores and calculate final overall score & recommendation."""
+    """
+    Helper to aggregate dimension scores and calculate final overall score & recommendation.
+    Also returns the keys of the Categories that failed; any failure makes this a Failed Evaluation.
+    """
     dimension_results = {}
     category_timings = {}
     weighted_total = 0.0
     any_evaluation_failed = False
-    failed_categories = []
+    failed_category_names = []
+    failed_category_keys = []
 
     # 1. Identify categories existing vs non-existing in RAG
     existing_cat_keys = []
@@ -310,7 +285,8 @@ def aggregate_evaluation_results(
 
         if cat_res.get("failed", False):
             any_evaluation_failed = True
-            failed_categories.append(cat_name)
+            failed_category_names.append(cat_name)
+            failed_category_keys.append(cat_key)
 
         category_timings[cat_key] = round(elapsed_cat, 2)
         weight = round(adjusted_weights.get(cat_key, 0.20), 4)
@@ -331,6 +307,8 @@ def aggregate_evaluation_results(
             "gaps": cat_res.get("gaps", []),
             "evidence_quotes": cat_res.get("evidence_quotes", []),
             "reasoning_summary": cat_res.get("reasoning_summary", ""),
+            # Per-criterion verdicts with the resume quotes given for each, from the median run
+            "criteria_evaluations": cat_res.get("criteria_evaluations", []),
             "retrieved_criteria": retrieved,
             "processing_time_seconds": round(elapsed_cat, 2),
             "evaluation_runs_count": num_evaluations,
@@ -340,11 +318,11 @@ def aggregate_evaluation_results(
         weighted_total += score * weight
 
     if any_evaluation_failed:
-        failed_cats_str = ", ".join(failed_categories)
-        print(f"[PARTIAL FAILURE] Evaluation failed in categories: [{failed_cats_str}] for resume '{resume_name}'. Failed categories zeroed; others preserved.", file=sys.stderr)
+        failed_cats_str = ", ".join(failed_category_names)
+        print(f"[FAILED EVALUATION] Evaluation failed in categories: [{failed_cats_str}] for resume '{resume_name}'. Failed categories zeroed; partial scores kept for debugging.", file=sys.stderr)
         for cat_key, cat_data in dimension_results.items():
             if cat_data.get("score") == FALLBACK_ERROR_SCORE and cat_key in [
-                ck for ck, cn in CATEGORY_LABELS.items() if cn in failed_categories
+                ck for ck, cn in CATEGORY_LABELS.items() if cn in failed_category_names
             ]:
                 dimension_results[cat_key]["score"] = 0
                 dimension_results[cat_key]["weighted_score"] = 0.0
@@ -366,7 +344,7 @@ def aggregate_evaluation_results(
     else:
         recommendation = "REJECT"
 
-    return dimension_results, category_timings, overall_score, recommendation
+    return dimension_results, category_timings, overall_score, recommendation, failed_category_keys
 
 
 def save_evaluation_report(

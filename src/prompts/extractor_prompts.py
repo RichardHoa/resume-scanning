@@ -26,6 +26,7 @@ def get_system_prompt(language: str = "vietnamese") -> str:
 CORE DIRECTIVES:
 - Format: Provide the raw JSON object directly as the primary response. Populate empty or unstated string/list fields using "" or [] while retaining every schema key in the output structure.
 - Language Policy: Preserve source content verbatim in its original language, prioritizing {target_lang} when processing bilingual resumes.
+- Copy Only: Never write, summarize, expand, explain or infer content. Leave a field empty rather than guess its value. The one exception is naming a language from its certificate, as the languages field allows.
 - Fidelity: Maintain exact source text verbatim phrasing. Integrate adjacent achievement and KPI blocks directly within work responsibilities.
 - Field Formatting: Follow the specific format and extraction guidelines detailed for each property inside the JSON SCHEMA below.
 
