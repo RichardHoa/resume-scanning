@@ -621,6 +621,12 @@
 
 .intake-panel.has-questions .intake-row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: stretch;
+}
+
+/* Grow each textarea to the height of the questions beside it, keeping manual resize. */
+.intake-panel.has-questions .intake-row textarea {
+    flex: 1 1 auto;
 }
 
 .scrutiny-cell {
@@ -691,15 +697,9 @@
     font-size: 0.82rem;
 }
 
-.scrutiny-question-item .scrutiny-assumption {
-    color: var(--text-secondary);
-    font-style: italic;
-}
-
 .scrutiny-question-item .scrutiny-question {
     color: var(--text-main);
     font-weight: 600;
-    margin-top: 4px;
 }
 
 /* Active RAG Banner */

@@ -101,7 +101,7 @@ def get_mock_category_response(category: str, language: str = "vietnamese") -> s
     return json.dumps(mock_data.get(category, default_resp), ensure_ascii=False)
 
 
-def get_mock_scrutiny_response(standard_req: str, hidden_req: str, language: str = "vietnamese", max_questions: int = 3) -> Dict[str, List[Dict[str, str]]]:
+def get_mock_scrutiny_response(standard_req: str, hidden_req: str, language: str = "vietnamese", max_questions: int = 5) -> Dict[str, List[Dict[str, str]]]:
     """Generates a mock Implicit Assumption / Clarification Question response via simple keyword heuristics."""
     is_english = language.lower() in ("english", "en")
     vague_terms = ["senior", "junior", "good", "strong", "fast-paced", "flexible", "team player", "cấp cao", "tốt", "linh hoạt"]

@@ -13,11 +13,11 @@ HR's own explicitly-stated soft or culture-fit criteria (e.g. "collaborative", "
 _Avoid_: soft requirements, culture fit (alone)
 
 **Implicit Assumption**:
-An unstated premise the LLM infers behind a vague phrase in HR's Standard or Hidden Requirements (e.g. assuming "senior" means "5+ years" without HR saying so). Surfaced to HR as a Clarification Question before decomposition.
+An unstated premise the LLM infers behind a vague phrase in HR's Standard or Hidden Requirements (e.g. assuming "senior" means "5+ years" without HR saying so), or behind something HR left out entirely. Seniority and education are always probed in the Standard Requirements: if HR wrote nothing about them, the unstated expectation itself is the Implicit Assumption. Surfaced to HR as a Clarification Question before decomposition; HR sees only the question, never the inferred premise.
 _Avoid_: hidden assumption (collides with Hidden Requirements)
 
 **Clarification Question**:
-A question shown to HR naming an Implicit Assumption and asking HR to confirm or correct it. Between 1 and 3 are generated for each non-empty field (Standard, Hidden), none for an empty one. Each names one specific requirement and asks whether it is a must-have or a nice-to-have, and what level is expected. Non-blocking: HR may ignore them entirely and edit the free-text request directly instead of answering. Asked once per pass through requirement intake: after they are shown, HR's next action is decomposition, with no second check. The check runs again only if HR returns from Category review and changes the requirement text.
+A question shown to HR naming an Implicit Assumption and asking HR to confirm or correct it. Between 1 and 5 are generated for each non-empty field (Standard, Hidden), none for an empty one, without padding. Each names one specific requirement and firmly asks whether it is a must-have or a nice-to-have, and what level is expected; when HR lists many skills, one question may instead ask HR to mark the rest as must-have or nice-to-have in a single reply, so the questions are not all spent on that. Non-blocking: HR may ignore them entirely and edit the free-text request directly instead of answering. Asked once per pass through requirement intake: after they are shown, HR's next action is decomposition, with no second check. The check runs again only if HR returns from Category review and changes the requirement text.
 _Avoid_: assumption question
 
 **Category** (also **Dimension**):

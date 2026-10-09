@@ -412,7 +412,6 @@ export class EvaluatorController {
             listEl.innerHTML = findings.length > 0
                 ? findings.map(f => `
                     <div class="scrutiny-question-item">
-                        <div class="scrutiny-assumption">Giả định: ${this.escapeHtml(f.assumption)}</div>
                         <div class="scrutiny-question">${this.escapeHtml(f.question)}</div>
                     </div>
                 `).join('')
