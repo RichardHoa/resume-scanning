@@ -24,6 +24,10 @@ _Avoid_: assumption question
 One of five fixed buckets — `seniority_title`, `technical_skills`, `work_experience`, `education_certifications`, `hidden_culture` — that Standard/Hidden Requirements are decomposed into, after HR has reviewed any Clarification Questions.
 _Avoid_: criteria type, bucket
 
+**Not Applicable Category**:
+A Category that HR's requirements gave no Criterion. It carries no weight and is not judged, so it is never shown to HR. Distinct from a Category that could not be scored, which makes a Failed Evaluation.
+_Avoid_: missing category, empty category
+
 **Criterion**:
 A single verbatim requirement string assigned to one Category during decomposition, stored in the RAG store.
 _Avoid_: requirement item
@@ -57,8 +61,8 @@ An evaluation in which at least one Category could not be scored. The whole cand
 _Avoid_: partial evaluation, partial failure
 
 **Missing Position**:
-A resume that states no position the candidate is applying for. It is never evaluated, ranked or given Candidate Feedback; it is shown to HR for preview only, and HR resolves it outside the app. Distinct from a Failed Evaluation, which was attempted and needs a rerun.
-_Avoid_: no position, error
+A flag on a resume that states no position the candidate is applying for. The resume is still evaluated, ranked and given Candidate Feedback like any other, as if applying for the job the HR requirement describes (every resume in a run is assumed to be for that one job); the flag only tells HR, on the website, that the position was missing. Having no stated position is not evidence against the candidate.
+_Avoid_: no position, error, unevaluated
 
 **Shuffle Kind**:
 One way of reordering the same prompt content in a bias test (e.g. Macro Permutation, Criteria Permutation, Atomic Interleave), used to check whether evaluation scores depend on ordering. The Baseline is not a Shuffle Kind.

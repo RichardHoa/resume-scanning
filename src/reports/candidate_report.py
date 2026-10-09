@@ -74,23 +74,20 @@ def _evaluated_at(value: Optional[str]) -> str:
     return f"{dt:%H:%M:%S} {dt.day}/{dt.month}/{dt.year}"
 
 
-def category_strengths(dim: Dict[str, Any]) -> List[Dict[str, Any]]:
+def met_criteria(dim: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    A Category's strengths, each with its resume quote: the criteria judged STRONG or PARTIAL. Reports made before
-    per-criterion results were saved fall back to the evaluator's strength sentences, without quotes.
+    A Category's criteria judged STRONG or PARTIAL, each with its resume quotes. Reports made before per-criterion
+    results were saved have none.
     """
-    criteria = dim.get("criteria_evaluations") or []
-    if criteria:
-        return [
-            {
-                "text": c.get("criterion", ""),
-                "partial": c.get("verdict") == "PARTIAL_EVIDENCE",
-                "quotes": c.get("evidence_quotes") or []
-            }
-            for c in criteria
-            if c.get("verdict") in ("STRONG_EVIDENCE", "PARTIAL_EVIDENCE")
-        ]
-    return [{"text": s, "partial": False, "quotes": []} for s in dim.get("strengths") or []]
+    return [
+        {
+            "text": c.get("criterion", ""),
+            "partial": c.get("verdict") == "PARTIAL_EVIDENCE",
+            "quotes": c.get("evidence_quotes") or []
+        }
+        for c in dim.get("criteria_evaluations") or []
+        if c.get("verdict") in ("STRONG_EVIDENCE", "PARTIAL_EVIDENCE")
+    ]
 
 
 def _view(report: Dict[str, Any]) -> Dict[str, Any]:
@@ -107,7 +104,8 @@ def _view(report: Dict[str, Any]) -> Dict[str, Any]:
         dims = report.get("dimension_scores") or {}
         for key in CATEGORY_NAMES:
             dim = dims.get(key)
-            if not dim:
+            # A Not Applicable Category got no Criterion from HR's requirements and is never judged
+            if not dim or dim.get("not_applicable"):
                 continue
             dim_score = float(dim.get("score") or 0)
             categories.append({
@@ -116,7 +114,9 @@ def _view(report: Dict[str, Any]) -> Dict[str, Any]:
                 "score": f"{dim_score:.1f}",
                 "fill_class": _fill_class(dim_score),
                 "fill_width": min(100, max(5, dim_score)),
-                "strengths": category_strengths(dim),
+                # Shown whenever the evaluator wrote any, whatever the Verdicts
+                "strengths": dim.get("strengths") or [],
+                "met_criteria": met_criteria(dim),
                 "gaps": dim.get("gaps") or []
             })
 

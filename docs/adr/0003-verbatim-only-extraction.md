@@ -4,6 +4,6 @@ The extractor LLM only copies text from the resume into the schema; it never wri
 
 ## Consequences
 
-- A resume with no stated position is a Missing Position and is never evaluated; HR resolves it outside the app.
+- A resume with no stated position is flagged as a Missing Position but still evaluated, as if applying for the job the HR requirement describes; the empty field is never filled in by inference.
 - The fidelity check covers every extracted string, `skills` included.
 - The only inference that remains is naming a language from its certificate (TOEIC → English), which labels verbatim text and adds no claim about the candidate.

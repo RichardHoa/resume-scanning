@@ -37,24 +37,31 @@ function isFailedEvaluation(res) {
 }
 
 const MISSING_POSITION_LABEL = 'Thiếu vị trí ứng tuyển';
-const MISSING_POSITION_MESSAGE = 'CV không ghi vị trí ứng tuyển nên không được đánh giá. HR xem trước CV ở trang Ứng viên và tự xử lý.';
+const MISSING_POSITION_MESSAGE = 'CV không ghi vị trí ứng tuyển; hệ thống mặc định ứng viên ứng tuyển vị trí này và vẫn đánh giá, xếp hạng như bình thường.';
 
 /**
- * A Missing Position resume states no applied-for position. It is never evaluated or ranked;
- * HR previews it and resolves it outside the app.
+ * A Missing Position resume states no applied-for position. It is still evaluated and ranked as if
+ * applying for this job; the flag only tells HR the position was missing.
  */
 function isMissingPosition(res) {
-    return res.status === 'missing_position';
+    return res.missing_position === true;
 }
 
 /**
- * The label shown instead of a score for an unscored result (Failed Evaluation or Missing Position).
+ * The label shown instead of a score for an unscored result (a Failed Evaluation).
  * @returns {string} The label, or '' for a scored result.
  */
 function unscoredLabel(res) {
-    if (isMissingPosition(res)) return MISSING_POSITION_LABEL;
     if (isFailedEvaluation(res)) return FAILED_EVALUATION_LABEL;
     return '';
+}
+
+/**
+ * The Category results to show: a Not Applicable Category got no Criterion from HR's requirements and is never judged.
+ * @returns {Object} dimension_scores without Not Applicable Categories.
+ */
+function shownCategories(res) {
+    return Object.fromEntries(Object.entries(res.dimension_scores || {}).filter(([, d]) => !(d && d.not_applicable)));
 }
 
 export class EvaluatorController {
@@ -632,7 +639,7 @@ export class EvaluatorController {
                     <div class="resume-info">
                         <span class="resume-title">${this.escapeHtml(resItem.filename)}</span>
                         <span class="resume-meta">✉ ${this.escapeHtml(resItem.email)} • ${resItem.missing_position
-                            ? `<span class="badge-rec rec-ERROR" title="${MISSING_POSITION_MESSAGE}">${MISSING_POSITION_LABEL}</span>`
+                            ? `<span class="badge-ocr-review" title="${MISSING_POSITION_MESSAGE}">⚠️ ${MISSING_POSITION_LABEL}</span>`
                             : this.escapeHtml(resItem.title)}</span>
                     </div>
                 `;
@@ -810,6 +817,7 @@ export class EvaluatorController {
                     <td>
                         <strong style="color: var(--brand-legacy-blue); font-size: 0.95rem;">${this.escapeHtml(res.resume_name)}</strong><br>
                         <span style="font-size:0.78rem; color: var(--text-muted);">✉ ${this.escapeHtml(res.candidate_email || res.candidate_identifier || 'Không có')}</span>
+                        ${isMissingPosition(res) ? `<br><span class="badge-ocr-review" title="${MISSING_POSITION_MESSAGE}">⚠️ ${MISSING_POSITION_LABEL}</span>` : ''}
                     </td>
                     <td>${unscored
                         ? '<strong style="color: var(--text-muted); font-size:1.2rem; font-family:var(--font-mono);">—</strong>'
@@ -869,19 +877,18 @@ export class EvaluatorController {
 
         // Executive summary body
         if (summaryEl) {
-            if (isMissingPosition(cand)) {
-                summaryEl.textContent = MISSING_POSITION_MESSAGE;
-            } else if (unscored) {
+            if (unscored) {
                 const failedNames = (cand.failed_categories || []).map(k => CATEGORY_NAMES[k] || k);
                 const what = failedNames.length > 0 ? `các mục: ${failedNames.join(', ')}` : 'một số mục đánh giá';
                 summaryEl.textContent = `Không thể chấm điểm ${what}. Kết quả này không được xếp hạng. Hãy chọn lại ứng viên này và bấm Đánh giá để chạy lại.`;
             } else {
                 summaryEl.textContent = cand.summary?.executive_summary || `Ứng viên đạt ${cand.overall_score}/100 điểm, mức độ phù hợp: ${this.recommendationLabel(cand.match_recommendation)}. Được đánh giá theo 5 chiều vector RAG.`;
+                if (isMissingPosition(cand)) summaryEl.textContent = `⚠️ ${MISSING_POSITION_MESSAGE} ${summaryEl.textContent}`;
             }
         }
 
         // An unscored result has no Category results to show; a Failed Evaluation's partial ones are hidden
-        const dims = unscored ? {} : (cand.dimension_scores || {});
+        const dims = unscored ? {} : shownCategories(cand);
 
         // Populate Strengths & Gaps lists
         if (strengthsListEl) {

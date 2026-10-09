@@ -525,6 +525,46 @@
     border-bottom: 1px solid var(--border);
 }
 
+/* Step 2 notice: the evaluator judges only the stated Criteria */
+.criteria-only-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+    padding: 1.1rem 1.35rem;
+    background: #FFFBEB;
+    border: 2px solid #F59E0B;
+    border-radius: var(--radius-md);
+    box-shadow: 0 2px 6px rgba(245, 158, 11, 0.15);
+}
+
+.criteria-only-notice-icon {
+    font-size: 1.75rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.criteria-only-notice-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.criteria-only-notice-content strong {
+    color: #78350F;
+    font-size: 0.95rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.criteria-only-notice-content p {
+    margin: 0;
+    color: #92400E;
+    font-size: 0.88rem;
+    font-weight: 600;
+    line-height: 1.45;
+}
+
 .rag-preview-tabs {
     display: flex;
     gap: 8px;

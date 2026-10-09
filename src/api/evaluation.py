@@ -189,10 +189,8 @@ async def _run_batch_evaluation(
                         generate_feedback=True
                     )
                 )
-                # Covers evaluation and the Review Panel, so the waiting-screen estimate includes feedback time.
-                # A Missing Position makes no LLM call, so its near-zero time would skew the estimate
-                if eval_result.get("status") != "missing_position":
-                    record_duration("evaluate_candidate", time.time() - candidate_start_time)
+                # Covers evaluation and the Review Panel, so the waiting-screen estimate includes feedback time
+                record_duration("evaluate_candidate", time.time() - candidate_start_time)
                 eval_result["candidate_email"] = item["email"]
                 eval_result["tier"] = item["tier"]
                 eval_result["tier_name"] = item["tier_name"]
@@ -430,8 +428,6 @@ def get_eval_resume_pdf(filename: str):
 def get_eval_report_pdf(filename: str):
     """The evaluation report as a PDF for HR, with the candidate's resume PDF appended when one is stored."""
     data = _load_eval_result(filename)
-    if data.get("status") == "missing_position":
-        raise HTTPException(status_code=409, detail="Missing Position: this resume was never evaluated, so there is no report.")
     # The email the page shows comes from evaluation_order matching, not from the saved report
     data["candidate_email"] = get_report_tier(data, filename, load_evaluation_order())["resolved_email"]
     try:

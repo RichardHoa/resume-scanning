@@ -315,6 +315,9 @@ def aggregate_evaluation_results(
             "all_run_scores": cat_res.get("all_scores", []),
             "median_score": cat_res.get("median_score", float(score))
         }
+        # A Not Applicable Category: HR's requirements gave it no Criterion, so it is never shown to HR
+        if cat_res.get("not_applicable"):
+            dimension_results[cat_key]["not_applicable"] = True
         weighted_total += score * weight
 
     if any_evaluation_failed:

@@ -411,27 +411,6 @@ class ResumeEvaluator:
         hidden_req = hidden_req or ""
         resume_data = resume_data if isinstance(resume_data, dict) else {}
 
-        # A Missing Position is never evaluated: no LLM call is made, and the report only lets HR preview the resume
-        if is_missing_position(resume_data):
-            print(f"[Evaluation] [{resume_name}] Missing Position: the resume states no applied-for position. Not evaluated.", file=sys.stderr)
-            basic_info = resume_data.get("basic_information")
-            basic_info = basic_info if isinstance(basic_info, dict) else {}
-            missing_output = {
-                "status": "missing_position",
-                "resume_name": resume_name,
-                "candidate_identifier": basic_info.get("full_name") or basic_info.get("name") or basic_info.get("email") or resume_name,
-                "candidate_name": str(basic_info.get("full_name") or basic_info.get("name") or "").strip(),
-                "overall_score": 0,
-                "match_recommendation": "MISSING_POSITION",
-                "evaluated_at": datetime.now().isoformat(),
-                "standard_requirements": standard_req,
-                "hidden_requirements": hidden_req,
-                "resume_path": os.path.abspath(resume_path) if resume_path else None,
-                "language": eff_language
-            }
-            self._save_evaluation_report(missing_output, resume_name, output_dir, output_path)
-            return missing_output
-
         # 1. Ingest requirements into Local RAG
         t_decomp_start = time.time()
         self.rag.ingest_requirements(
@@ -504,6 +483,11 @@ class ResumeEvaluator:
                 )
             else:
                 evaluation_output["candidate_feedback"] = {"status": "skipped"}
+
+        # A Missing Position is evaluated like any other resume, as if applying for this job; the flag is set after
+        # the Review Panel so it only reaches HR on the website, never the panel
+        if is_missing_position(resume_data):
+            evaluation_output["missing_position"] = True
 
         # 6. Save report if requested
         self._save_evaluation_report(evaluation_output, resume_name, output_dir, output_path)

@@ -30,21 +30,28 @@ function isFailedEvaluation(cand) {
 }
 
 const MISSING_POSITION_LABEL = 'Thiếu vị trí ứng tuyển';
+const MISSING_POSITION_MESSAGE = 'CV không ghi vị trí ứng tuyển; hệ thống mặc định ứng viên ứng tuyển vị trí này và vẫn đánh giá, xếp hạng như bình thường.';
 
 /**
- * A Missing Position resume states no applied-for position. It is never evaluated or ranked;
- * HR previews the CV here and resolves it outside the app.
+ * A Missing Position resume states no applied-for position. It is still evaluated and ranked as if
+ * applying for this job; the flag only tells HR the position was missing.
  */
 function isMissingPosition(cand) {
-    return cand.status === 'missing_position';
+    return cand.missing_position === true;
 }
 
 /**
- * The label shown instead of a score for an unscored report (Failed Evaluation or Missing Position).
+ * A Not Applicable Category got no Criterion from HR's requirements. It is never judged, so it is never shown.
+ */
+function isNotApplicableCategory(d) {
+    return !!(d && d.not_applicable);
+}
+
+/**
+ * The label shown instead of a score for an unscored report (a Failed Evaluation).
  * @returns {string} The label, or '' for a scored report.
  */
 function unscoredLabel(cand) {
-    if (isMissingPosition(cand)) return MISSING_POSITION_LABEL;
     if (isFailedEvaluation(cand)) return FAILED_EVALUATION_LABEL;
     return '';
 }
@@ -348,7 +355,7 @@ export class CandidatePoolController {
         };
 
         dimKeys.forEach(k => {
-            if (dims[k] && !unscored) {
+            if (dims[k] && !unscored && !isNotApplicableCategory(dims[k])) {
                 const dScore = Math.round(dims[k].score || 0);
                 let fillClass = 'fill-cyan';
                 if (dScore >= 85) fillClass = 'fill-emerald';
@@ -372,6 +379,7 @@ export class CandidatePoolController {
 
         const isOcrReview = cand.ocr_applied || cand.intensive_hr_review_required || (Array.isArray(cand.warning) && cand.warning.some(w => typeof w === 'string' && w.includes('OCR')));
         const ocrPillHtml = isOcrReview ? `<span class="badge-ocr-review" title="PDF không có lớp văn bản. Đã dùng OCR để trích xuất văn bản. Cần HR kiểm tra thủ công kỹ lưỡng.">⚠️ CẦN HR KIỂM TRA KỸ (OCR)</span>` : '';
+        const missingPositionPillHtml = isMissingPosition(cand) ? `<span class="badge-ocr-review" title="${MISSING_POSITION_MESSAGE}">⚠️ ${MISSING_POSITION_LABEL}</span>` : '';
 
         const emailHtml = email ? `
             <a href="mailto:${this.escapeHtml(email)}" class="cand-email" onclick="event.stopPropagation()" title="Gửi email tới ${this.escapeHtml(email)}">${this.escapeHtml(email)}</a>
@@ -395,6 +403,7 @@ export class CandidatePoolController {
                 <span class="match-pill ${recClass}">${recText}</span>
                 <span class="tier-badge ${tierBadgeClass}">${tierLabel}</span>
                 ${ocrPillHtml}
+                ${missingPositionPillHtml}
             </div>
 
             ${dimsBreakdownHtml ? `<div class="cand-dimensions-breakdown">${dimsBreakdownHtml}</div>` : ''}
@@ -466,6 +475,7 @@ export class CandidatePoolController {
 
         Object.keys(dims).forEach(catKey => {
             const d = dims[catKey];
+            if (isNotApplicableCategory(d)) return;
             const catName = CATEGORY_NAMES[catKey] || d.category_name || catKey;
             const catWeight = ((d.weight || 0.2) * 100).toFixed(0);
             const dScore = (d.score || 0).toFixed(1);
@@ -493,6 +503,7 @@ export class CandidatePoolController {
                         <div class="modal-dim-progress-fill ${fillClass}" style="width: ${Math.min(100, Math.max(5, d.score))}%;"></div>
                     </div>
                     ${this.renderCategoryStrengths(d)}
+                    ${this.renderCategoryMetCriteria(d)}
                     ${this.renderCategoryNoEvidence(d)}
                     ${gapsList ? `<div class="modal-section-title">Thiếu sót đã xác định:</div><ul class="modal-bullets gaps">${gapsList}</ul>` : ''}
                 </div>
@@ -523,10 +534,10 @@ export class CandidatePoolController {
 
         const missingPositionBanner = isMissingPosition(cand) ? `
             <div class="modal-ocr-alert-banner">
-                <div class="modal-ocr-alert-icon">⛔</div>
+                <div class="modal-ocr-alert-icon">⚠️</div>
                 <div class="modal-ocr-alert-content">
                     <strong>${MISSING_POSITION_LABEL.toUpperCase()}</strong>
-                    <p>CV không ghi vị trí ứng tuyển nên không được đánh giá và không được xếp hạng. Bấm "Xem CV" để xem trước; HR tự xử lý ứng viên này ngoài hệ thống.</p>
+                    <p>${MISSING_POSITION_MESSAGE}</p>
                 </div>
             </div>
         ` : '';
@@ -541,8 +552,6 @@ export class CandidatePoolController {
             <div class="modal-dim-grid">${dimCardsHtml}</div>
         `;
         this.showModalEvaluation();
-        // A Missing Position has no evaluation report to download
-        if (this.modalBtnDownload) this.modalBtnDownload.style.display = isMissingPosition(cand) ? 'none' : '';
 
         this.candModal.style.display = 'flex';
         document.body.style.overflow = 'hidden';
@@ -553,28 +562,31 @@ export class CandidatePoolController {
     }
 
     /**
-     * Renders a Category's strengths, each followed by the resume quotes that support it: the criteria judged
-     * STRONG or PARTIAL. Reports saved before per-criterion results were kept show the evaluator's strength
-     * sentences instead, without quotes.
+     * Renders a Category's strengths, shown whenever the evaluator wrote any, whatever the Verdicts.
      * @param {Object} d - One entry of the report's dimension_scores.
      * @returns {string} HTML for the section, or '' when there are no strengths.
      */
     renderCategoryStrengths(d) {
-        const criteria = d.criteria_evaluations || [];
-        const items = criteria.length > 0
-            ? criteria
-                .filter(c => c.verdict === 'STRONG_EVIDENCE' || c.verdict === 'PARTIAL_EVIDENCE')
-                .map(c => ({ text: c.criterion, partial: c.verdict === 'PARTIAL_EVIDENCE', quotes: c.evidence_quotes || [] }))
-            : (d.strengths || []).map(s => ({ text: s, partial: false, quotes: [] }));
-        if (items.length === 0) return '';
+        const list = (d.strengths || []).map(s => `<li>${this.escapeHtml(s)}</li>`).join('');
+        return list ? `<div class="modal-section-title">Điểm mạnh chính:</div><ul class="modal-bullets strengths">${list}</ul>` : '';
+    }
 
-        const list = items.map(item => `
-            <li>
-                ${this.escapeHtml(item.text)}${item.partial ? '<span class="modal-partial-tag">Đáp ứng một phần</span>' : ''}
-                ${item.quotes.map(q => `<div class="modal-quote-box">"${this.escapeHtml(q)}"</div>`).join('')}
-            </li>
-        `).join('');
-        return `<div class="modal-section-title">Điểm mạnh chính:</div><ul class="modal-bullets strengths">${list}</ul>`;
+    /**
+     * Renders a Category's criteria judged STRONG or PARTIAL, each followed by the resume quotes that support it.
+     * Reports saved before per-criterion results were kept render nothing.
+     * @param {Object} d - One entry of the report's dimension_scores.
+     * @returns {string} HTML for the section, or '' when no criterion has evidence.
+     */
+    renderCategoryMetCriteria(d) {
+        const list = (d.criteria_evaluations || [])
+            .filter(c => c.verdict === 'STRONG_EVIDENCE' || c.verdict === 'PARTIAL_EVIDENCE')
+            .map(c => `
+                <li>
+                    ${this.escapeHtml(c.criterion)}${c.verdict === 'PARTIAL_EVIDENCE' ? '<span class="modal-partial-tag">Đáp ứng một phần</span>' : ''}
+                    ${(c.evidence_quotes || []).map(q => `<div class="modal-quote-box">"${this.escapeHtml(q)}"</div>`).join('')}
+                </li>
+            `).join('');
+        return list ? `<div class="modal-section-title">Tiêu chí đáp ứng:</div><ul class="modal-bullets strengths">${list}</ul>` : '';
     }
 
     /**
