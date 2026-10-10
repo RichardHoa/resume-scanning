@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=proofread_vllm
-#SBATCH --partition=student
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
-#SBATCH --gres=gpu:1
+#SBATCH --partition=student9696
+#SBATCH --gres=gpu:nvidia_rtx_pro_6000_blackwell_server_edition_4g.96gb:1
 #SBATCH --time=4:00:00
 #SBATCH --output=logging/slurm_proofread_%j.out
 #SBATCH --error=logging/slurm_proofread_%j.err
