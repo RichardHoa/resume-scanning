@@ -125,18 +125,20 @@ def _post_chat_completion(vllm_url: str, payload: Dict[str, Any], timeout: int) 
 def chat(
     vllm_url: str,
     model_name: str,
-    messages: List[Dict[str, str]],
+    messages: List[Dict[str, Any]],
     temperature: float = 0.0,
     top_p: float = 1.0,
     json_schema: Optional[Dict[str, Any]] = None,
     timeout: int = VLLM_REQUEST_TIMEOUT,
     max_tokens: int = MAX_NEW_TOKENS,
-    step: str = "unlabeled"
+    step: str = "unlabeled",
+    enable_thinking: Optional[bool] = None
 ) -> ChatResult:
     """
     Sends a chat completion constrained to JSON output: to `json_schema` when given, else any JSON object.
     Reasoning in the result is empty unless the model profile lets the model think. `step` labels the
-    request's token usage record.
+    request's token usage record. `enable_thinking` overrides the model profile's thinking setting for this
+    request. A message's content may be a list of OpenAI content parts (text and image_url) for vision models.
     """
     payload: Dict[str, Any] = {
         "model": model_name,
@@ -146,7 +148,9 @@ def chat(
         "repetition_penalty": 1.05,
         "max_tokens": max_tokens,
         # Thinking is off unless the model profile opts in (VLLM_ENABLE_THINKING=1); e.g. GLM-4.7 thinks by default
-        "chat_template_kwargs": {"enable_thinking": VLLM_ENABLE_THINKING}
+        "chat_template_kwargs": {
+            "enable_thinking": VLLM_ENABLE_THINKING if enable_thinking is None else enable_thinking
+        }
     }
     if json_schema is None:
         payload["response_format"] = {"type": "json_object"}

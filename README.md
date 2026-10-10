@@ -61,6 +61,25 @@ To score your extracted JSON files against ground truth files:
 python3 src/evaluate.py --extracted output_jsons/ --ground-truth approved_jsons/
 ```
 
+### 4. AI Proofreading Pass (scanned books)
+
+`scripts/submit_correction.sh` has the model proofread a scanned book's OCR text against the scans and suggest
+AI Proposals. Put `book.raw.md`, `pages.jsonl` (from `python -m vsc_ocr export-pages <book>` in the vsc repo)
+and the book's PDF in `vsc-project/`, then:
+
+```bash
+bash scripts/submit_correction.sh --dry-run              # login node: prompt tokens per task vs the context window
+sbatch scripts/submit_correction.sh --pages 10-40         # a trial slice
+sbatch scripts/submit_correction.sh                       # the whole book
+sbatch scripts/submit_correction.sh --run-dir vsc-project/ai-pass/<time>   # finish a run's failed tasks
+```
+
+Phase 1 runs one task per page (its scan and the paragraphs that start on it); Phase 2 runs one task per note,
+on the Phase 1 output, to put each note call where it belongs. The run folder `vsc-project/ai-pass/<time>/`
+gets `book.ai.md` (review with `diff vsc-project/book.raw.md .../book.ai.md`), `ai_corrections.jsonl` (each
+change with its reason) and `dropped.jsonl`. Token usage goes to `logging/token_usage.jsonl` under the steps
+`proofread_page` and `proofread_note` (`python3 scripts/token_stats.py`).
+
 ---
 
 ## 🖥️ SLURM / HPC Cluster Setup

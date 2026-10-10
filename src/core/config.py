@@ -61,6 +61,11 @@ CATEGORY_EVAL_MAX_TOKENS = 4096
 CATEGORY_EVAL_RETRY_TEMPERATURE = 0.5
 DSPY_MAX_TOKENS = 4096    # DSPy prompt optimization output token limit
 REQUIREMENTS_DECOMPOSITION_MAX_TOKENS = 4096
+# AI Proofreading Pass (src/cli/proofread.py): a page task rewrites at most one page of text; a note task
+# thinks first. Retries after the first attempt sample, as an identical prompt at temperature 0 fails the same way
+PROOFREAD_PAGE_MAX_TOKENS = 4096
+PROOFREAD_NOTE_MAX_TOKENS = 8192
+PROOFREAD_RETRY_TEMPERATURE = 0.3
 
 # Requirement-scrutiny step (web-only; surfaces Implicit Assumptions as Clarification Questions
 # before decomposition). Uses a non-zero temperature deliberately — see docs/adr/0001-nondeterministic-temperature-for-scrutiny-step.md
