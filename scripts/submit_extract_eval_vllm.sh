@@ -17,7 +17,27 @@
 # spins up a vLLM server instance, runs batch extraction (Step 1), and then
 # runs batch evaluation (Step 2) using the active vLLM server.
 # Log outputs are captured in dedicated log files under logs/.
+#
+# Dataset: CnB by default (Vietnamese-dataset/CnB + hr-requirement.txt).
+# Pass --tech (anywhere among the arguments) for Vietnamese-dataset/Tech +
+# hr-requirement-tech.txt. Explicit PDF dir / job req arguments still override.
 # -----------------------------------------------------------------------------
+
+DATASET="CnB"
+POSITIONAL_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --tech) DATASET="Tech" ;;
+    *) POSITIONAL_ARGS+=("$arg") ;;
+  esac
+done
+set -- "${POSITIONAL_ARGS[@]}"
+
+if [ "$DATASET" = "Tech" ]; then
+  DEFAULT_JOB_REQ_NAME="hr-requirement-tech.txt"
+else
+  DEFAULT_JOB_REQ_NAME="hr-requirement.txt"
+fi
 
 RAW_PDF_DIR="$1"
 RAW_MODEL="$2"
@@ -105,7 +125,7 @@ setup_vllm_env
 # -----------------------------------------------------------------------------
 # STEP 3: Resolve Parameters & Validate Input Paths
 # -----------------------------------------------------------------------------
-# Resolve PDF input directory (Default: Vietnamese-dataset/CnB inside project root)
+# Resolve PDF input directory (Default: Vietnamese-dataset/$DATASET inside project root)
 if [ -n "$RAW_PDF_DIR" ]; then
   if [[ "$RAW_PDF_DIR" = /* ]]; then
     PDF_DIR="$RAW_PDF_DIR"
@@ -115,7 +135,7 @@ if [ -n "$RAW_PDF_DIR" ]; then
     PDF_DIR="$PROJECT_ROOT/$RAW_PDF_DIR"
   fi
 else
-  PDF_DIR="$PROJECT_ROOT/Vietnamese-dataset/CnB"
+  PDF_DIR="$PROJECT_ROOT/Vietnamese-dataset/$DATASET"
 fi
 
 # Target model: a profile key or HuggingFace model ID (default: the DEFAULT_MODEL_KEY profile)
@@ -147,7 +167,7 @@ else
   EVAL_DIR="$PROJECT_ROOT/evaluation_json"
 fi
 
-# Job Requirements File (Default: hr-requirement.txt inside project root)
+# Job Requirements File (Default: hr-requirement.txt, or hr-requirement-tech.txt with --tech, inside project root)
 if [ -n "$RAW_JOB_REQ" ]; then
   if [[ "$RAW_JOB_REQ" = /* ]]; then
     JOB_REQ="$RAW_JOB_REQ"
@@ -159,7 +179,7 @@ if [ -n "$RAW_JOB_REQ" ]; then
     JOB_REQ="$RAW_JOB_REQ"
   fi
 else
-  JOB_REQ="$PROJECT_ROOT/hr-requirement.txt"
+  JOB_REQ="$PROJECT_ROOT/$DEFAULT_JOB_REQ_NAME"
 fi
 
 if [ ! -d "$PDF_DIR" ]; then
@@ -219,6 +239,7 @@ echo "=====================================================================" | t
 PORT=$(find_free_port)
 
 echo "[$(date +'%H:%M:%S')] Project Root: $PROJECT_ROOT" | tee -a "$JOB_LOG"
+echo "[$(date +'%H:%M:%S')] Dataset: $DATASET" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Target PDF Directory: $PDF_DIR" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Target Output Directory: $OUTPUT_DIR" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Target Evaluation Directory: $EVAL_DIR" | tee -a "$JOB_LOG"

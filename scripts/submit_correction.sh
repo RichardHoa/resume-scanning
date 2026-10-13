@@ -13,22 +13,23 @@
 # -----------------------------------------------------------------------------
 # AI Proofreading Pass over a scanned book (src/cli/proofread.py)
 #
-# The model reads each scanned page next to its OCR text and suggests AI Proposals; it never edits the book.
-# Needs in the book folder (default vsc-project/): book.raw.md, pages.jsonl (`python -m vsc_ocr export-pages
-# <book>` in the vsc repo) and the book's PDF.
+# The model transcribes each scanned page, with the page's OCR lines as a draft, and the code joins the pages into
+# book.ai.md; it never edits the reviewed book. The book folder (default vsc-project/) is data-for-ai/<book>/ from
+# `python -m vsc_ocr prepare-ai <book>` in the vsc repo, copied as is.
 #
 # Usage:
 #   sbatch scripts/submit_correction.sh [--model <key>] [proofread.py flags]
-#   sbatch scripts/submit_correction.sh --pages 10-40 --phase 1          # a trial slice
+#   sbatch scripts/submit_correction.sh --pages 10-40                     # a trial slice
+#   sbatch scripts/submit_correction.sh --pages 10-40 --no-ocr-hint       # the same slice, image only
 #   sbatch scripts/submit_correction.sh --run-dir vsc-project/ai-pass/<time>   # finish a run's missing tasks
-#   bash scripts/submit_correction.sh --dry-run                          # on the login node: token counts, no GPU
+#   bash scripts/submit_correction.sh --dry-run                           # on the login node: token counts, no GPU
 #
 # The model profile is served with vision on for this job only (profiles serve text only), and with at most
 # PROOFREAD_CONCURRENCY requests in flight.
 # -----------------------------------------------------------------------------
 
 PROOFREAD_CONCURRENCY=30
-MAX_IMAGES_PER_PROMPT=3    # a page task sends its page plus up to two pages its paragraphs run onto
+MAX_IMAGES_PER_PROMPT=1    # a page task sends its page; a note task the page the note is printed on
 
 INITIAL_CWD="$(pwd)"
 

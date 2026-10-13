@@ -1,19 +1,29 @@
 """
 CLI Entrypoint for the AI Proofreading Pass over a scanned book (see src/pipelines/proofreader.py)
 
-Reads <book-dir>/book.raw.md, <book-dir>/pages.jsonl (from `python -m vsc_ocr export-pages` in the vsc repo) and
-the book's scanned PDF, and writes to <book-dir>/ai-pass/<time>/ (or --run-dir):
+Reads <book-dir>, the folder `python -m vsc_ocr prepare-ai <book>` writes in the vsc repo (book.json, book.raw.md,
+pages.jsonl, notes.json, spellings.yaml if the book has Spelling Rules, images/), and writes to
+<book-dir>/ai-pass/<time>/ (or --run-dir):
 
-  phase1/pNNNN.json      one result per page task
-  phase2/<note-id>.json  one result per note task
-  book.phase1.md         book.raw.md with the Phase 1 AI Proposals applied
-  book.ai.md             ... and the Phase 2 ones: review with `diff book.raw.md book.ai.md`
-  ai_corrections.jsonl   every AI Proposal, in the shape of the review tool's corrections.jsonl
-  dropped.jsonl          answers that could not be applied, and why
+  phase1/pNNNN.json      one transcription per page
+  phase2/<note-id>.json  one result per note the code could not pair with its call
+  book.phase1.md         the pages joined into the book, notes paired where the code could, names spelled as the
+                         Spelling Rules or else the story's OCR print them
+  book.ai.md             ... and the Phase 2 calls placed: review with `review <book> --ai` in the vsc repo
+  boxes.jsonl            each block's boxes on the scans, for the review page
+  ai_corrections.jsonl   book.raw.md -> book.ai.md as AI Proposals, in the shape of the review tool's corrections.jsonl
+  coverage.jsonl         per page: OCR lines the transcription missed, text it added, OCR lines left out as noise,
+                         the printed page number
+  dropped.jsonl          pages with no transcription and answers that could not be applied, and why
 
 A re-run with --run-dir only runs the tasks with no successful result yet; the books and logs are always rebuilt
-from all saved results. --dry-run sends nothing: it counts each task's prompt tokens with the model's own
-processor (images included) to check they fit the context window.
+from all saved results. --no-ocr-hint sends each page's image without its OCR lines (and its story's names).
+--ocr-marks keeps the OCR's marks on a word the model read with the same letters where both OCR engines agree. To
+measure it, make two copies of a finished run, rebuild one with `--run-dir <a> --phase 1` and the other with
+`--run-dir <b> --phase 1 --ocr-marks` (no model calls: every page is done; neither keeps its Phase 2 notes, so
+they compare alike), then `python3 scripts/compare_ocr_hint.py <b> <a> --book-dir <book-dir>` ("with hint" is b). --dry-run sends nothing: it
+counts each task's prompt tokens with the model's own processor (images included) to check they fit the context
+window.
 """
 import os
 import sys
@@ -36,10 +46,12 @@ from src.core.config import (
     PROOFREAD_PAGE_MAX_TOKENS, PROOFREAD_NOTE_MAX_TOKENS, PROOFREAD_RETRY_TEMPERATURE
 )
 from src.pipelines.proofreader import (
-    apply_note_results, apply_page_results, block_pages, note_tasks, page_task
+    FLAG, apply_note_results, assemble, enforce_spellings, flag_leftovers, note_tasks, page_names, read_page,
+    spelling_rules
 )
 from src.prompts.proofread_prompts import (
-    NOTE_SYSTEM_PROMPT, PAGE_SYSTEM_PROMPT, note_schema, note_user_text, page_schema, page_user_text
+    NOTE_SYSTEM_PROMPT, note_schema, note_user_text, transcribe_schema, transcribe_system_prompt,
+    transcribe_user_text
 )
 
 ATTEMPTS = 3    # the first try and two retries
@@ -52,11 +64,15 @@ PHASES = {
 def parse_args():
     parser = argparse.ArgumentParser(description="AI Proofreading Pass over a scanned book")
     parser.add_argument("--book-dir", default=os.path.join(_PROJECT_ROOT, "vsc-project"),
-                        help="Folder with book.raw.md, pages.jsonl and the book's PDF (default: vsc-project/)")
+                        help="The data-for-ai/<book>/ folder from `python -m vsc_ocr prepare-ai` (default: vsc-project/)")
     parser.add_argument("--run-dir", help="Continue this run instead of starting <book-dir>/ai-pass/<time>/")
     parser.add_argument("--phase", choices=["1", "2", "all"], default="all")
     parser.add_argument("--pages", help="Only these PDF pages, e.g. 10-40,52 (a note goes with the page it is printed on)")
-    parser.add_argument("--dpi", type=int, default=200, help="Resolution the pages are sent at (default 200)")
+    parser.add_argument("--no-ocr-hint", action="store_true",
+                        help="Send each page's image without its OCR lines (to compare with a run that sends them)")
+    parser.add_argument("--ocr-marks", action="store_true",
+                        help="Keep the OCR's marks on a word the model read with the same letters, where both OCR "
+                             "engines agree (see the docstring to measure it first)")
     parser.add_argument("--model-name", default=DEFAULT_LLM_MODEL)
     parser.add_argument("--vllm-url", default=DEFAULT_VLLM_URL)
     parser.add_argument("--dry-run", action="store_true",
@@ -75,11 +91,6 @@ def page_set(spec):
     return pages
 
 
-def split_blocks(text):
-    text = text.rstrip("\n")
-    return text.split("\n\n") if text else []
-
-
 def join_blocks(blocks):
     return "\n\n".join(blocks) + "\n"
 
@@ -96,63 +107,47 @@ def read_json(path):
         return json.load(f)
 
 
+def read_yaml(path):
+    import yaml
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
 # -- page images
-class Scans:
-    """The book's PDF pages as JPEG, rendered once into <book-dir>/render-<dpi>/."""
-
-    def __init__(self, pdf_path, cache_dir, dpi):
-        self.pdf_path, self.cache_dir, self.dpi = pdf_path, cache_dir, dpi
-        os.makedirs(cache_dir, exist_ok=True)
-
-    def path(self, page):
-        return os.path.join(self.cache_dir, f"p{page:04d}.jpg")
-
-    def render(self, pages):
-        missing = sorted(p for p in set(pages) if not os.path.exists(self.path(p)))
-        if not missing:
-            return
-        import fitz
-        print(f"[Proofread] Rendering {len(missing)} page(s) at {self.dpi} dpi into {self.cache_dir}")
-        with fitz.open(self.pdf_path) as doc:
-            for p in missing:
-                pix = doc[p - 1].get_pixmap(dpi=self.dpi, colorspace=fitz.csGRAY)
-                with open(self.path(p), "wb") as f:
-                    f.write(pix.tobytes("jpeg", jpg_quality=85))
-
-    def data_url(self, page):
-        with open(self.path(page), "rb") as f:
-            return "data:image/jpeg;base64," + base64.b64encode(f.read()).decode("ascii")
+def data_url(path):
+    with open(path, "rb") as f:
+        return "data:image/jpeg;base64," + base64.b64encode(f.read()).decode("ascii")
 
 
-def messages_for(system, images, text, scans):
+def messages_for(system, images, text, images_dir):
     content = []
     for p in images:
         content.append({"type": "text", "text": f"Scan of PDF page {p}:"})
-        content.append({"type": "image_url", "image_url": {"url": scans.data_url(p)}})
+        content.append({"type": "image_url", "image_url": {"url": data_url(os.path.join(images_dir, f"p{p:04d}.jpg"))}})
     content.append({"type": "text", "text": text})
     return [{"role": "system", "content": system}, {"role": "user", "content": content}]
 
 
-# -- tasks: (key, phase, messages, schema)
-def page_requests(blocks, manifest, only, scans):
-    for entry in manifest:
-        if not entry["own"] or (only and entry["page"] not in only):
+# -- tasks: (key, images, messages, schema)
+def page_requests(entries, only, images_dir, ocr_hint, names):
+    system = transcribe_system_prompt(ocr_hint)
+    for page in sorted(entries):
+        if only and page not in only:
             continue
-        t = page_task(blocks, entry)
-        text = page_user_text(t["page"], t["owned_text"], t["before"], t["continued"], t["after"])
-        yield f"p{t['page']:04d}", t["images"], (
-            lambda t=t, text=text: messages_for(PAGE_SYSTEM_PROMPT, t["images"], text, scans)
-        ), page_schema(t["own"])
+        text = transcribe_user_text(entries[page], ocr_hint, names.get(page, ()))
+        yield f"p{page:04d}", [page], (
+            lambda page=page, text=text: messages_for(system, [page], text, images_dir)
+        ), transcribe_schema()
 
 
-def note_requests(blocks, pages, only, scans):
+def note_requests(blocks, pages, only, images_dir):
     for t in note_tasks(blocks, pages):
         if only and t["note_page"] not in only:
             continue
         images = [t["note_page"]] if t["note_page"] else []
         text = note_user_text(t["note_id"], t["definition"], t["note_page"], t["candidates"], t["whole_story"])
         yield t["note_id"], images, (
-            lambda images=images, text=text: messages_for(NOTE_SYSTEM_PROMPT, images, text, scans)
+            lambda images=images, text=text: messages_for(NOTE_SYSTEM_PROMPT, images, text, images_dir)
         ), note_schema([i for i, _ in t["candidates"]])
 
 
@@ -264,65 +259,76 @@ def count_tokens(requests, phase, model_name, out_file):
           f"vs context {VLLM_MAX_MODEL_LEN}: {over} task(s) would not fit")
 
 
+def write_jsonl(path, rows):
+    with open(path, "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+
 def main():
     args = parse_args()
     book_dir = os.path.abspath(args.book_dir)
     raw_path = os.path.join(book_dir, "book.raw.md")
+    if not os.path.exists(os.path.join(book_dir, "book.json")):
+        sys.exit(f"[Proofread] No book.json in {book_dir}: copy the data-for-ai/<book>/ folder that "
+                 f"`python -m vsc_ocr prepare-ai <book>` makes in the vsc repo")
+    book = read_json(os.path.join(book_dir, "book.json"))
     with open(raw_path, encoding="utf-8") as f:
         raw_text = f.read()
+    if book["raw_sha1"] != sha1(raw_text):
+        sys.exit("[Proofread] book.raw.md is not the one book.json was made from: re-run prepare-ai and copy the folder")
     with open(os.path.join(book_dir, "pages.jsonl"), encoding="utf-8") as f:
-        manifest = [json.loads(line) for line in f if line.strip()]
-    if manifest and manifest[0]["raw_sha1"] != sha1(raw_text):
-        sys.exit("[Proofread] pages.jsonl was exported from a different book.raw.md: re-run export-pages and copy both")
-    pdfs = glob.glob(os.path.join(book_dir, "*.pdf"))
-    if len(pdfs) != 1:
-        sys.exit(f"[Proofread] Expected one PDF in {book_dir}, found {len(pdfs)}")
+        pages_text = f.read()
+    entries = {e["page"]: e for e in (json.loads(line) for line in pages_text.splitlines() if line.strip())}
+    notes_path = os.path.join(book_dir, "notes.json")
+    known_notes = read_json(notes_path)["notes"] if os.path.exists(notes_path) else []
+    images_dir = os.path.join(book_dir, "images")
+    spellings_path = os.path.join(book_dir, "spellings.yaml")
+    rules = spelling_rules(read_yaml(spellings_path) if os.path.exists(spellings_path) else None)
+    names = page_names(raw_text, entries, rules)
 
     run_dir = os.path.abspath(args.run_dir) if args.run_dir else os.path.join(
         book_dir, "ai-pass", datetime.now().strftime("%Y%m%d-%H%M%S"))
     os.makedirs(run_dir, exist_ok=True)
-    scans = Scans(pdfs[0], os.path.join(book_dir, f"render-{args.dpi}"), args.dpi)
     only = page_set(args.pages)
     phases = [1, 2] if args.phase == "all" else [int(args.phase)]
-    raw_blocks = split_blocks(raw_text)
-    raw_pages = block_pages(manifest)
-    print(f"[Proofread] Run folder: {run_dir}")
+    ocr_hint = not args.no_ocr_hint
+    print(f"[Proofread] Run folder: {run_dir}" + ("" if ocr_hint else " (no OCR hint)")
+          + (" (OCR marks kept)" if args.ocr_marks else "")
+          + f"; {len(rules['words'])} word and {len(rules['phrases'])} phrase Spelling Rule(s)")
 
-    # Images every selected task needs, rendered once up front (PyMuPDF is not thread-safe)
-    needed = {p for e in manifest if e["own"] and (not only or e["page"] in only) for o in e["own"] for p in o["pages"]}
-    needed |= {t["note_page"] for t in note_tasks(raw_blocks, raw_pages)
-               if t["note_page"] and (not only or t["note_page"] in only)}
-    scans.render(needed)
-
-    phase1_stamp = {"input_sha1": sha1(raw_text), "dpi": args.dpi}
+    phase1_stamp = {"input_sha1": sha1(pages_text), "dpi": book["dpi"], "ocr_hint": ocr_hint}
 
     def phase1_book():
+        """The pages read joined into the book, then its names and Spelling Rules enforced (both edit in place)."""
         results = load_results(os.path.join(run_dir, "phase1"), phase1_stamp)
-        return apply_page_results(raw_blocks, raw_pages, {int(k[1:]): v["changes"] for k, v in results.items()})
+        read = {int(k[1:]): read_page(entries[int(k[1:])], a, args.ocr_marks, rules["depends"])
+                for k, a in results.items() if int(k[1:]) in entries}
+        book = assemble(raw_text, read, known_notes)
+        return book, enforce_spellings(book.blocks, book.pages, raw_text, entries, rules)
 
     if args.dry_run:
         with open(os.path.join(run_dir, "dry_run_tokens.jsonl"), "w", encoding="utf-8") as out:
             if 1 in phases:
-                count_tokens(list(page_requests(raw_blocks, manifest, only, scans)), 1, args.model_name, out)
+                count_tokens(list(page_requests(entries, only, images_dir, ocr_hint, names)), 1, args.model_name, out)
             if 2 in phases:
-                p1 = phase1_book()
-                print("[Dry Run] Phase 2 counted on " + ("the Phase 1 output" if p1.proposals else "book.raw.md"))
-                count_tokens(list(note_requests(p1.blocks, p1.pages, only, scans)), 2, args.model_name, out)
+                _, p1 = phase1_book()
+                count_tokens(list(note_requests(p1.blocks, p1.pages, only, images_dir)), 2, args.model_name, out)
         print(f"[Dry Run] Per-task counts in {run_dir}/dry_run_tokens.jsonl")
         return
 
     if 1 in phases:
-        run_phase(1, page_requests(raw_blocks, manifest, only, scans), args, os.path.join(run_dir, "phase1"),
+        run_phase(1, page_requests(entries, only, images_dir, ocr_hint, names), args, os.path.join(run_dir, "phase1"),
                   phase1_stamp)
-    p1 = phase1_book()
+    book1, p1 = phase1_book()
     p1_text = join_blocks(p1.blocks)
     with open(os.path.join(run_dir, "book.phase1.md"), "w", encoding="utf-8") as f:
         f.write(p1_text)
 
     # Phase 2 answers name blocks of the Phase 1 output, so they only count against that same output
-    phase2_stamp = {"input_sha1": sha1(p1_text), "dpi": args.dpi}
+    phase2_stamp = {"input_sha1": sha1(p1_text), "dpi": book["dpi"]}
     if 2 in phases:
-        run_phase(2, note_requests(p1.blocks, p1.pages, only, scans), args, os.path.join(run_dir, "phase2"),
+        run_phase(2, note_requests(p1.blocks, p1.pages, only, images_dir), args, os.path.join(run_dir, "phase2"),
                   phase2_stamp)
     answers = load_results(os.path.join(run_dir, "phase2"), phase2_stamp)
     for note_id, a in answers.items():
@@ -331,18 +337,23 @@ def main():
         if a["definition"].startswith(prefix):
             a["definition"] = a["definition"][len(prefix):].strip()
     p2 = apply_note_results(p1.blocks, p1.pages, answers)
+    p3 = flag_leftovers(p2.blocks, p2.pages)
 
     with open(os.path.join(run_dir, "book.ai.md"), "w", encoding="utf-8") as f:
-        f.write(join_blocks(p2.blocks))
+        f.write(join_blocks(p3.blocks))
+    # Phase 2 only edits blocks in place, so the Phase 1 boxes still line up; the sha1 tells review an edited block
+    write_jsonl(os.path.join(run_dir, "boxes.jsonl"),
+                ({"i": i, "sha1": sha1(b), "boxes": bx} for i, (b, bx) in enumerate(zip(p3.blocks, book1.boxes))))
     now = datetime.now().isoformat(timespec="seconds")
-    with open(os.path.join(run_dir, "ai_corrections.jsonl"), "w", encoding="utf-8") as f:
-        for phase, applied in ((1, p1), (2, p2)):
-            for p in applied.proposals:
-                f.write(json.dumps({"time": now, **p, "phase": phase, "model": args.model_name},
-                                   ensure_ascii=False) + "\n")
-    with open(os.path.join(run_dir, "dropped.jsonl"), "w", encoding="utf-8") as f:
-        for d in p1.dropped + p2.dropped:
-            f.write(json.dumps(d, ensure_ascii=False) + "\n")
+    write_jsonl(os.path.join(run_dir, "ai_corrections.jsonl"),
+                ({"time": now, **p, "phase": phase, "model": args.model_name}
+                 for phase, proposals in ((1, book1.proposals + p1.proposals), (2, p2.proposals + p3.proposals))
+                 for p in proposals))
+    write_jsonl(os.path.join(run_dir, "coverage.jsonl"), book1.coverage)
+    read_pages = {c["page"] for c in book1.coverage}
+    unread = [{"task": f"page {p}", "why": "no successful transcription"}
+              for p in sorted(entries) if (not only or p in only) and p not in read_pages]
+    write_jsonl(os.path.join(run_dir, "dropped.jsonl"), unread + p2.dropped)
 
     for phase in (1, 2):
         rd = os.path.join(run_dir, f"phase{phase}")
@@ -350,9 +361,25 @@ def main():
         if statuses:
             summary = {s: statuses.count(s) for s in sorted(set(statuses))}
             print(f"[Proofread] Phase {phase} task results: {summary}")
-    print(f"[Proofread] {len(p1.proposals)} Phase 1 and {len(p2.proposals)} Phase 2 AI Proposals, "
-          f"{len(p1.dropped) + len(p2.dropped)} dropped")
-    print(f"[Proofread] Review: diff {raw_path} {os.path.join(run_dir, 'book.ai.md')}")
+    coverage = book1.coverage
+    missed = sum(len(c["missed"]) for c in coverage)
+    added = sum(len(c["added"]) for c in coverage)
+    left_out = sum(len(c.get("left_out", [])) for c in coverage)
+    off = [c["page"] for c in coverage if c["printed_page_ok"] is False]
+    print(f"[Proofread] {len(coverage)} pages read: {missed} OCR line(s) missed (put back as ⚠ ai-missed?), "
+          f"{added} block(s) with text no OCR line is under (⚠), {left_out} OCR line(s) left out as noise"
+          + (f"; printed page number differs from the expected one on pdf {off}" if off else ""))
+    ruled = sum(1 for p in p1.proposals if p.get("rule"))
+    flagged = sum(1 for p in p1.proposals if p["after"][0].endswith(FLAG) and not p["before"][0].endswith(FLAG))
+    marked = sum(len(c.get("ocr_marks", [])) for c in coverage)
+    print(f"[Proofread] Spellings: {len(p1.proposals)} block(s) changed or flagged ({ruled} by a Spelling Rule, "
+          f"{flagged} with a name still spelled two ways)"
+          + (f"; {marked} word(s) took the OCR's marks" if marked else ""))
+    print(f"[Proofread] {len(book1.proposals) + len(p1.proposals)} Phase 1 and "
+          f"{len(p2.proposals) + len(p3.proposals)} Phase 2 AI Proposals, "
+          f"{len(unread) + len(p2.dropped)} dropped")
+    print(f"[Proofread] Copy book.ai.md, ai_corrections.jsonl and boxes.jsonl from {run_dir} "
+          f"to data/books/<book>/ai/ in the vsc repo, then run `python -m vsc_ocr review <book> --ai`")
 
 
 if __name__ == "__main__":

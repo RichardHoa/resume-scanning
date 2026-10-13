@@ -123,13 +123,14 @@ def validate_category_evaluation(parsed: Any) -> Optional[Dict[str, Any]]:
     return result
 
 
-# The raw resume keys each Category is judged on, passed through unchanged
+# The raw resume keys each Category is judged on, passed through unchanged.
+# None means the whole resume except basic_information (hidden_culture can draw on any section).
 CATEGORY_RESUME_KEYS = {
     "seniority_title": ("position_applied", "self_evaluation", "work_experience"),
     "technical_skills": ("skills", "work_experience", "projects", "languages"),
     "work_experience": ("work_experience", "projects"),
     "education_certifications": ("education_background", "certifications", "languages"),
-    "hidden_culture": ("position_applied", "self_evaluation", "work_experience", "projects"),
+    "hidden_culture": None,
 }
 
 
@@ -152,4 +153,6 @@ def extract_relevant_resume_field(category: str, resume: Dict[str, Any]) -> Dict
     """The raw resume keys a Category is judged on, unchanged; basic_information is never one of them."""
     resume = resume if isinstance(resume, dict) else {}
     keys = CATEGORY_RESUME_KEYS.get(category, CATEGORY_RESUME_KEYS["hidden_culture"])
+    if keys is None:
+        return strip_identity(resume)
     return {key: resume[key] for key in keys if key in resume}

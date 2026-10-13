@@ -63,22 +63,31 @@ python3 src/evaluate.py --extracted output_jsons/ --ground-truth approved_jsons/
 
 ### 4. AI Proofreading Pass (scanned books)
 
-`scripts/submit_correction.sh` has the model proofread a scanned book's OCR text against the scans and suggest
-AI Proposals. Put `book.raw.md`, `pages.jsonl` (from `python -m vsc_ocr export-pages <book>` in the vsc repo)
-and the book's PDF in `vsc-project/`, then:
+`scripts/submit_correction.sh` has a model transcribe every page of a scanned book from its scan, with the OCR
+text as a draft, and joins the pages into a new text of the book.
+
+1. In the vsc repo, run `python -m vsc_ocr prepare-ai <book>` and copy the folder it makes, `data-for-ai/<book>/`,
+   here as `vsc-project/`.
+2. Run the pass:
 
 ```bash
-bash scripts/submit_correction.sh --dry-run              # login node: prompt tokens per task vs the context window
+bash scripts/submit_correction.sh --dry-run              # login node: checks every task fits the context window
 sbatch scripts/submit_correction.sh --pages 10-40         # a trial slice
+sbatch scripts/submit_correction.sh --pages 10-40 --no-ocr-hint   # the same slice from the images only
 sbatch scripts/submit_correction.sh                       # the whole book
 sbatch scripts/submit_correction.sh --run-dir vsc-project/ai-pass/<time>   # finish a run's failed tasks
 ```
 
-Phase 1 runs one task per page (its scan and the paragraphs that start on it); Phase 2 runs one task per note,
-on the Phase 1 output, to put each note call where it belongs. The run folder `vsc-project/ai-pass/<time>/`
-gets `book.ai.md` (review with `diff vsc-project/book.raw.md .../book.ai.md`), `ai_corrections.jsonl` (each
-change with its reason) and `dropped.jsonl`. Token usage goes to `logging/token_usage.jsonl` under the steps
-`proofread_page` and `proofread_note` (`python3 scripts/token_stats.py`).
+3. Copy `book.ai.md`, `ai_corrections.jsonl` and `boxes.jsonl` from the run folder `vsc-project/ai-pass/<time>/`
+   back to `data/books/<book>/ai/` in the vsc repo and review them there with `python -m vsc_ocr review <book> --ai`.
+
+`coverage.jsonl` in the run folder lists, page by page, the OCR lines the model left out (put back, marked
+`⚠ ai-missed?`) and the text it wrote that the OCR didn't see (marked ⚠). To choose between sending the OCR draft
+or not, compare two runs of the same slice against the reviewer's own corrections:
+
+```bash
+python3 scripts/compare_ocr_hint.py vsc-project/ai-pass/<with-hint> vsc-project/ai-pass/<without>
+```
 
 ---
 
