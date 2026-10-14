@@ -11,7 +11,8 @@ This module holds the parts that need no model:
   read_page            a Phase 1 answer checked against the page's OCR lines: an OCR line the transcription
                        leaves out comes back as a `⚠ ai-missed?` paragraph, transcribed text with no OCR line
                        under it is flagged ⚠, and each block gets the boxes of the lines it covers
-  assemble             the pages joined into book.ai.md in the shape of book.raw.md: the raw headings, each with
+  assemble             the pages joined into book.ai.md in the shape of book.raw.md: the Story Titles (titles.yaml)
+                       as set, else the raw headings, each with
                        its `<!-- pdf a-b -->` comment, paragraphs split by a page joined, Note Calls paired with
                        their Note Definitions; logged as AI Proposals (a block diff of book.raw.md)
   story_names          each story's names as the OCR prints them most, with the book's Spelling Rules
@@ -153,6 +154,17 @@ def raw_sections(blocks: List[str]) -> List[dict]:
                 s["pdf"] = [int(m.group(1)), int(m.group(2) or m.group(1))]
                 break
     return out
+
+
+def story_titles(data: Optional[dict]) -> Dict[int, str]:
+    """The book's Story Titles (titles.yaml: {titles: [{pdf, title}]}) by the first pdf page of their section."""
+    return {int(t["pdf"]): unicodedata.normalize("NFC", str(t["title"]).strip())
+            for t in (data or {}).get("titles") or []}
+
+
+def story_title(section: dict, titles: Optional[Dict[int, str]]) -> str:
+    """A section's (from `raw_sections`) Story Title, else its raw title."""
+    return (titles or {}).get(section["pdf"][0] if section["pdf"] else None) or section["title"]
 
 
 # -- words, for matching a transcription with the OCR lines
@@ -463,11 +475,12 @@ def pair_notes(units: List[dict], notes: List[dict], scope: str, known: Dict[tup
 
 
 # -- the book
-def assemble(raw_text: str, pages: Dict[int, dict], known_notes: List[dict]) -> Assembled:
+def assemble(raw_text: str, pages: Dict[int, dict], known_notes: List[dict],
+             titles: Optional[Dict[int, str]] = None) -> Assembled:
     """
     book.ai.md from the pages read (`read_page` results by page). Each section of book.raw.md with a page read is
-    rebuilt from its pages: its heading line is the raw one cleaned up (see `_heading`; a call the page's heading
-    carries goes at its end) with a `<!-- pdf a-b · heading: <as transcribed> -->` comment, then its blocks, then
+    rebuilt from its pages: its heading line is its Story Title (`titles`, by the section's first pdf page) as set,
+    else the raw one cleaned up (see `_heading`), a call the page's heading carries going at its end; with a `<!-- pdf a-b · heading: <as transcribed> -->` comment, then its blocks, then
     its notes. A section none of whose pages were read, and the book's title (`# `, the title page), stay as they
     are in book.raw.md. Blocks the page above the section's heading prints belong to the section before.
     """
@@ -529,7 +542,9 @@ def assemble(raw_text: str, pages: Dict[int, dict], known_notes: List[dict]) -> 
         blocks: List[dict] = []
         heading_calls = "".join(f"[^{c}]" for c in _call.findall(head["text"])) if head else ""
         transcribed = HEADING.match(head["text"]).group(2) if head else None
-        blocks.append(dict(text=_heading(s["heading"], transcribed) + heading_calls, kind="heading",
+        title, fixed = story_title(s, titles), s["pdf"][0] in (titles or {})
+        line = "#" * s["level"] + " " + title if fixed else _heading(s["heading"], transcribed)
+        blocks.append(dict(text=line + heading_calls, kind="heading",
                            pages=[head["page"]] if head else [], boxes=head["boxes"] if head else []))
         prev_page = head["page"] if head else None
         for u in us:
@@ -557,7 +572,7 @@ def assemble(raw_text: str, pages: Dict[int, dict], known_notes: List[dict]) -> 
         full = s["pdf"] and read[k] == list(range(s["pdf"][0], s["pdf"][1] + 1))
         for p in block_diff(raw[s["start"]:s["end"]], [b["text"] for b in sec_out],
                             [b["pages"] for b in sec_out], trim=not full):
-            proposals.append(dict(action=p["action"], section=s["title"], pdf_pages=p["pdf_pages"],
+            proposals.append(dict(action=p["action"], section=title, pdf_pages=p["pdf_pages"],
                                   before=p["before"], after=p["after"],
                                   reason="transcribed from the scan"))
         out += [b["text"] for b in sec_out]
@@ -602,14 +617,15 @@ def _word_rule(rules: dict, folded: str, title: str) -> Optional[dict]:
     return r if r and title not in r["except_"] else None
 
 
-def story_names(raw_text: str, entries: Dict[int, dict], rules: dict) -> List[List[dict]]:
+def story_names(raw_text: str, entries: Dict[int, dict], rules: dict,
+                titles: Optional[Dict[int, str]] = None) -> List[List[dict]]:
     """
     For each section of book.raw.md (as `raw_sections` lists them), its names: the capitalised words of its pages'
     OCR lines that both OCR engines read alike (not `check`), printed NAME_MIN times or more, and never printed in
     lower case anywhere in the book (a common word starting a sentence). Spellings equal once folded are one name:
     [{fold, spelling, counts, rule}], most printed first. `spelling` is the book's Spelling Rule for it (`rule`
-    true), else the OCR's spelling when it has NAME_MAJORITY of the name's prints, else None. The title page's
-    section has none.
+    true; a rule's story exceptions name Story Titles, `titles`), else the OCR's spelling when it has
+    NAME_MAJORITY of the name's prints, else None. The title page's section has none.
     """
     lower = {sp[3] for e in entries.values() for ln in e.get("lines", []) for sp in _spans(ln["text"])
              if sp[0][:1].islower()}
@@ -618,7 +634,7 @@ def story_names(raw_text: str, entries: Dict[int, dict], rules: dict) -> List[Li
         if not s["pdf"] or s["level"] == 1:
             out.append([])
             continue
-        title = _folded(s["title"])
+        title = _folded(story_title(s, titles))
         forms: Dict[str, Counter] = {}      # folded -> the word as printed -> times
         for p in range(s["pdf"][0], s["pdf"][1] + 1):
             for ln in entries.get(p, {}).get("lines", []):
@@ -655,10 +671,11 @@ def story_names(raw_text: str, entries: Dict[int, dict], rules: dict) -> List[Li
     return out
 
 
-def page_names(raw_text: str, entries: Dict[int, dict], rules: dict, most: int = 40) -> Dict[int, List[str]]:
+def page_names(raw_text: str, entries: Dict[int, dict], rules: dict, most: int = 40,
+               titles: Optional[Dict[int, str]] = None) -> Dict[int, List[str]]:
     """For each page, the names of its story (or stories) that have a spelling, as the Phase 1 prompt lists them."""
     out: Dict[int, List[str]] = {}
-    for s, names in zip(raw_sections(split_blocks(raw_text)), story_names(raw_text, entries, rules)):
+    for s, names in zip(raw_sections(split_blocks(raw_text)), story_names(raw_text, entries, rules, titles)):
         if not names:
             continue
         spelled = [n["spelling"] for n in names if n["spelling"]]
@@ -706,17 +723,17 @@ def _respell(text: str, story: Dict[str, str], rules: dict, title: str) -> tuple
 
 
 def enforce_spellings(blocks: List[str], pages: Dict[int, List[int]], raw_text: str, entries: Dict[int, dict],
-                      rules: dict) -> Applied:
+                      rules: dict, titles: Optional[Dict[int, str]] = None) -> Applied:
     """
     The Spelling Rules and each story's names (`story_names`) applied to the sections the pass wrote (`blocks`,
-    whose sections are book.raw.md's, in order; a rule's story exceptions are matched against the raw titles),
-    headings included (the model's own reading in the heading comment stays): a word equal to a name once folded
+    whose sections are book.raw.md's, in order; a rule's story exceptions name Story Titles, `titles`, else raw
+    titles), headings included but a Story Title (the model's own reading in the heading comment stays): a word equal to a name once folded
     takes the name's spelling, in the word's own case. A Spelling Rule beats the OCR's spelling. Then a name still
     spelled two ways in a story gets ⚠ on the blocks with its less common spelling. Each block changed is one AI
     Proposal; one a rule changed lists the rules in `rule`.
     """
     secs = raw_sections(split_blocks(raw_text))
-    names = story_names(raw_text, entries, rules)
+    names = story_names(raw_text, entries, rules, titles)
     section_of, k = [], -1
     for b in blocks:
         k += bool(HEADING.match(b))
@@ -727,8 +744,10 @@ def enforce_spellings(blocks: List[str], pages: Dict[int, List[int]], raw_text: 
     for k in sorted(read):
         if k >= len(names):
             continue
-        idx = [i for i, sec in enumerate(section_of) if sec == k and _kind(blocks[i]) != "comment"]
-        title = _folded(secs[k]["title"])
+        fixed = bool(secs[k]["pdf"]) and secs[k]["pdf"][0] in (titles or {})
+        idx = [i for i, sec in enumerate(section_of) if sec == k and _kind(blocks[i]) != "comment"
+               and not (fixed and HEADING.match(blocks[i]))]
+        title = _folded(story_title(secs[k], titles))
         story = {n["fold"]: n["spelling"] for n in names[k] if n["spelling"]}
         for i in idx:
             text, changes = _respell(model_text(blocks[i]), story, rules, title)

@@ -279,6 +279,20 @@ def test_the_heading_loses_marks_the_ocr_read_as_punctuation_and_gains_the_print
     assert "## 7. Sự tích vua TaBài và nàng BìLà (Likay Ruah Kamay)" in book.blocks
 
 
+def test_a_story_title_is_the_heading_as_set_with_the_passs_note_calls_after_it():
+    p42 = dict(P42, lines=P42["lines"] + [line(5, "(1) TaBài : tên vua.", role="footnote", y=0.9)])
+    a42 = dict(A42, blocks=[{"text": "## SỰ TÍCH VUA TABÀI[^?1] (Likay Ruah Kamay)", "box": [100, 100, 900, 200]}]
+               + A42["blocks"][1:], footnotes=[{"mark": "1", "text": "TaBài : tên vua."}])
+    titles = {42: "7. Sự tích vua Tabài và nàng Bìlà (Hai anh em)"}
+
+    book = assemble(RAW, {42: read_page(p42, a42), 43: read_page(P43, A43)}, [], titles)
+
+    # the model's subtitle and letters are not taken; the call it read in the heading goes at the end
+    assert book.blocks[5] == "## 7. Sự tích vua Tabài và nàng Bìlà (Hai anh em)[^su-tich-vua-tabai-va-nang-bila-p42-1]"
+    assert book.proposals[0]["section"] == "7. Sự tích vua Tabài và nàng Bìlà (Hai anh em)"
+    assert book.blocks[2] == "## 6. Sự tích Táo quân"      # a section with no Story Title keeps its raw heading
+
+
 def test_the_title_page_stays_as_it_is_in_book_raw_md():
     p4 = entry(4, [line(1, "TRUNG TÂM NGHIÊN CỨU VĂN HÓA CHĂM - NINH THUẬN")])
     a4 = answer(["TRUNG TÂM NGHIÊN CỨU VĂN HÓA CHĂM - NINH THUẬN", "## TRUYỆN CỔ DÂN GIAN CHĂM"])
@@ -537,6 +551,25 @@ def test_a_spelling_rule_beats_the_ocr_keeps_the_case_and_is_skipped_in_its_exce
     assert p["reason"] == "Spelling Rule: UNGCĂL → ƯNGCĂL, bông - bông → bồng - bồng, Ungcăl → Ưngcăl (2×)"
     names = story_names(NAMES_RAW, NAME_PAGES, rules)
     assert next(n for n in names[1] if n["fold"] == "ungcal")["spelling"] == "Ưngcăl"
+
+
+def test_a_story_title_is_never_respelled_and_story_exceptions_name_story_titles():
+    rules = spelling_rules({"words": [{"spelling": "Ưngcăl", "except": ["50. Hai anh em Parăm"]},
+                                      {"spelling": "Mừnô", "except": []}]})
+    titles = {274: "33. Hoàng tử TêWa MunÔ", 276: "50. Hai anh em Parăm"}
+    book = list(NAMES_BOOK)
+    book[2] = "## 33. Hoàng tử TêWa MunÔ"
+    book[7] = "## 50. Hai anh em Parăm"
+    book[9] = "Ungcăl đi."
+
+    out = enforce_spellings(book, NAMES_BOOK_PAGES, NAMES_RAW, NAME_PAGES, rules, titles)
+
+    assert out.blocks[2] == book[2]         # neither a Spelling Rule nor the OCR's names touch it
+    assert out.blocks[5] == "Hoàng tử Tềwa Mừnô về với Ưngcăl."
+    assert out.blocks[9] == "Ungcăl đi."     # the excepted story, named by its Story Title
+    assert all(p["before"] != [book[2]] for p in out.proposals)
+    pages = {**NAME_PAGES, 276: dict(NAME_PAGES[276], lines=NAME_PAGES[276]["lines"] + [line(3, "Ungcăl đi.")])}
+    assert "ungcal" not in [n["fold"] for n in story_names(NAMES_RAW, pages, rules, titles)[2]]   # not ruled there
 
 
 def test_a_ruled_name_goes_in_the_prompt_even_where_the_ocr_never_prints_it_clean():

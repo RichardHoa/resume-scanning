@@ -2,7 +2,8 @@
 CLI Entrypoint for the AI Proofreading Pass over a scanned book (see src/pipelines/proofreader.py)
 
 Reads <book-dir>, the folder `python -m vsc_ocr prepare-ai <book>` writes in the vsc repo (book.json, book.raw.md,
-pages.jsonl, notes.json, spellings.yaml if the book has Spelling Rules, images/), and writes to
+pages.jsonl, notes.json, spellings.yaml if the book has Spelling Rules, titles.yaml if it has Story Titles,
+images/), and writes to
 <book-dir>/ai-pass/<time>/ (or --run-dir):
 
   phase1/pNNNN.json      one transcription per page
@@ -47,7 +48,7 @@ from src.core.config import (
 )
 from src.pipelines.proofreader import (
     FLAG, apply_note_results, assemble, enforce_spellings, flag_leftovers, note_tasks, page_names, read_page,
-    spelling_rules
+    spelling_rules, story_titles
 )
 from src.prompts.proofread_prompts import (
     NOTE_SYSTEM_PROMPT, note_schema, note_user_text, transcribe_schema, transcribe_system_prompt,
@@ -285,7 +286,9 @@ def main():
     images_dir = os.path.join(book_dir, "images")
     spellings_path = os.path.join(book_dir, "spellings.yaml")
     rules = spelling_rules(read_yaml(spellings_path) if os.path.exists(spellings_path) else None)
-    names = page_names(raw_text, entries, rules)
+    titles_path = os.path.join(book_dir, "titles.yaml")
+    titles = story_titles(read_yaml(titles_path) if os.path.exists(titles_path) else None)
+    names = page_names(raw_text, entries, rules, titles=titles)
 
     run_dir = os.path.abspath(args.run_dir) if args.run_dir else os.path.join(
         book_dir, "ai-pass", datetime.now().strftime("%Y%m%d-%H%M%S"))
@@ -295,7 +298,8 @@ def main():
     ocr_hint = not args.no_ocr_hint
     print(f"[Proofread] Run folder: {run_dir}" + ("" if ocr_hint else " (no OCR hint)")
           + (" (OCR marks kept)" if args.ocr_marks else "")
-          + f"; {len(rules['words'])} word and {len(rules['phrases'])} phrase Spelling Rule(s)")
+          + f"; {len(rules['words'])} word and {len(rules['phrases'])} phrase Spelling Rule(s)"
+          + f", {len(titles)} Story Title(s)")
 
     phase1_stamp = {"input_sha1": sha1(pages_text), "dpi": book["dpi"], "ocr_hint": ocr_hint}
 
@@ -304,8 +308,8 @@ def main():
         results = load_results(os.path.join(run_dir, "phase1"), phase1_stamp)
         read = {int(k[1:]): read_page(entries[int(k[1:])], a, args.ocr_marks, rules["depends"])
                 for k, a in results.items() if int(k[1:]) in entries}
-        book = assemble(raw_text, read, known_notes)
-        return book, enforce_spellings(book.blocks, book.pages, raw_text, entries, rules)
+        book = assemble(raw_text, read, known_notes, titles)
+        return book, enforce_spellings(book.blocks, book.pages, raw_text, entries, rules, titles)
 
     if args.dry_run:
         with open(os.path.join(run_dir, "dry_run_tokens.jsonl"), "w", encoding="utf-8") as out:
