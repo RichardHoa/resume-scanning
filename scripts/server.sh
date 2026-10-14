@@ -16,7 +16,20 @@
 #
 #   ./scripts/server.sh --status        -> Checks status of all running services
 #   ./scripts/server.sh --help          -> Shows detailed usage information
+#
+# Add --tech (anywhere among the arguments) to a start action to serve the Tech resume set: the web server ranks
+# candidates by evaluation_order_tech.txt and reads resumes as of the set's Reference Date (June 2015).
 # -----------------------------------------------------------------------------
+
+TECH_ARGS=()
+POSITIONAL_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --tech) TECH_ARGS=(--tech) ;;
+    *) POSITIONAL_ARGS+=("$arg") ;;
+  esac
+done
+set -- "${POSITIONAL_ARGS[@]}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
@@ -215,6 +228,7 @@ start_web() {
   echo "[$(date +'%Y-%m-%d %H:%M:%S')] Starting Resume Extraction Web Server (FastAPI)..."
   echo "  ├─ Connecting to vLLM: http://127.0.0.1:$PORT/v1"
   echo "  ├─ Web Port:  $WEB_PORT"
+  echo "  ├─ Tech Mode: $([ ${#TECH_ARGS[@]} -gt 0 ] && echo yes || echo no)"
   echo "  └─ Log:       $WEB_LOG_FILE"
   echo "====================================================================="
 
@@ -224,6 +238,7 @@ start_web() {
     --vllm-url "http://127.0.0.1:$PORT/v1" \
     --host 0.0.0.0 \
     --port "$WEB_PORT" \
+    "${TECH_ARGS[@]}" \
     > "$WEB_LOG_FILE" 2>&1 &
 
   local SERVER_PID=$!
@@ -285,6 +300,7 @@ show_help() {
   echo "  --stop-web, stop-web           Stop ONLY the FastAPI Web Server"
   echo "  --status, status               Show current running status of all services"
   echo "  --help, -h                     Show this help message"
+  echo "  --tech                         With a start action: serve the Tech resume set (evaluation_order_tech.txt, June 2015)"
   echo ""
 }
 
@@ -335,7 +351,7 @@ case "$1" in
     echo "====================================================================="
     echo "[server.sh] Launching Web Server with vLLM ($MODEL) in background..."
     echo "====================================================================="
-    nohup bash "$SCRIPT_DIR/server.sh" __internal_daemon > "$DAEMON_LOG_FILE" 2>&1 &
+    nohup bash "$SCRIPT_DIR/server.sh" __internal_daemon "${TECH_ARGS[@]}" > "$DAEMON_LOG_FILE" 2>&1 &
     DAEMON_PID=$!
     echo "$DAEMON_PID" > "$DAEMON_PID_FILE"
 

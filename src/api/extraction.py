@@ -123,6 +123,7 @@ def get_scanned_resumes():
         "resumes": resumes,
         "evaluation_order_active": order_data["file_found"],
         "evaluation_order_path": order_data["file_path"],
+        "tech_mode": order_data["tech_mode"],
         "tier1_count": len(order_data["tier1"]),
         "tier2_count": len(order_data["tier2"])
     }

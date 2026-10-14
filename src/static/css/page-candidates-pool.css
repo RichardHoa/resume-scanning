@@ -288,6 +288,19 @@
 .tier-badge-2 { background: #E0F2FE; color: #075985; border: 1px solid #BAE6FD; }
 .tier-badge-3 { background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; }
 
+/* Rank of a tier-1 candidate in the secret evaluation order */
+.tier-rank-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 0.76rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    background: #3730A3;
+    color: #FFFFFF;
+}
+
 /* Match Score Breakdown Bars (Vital Info) */
 .cand-dimensions-breakdown {
     background: #F8FAFC;

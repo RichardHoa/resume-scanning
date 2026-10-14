@@ -21,6 +21,8 @@
 # Dataset: CnB by default (Vietnamese-dataset/CnB + hr-requirement.txt).
 # Pass --tech (anywhere among the arguments) for Vietnamese-dataset/Tech +
 # hr-requirement-tech.txt. Explicit PDF dir / job req arguments still override.
+# The Tech resumes are old, so --tech also sets the Reference Date (the date the prompts treat as today)
+# to June 2015.
 # -----------------------------------------------------------------------------
 
 DATASET="CnB"
@@ -35,8 +37,10 @@ set -- "${POSITIONAL_ARGS[@]}"
 
 if [ "$DATASET" = "Tech" ]; then
   DEFAULT_JOB_REQ_NAME="hr-requirement-tech.txt"
+  REFERENCE_DATE="2015-06-30"
 else
   DEFAULT_JOB_REQ_NAME="hr-requirement.txt"
+  REFERENCE_DATE=""
 fi
 
 RAW_PDF_DIR="$1"
@@ -240,6 +244,7 @@ PORT=$(find_free_port)
 
 echo "[$(date +'%H:%M:%S')] Project Root: $PROJECT_ROOT" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Dataset: $DATASET" | tee -a "$JOB_LOG"
+echo "[$(date +'%H:%M:%S')] Reference Date: ${REFERENCE_DATE:-today}" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Target PDF Directory: $PDF_DIR" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Target Output Directory: $OUTPUT_DIR" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Target Evaluation Directory: $EVAL_DIR" | tee -a "$JOB_LOG"
@@ -268,7 +273,8 @@ python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
   --model-name "$MODEL" \
   --backend vllm \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
-  --workers 6 2>&1 | tee "$EXTRACT_LOG" | tee -a "$JOB_LOG"
+  --workers 6 \
+  --reference-date "$REFERENCE_DATE" 2>&1 | tee "$EXTRACT_LOG" | tee -a "$JOB_LOG"
 
 EXTRACT_STATUS=${PIPESTATUS[0]}
 if [ "$EXTRACT_STATUS" -ne 0 ]; then
@@ -292,7 +298,8 @@ python3 -u "$PROJECT_ROOT/src/step_2_evaluate.py" \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --dir "$OUTPUT_DIR" \
   --job-req "$JOB_REQ" \
-  --output "$EVAL_DIR" 2>&1 | tee "$EVAL_LOG" | tee -a "$JOB_LOG"
+  --output "$EVAL_DIR" \
+  --reference-date "$REFERENCE_DATE" 2>&1 | tee "$EVAL_LOG" | tee -a "$JOB_LOG"
 
 EVAL_STATUS=${PIPESTATUS[0]}
 if [ "$EVAL_STATUS" -ne 0 ]; then

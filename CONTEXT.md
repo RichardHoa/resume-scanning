@@ -28,6 +28,14 @@ _Avoid_: criteria type, bucket
 A Category that HR's requirements gave no Criterion. It carries no weight and is not judged, so it is never shown to HR. Distinct from a Category that could not be scored, which makes a Failed Evaluation.
 _Avoid_: missing category, empty category
 
+**HR Check Item**:
+A requirement HR wrote, in the Standard or Hidden Requirements, that no ordinary resume would show (e.g. willingness to work overtime, can start immediately, expected salary). It is set aside during decomposition, belongs to no Category, carries no weight, never gets a Verdict, and is handed to HR as a note to check manually. Anything a typical resume could plausibly show stays a Criterion. HR may move items between a Category and the HR Check Items before evaluating; a run with no HR review keeps the decomposer's split as is.
+_Avoid_: unverifiable criterion, manual check, note (alone)
+
+**Reference Date**:
+The date treated as "today" when reading and judging a resume set, e.g. for turning "2013 – present" into years of experience. It is the real current date unless the resume set is old: the Tech resume set uses June 2015.
+_Avoid_: current date (alone), now
+
 **Criterion**:
 A single verbatim requirement string assigned to one Category during decomposition, stored in the RAG store.
 _Avoid_: requirement item
@@ -63,6 +71,10 @@ _Avoid_: partial evaluation, partial failure
 **Missing Position**:
 A flag on a resume that states no position the candidate is applying for. The resume is still evaluated, ranked and given Candidate Feedback like any other, as if applying for the job the HR requirement describes (every resume in a run is assumed to be for that one job); the flag only tells HR, on the website, that the position was missing. Having no stated position is not evidence against the candidate.
 _Avoid_: no position, error, unevaluated
+
+**Evaluation Order**:
+A secret, ranked list of candidates (by email) that HR supplies per resume set, used on the website to group and order candidates into tiers. The Tech resume set lists only its top 10 in rank order, shown with their rank (#1–#10); every other candidate falls into one "rest" section. Each resume set is ranked only by its own list.
+_Avoid_: answer key, tier file
 
 **Shuffle Kind**:
 One way of reordering the same prompt content in a bias test (e.g. Macro Permutation, Criteria Permutation, Atomic Interleave), used to check whether evaluation scores depend on ordering. The Baseline is not a Shuffle Kind.

@@ -484,7 +484,7 @@ export class EvaluatorController {
         if (this.hrRagPreviewText) {
             this.hrRagPreviewText.textContent = this.currentHrRagText || 'Chưa tạo tệp hr_rag.txt.';
         }
-        this.criteriaEditor.setCategories(data.categories || {});
+        this.criteriaEditor.setCategories(data.categories || {}, data.hr_check_items || []);
     }
 
     /**
@@ -503,6 +503,7 @@ export class EvaluatorController {
                 'Đang embedding lại các tiêu chí vào kho vector RAG và cập nhật hr_rag.txt...',
                 () => API.updateRagCriteria(
                     this.criteriaEditor.getCategories(),
+                    this.criteriaEditor.getHrCheckItems(),
                     hasText ? stdReq : null,
                     hasText ? hiddenReq : null
                 )
@@ -559,6 +560,7 @@ export class EvaluatorController {
             this.scannedResumes = data.resumes || [];
             this.orderActive = data.evaluation_order_active;
             this.orderPath = data.evaluation_order_path;
+            this.techMode = data.tech_mode === true;
             this.tier1Count = data.tier1_count || 0;
             this.tier2Count = data.tier2_count || 0;
 
@@ -591,16 +593,23 @@ export class EvaluatorController {
             banner.style.background = '#DCFCE7';
             banner.style.border = '1px solid #86EFAC';
             banner.style.color = '#15803D';
-            banner.innerHTML = `<span>🔒 Thứ tự bí mật: Đang áp dụng</span><span style="font-size:0.72rem; opacity:0.9;">Nhóm 1: ${this.tier1Count} • Nhóm 2: ${this.tier2Count}</span>`;
+            banner.innerHTML = this.techMode
+                ? `<span>🔒 Thứ tự bí mật: Đang áp dụng</span><span style="font-size:0.72rem; opacity:0.9;">Top ${this.tier1Count}</span>`
+                : `<span>🔒 Thứ tự bí mật: Đang áp dụng</span><span style="font-size:0.72rem; opacity:0.9;">Nhóm 1: ${this.tier1Count} • Nhóm 2: ${this.tier2Count}</span>`;
         } else {
             banner.style.background = '#FFFBEB';
             banner.style.border = '1px solid #FCD34D';
             banner.style.color = '#B45309';
-            banner.innerHTML = `<span>⚠️ Thứ tự bí mật: Không tìm thấy tệp</span><span style="font-size:0.72rem;">evaluation_order.txt</span>`;
+            banner.innerHTML = `<span>⚠️ Thứ tự bí mật: Không tìm thấy tệp</span><span style="font-size:0.72rem;">${this.techMode ? 'evaluation_order_tech.txt' : 'evaluation_order.txt'}</span>`;
         }
         this.scannedContainer.appendChild(banner);
 
-        const tiers = {
+        // The Tech resume set's secret file lists only the top 10, in rank order; everyone else is the rest
+        const tiers = this.techMode ? {
+            1: { title: 'Top 10 ứng viên', badgeClass: 'tier-badge-1', items: [] },
+            2: { title: 'Ứng viên còn lại', badgeClass: 'tier-badge-2', items: [] },
+            3: { title: 'Ứng viên còn lại', badgeClass: 'tier-badge-3', items: [] }
+        } : {
             1: { title: 'Nhóm CV 1 (Ưu tiên)', badgeClass: 'tier-badge-1', items: [] },
             2: { title: 'Nhóm CV 2 (Thứ cấp)', badgeClass: 'tier-badge-2', items: [] },
             3: { title: 'Nhóm CV 3 (Ứng viên ngoài danh sách)', badgeClass: 'tier-badge-3', items: [] }
@@ -631,12 +640,13 @@ export class EvaluatorController {
 
             group.items.forEach(resItem => {
                 const isSel = this.selectedResumesSet.has(resItem.filename);
+                const rank = tNum === 1 && Number.isInteger(resItem.tier_order) ? resItem.tier_order + 1 : 0;
                 const card = document.createElement('div');
                 card.className = `resume-card-item ${isSel ? 'selected' : ''}`;
                 card.innerHTML = `
                     <input type="checkbox" class="chk-resume" data-file="${resItem.filename}" ${isSel ? 'checked' : ''}>
                     <div class="resume-info">
-                        <span class="resume-title">${this.escapeHtml(resItem.filename)}</span>
+                        <span class="resume-title">${rank ? `<span class="tier-rank-badge" title="Thứ hạng trong danh sách đánh giá">#${rank}</span> ` : ''}${this.escapeHtml(resItem.filename)}</span>
                         <span class="resume-meta">✉ ${this.escapeHtml(resItem.email)} • ${resItem.missing_position
                             ? `<span class="badge-ocr-review" title="${MISSING_POSITION_MESSAGE}">⚠️ ${MISSING_POSITION_LABEL}</span>`
                             : this.escapeHtml(resItem.title)}</span>

@@ -18,7 +18,7 @@ from typing import Dict, List, Any, Optional
 
 from src.core.config import (
     DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, FALLBACK_ERROR_SCORE, MAX_NEW_TOKENS,
-    CATEGORY_EVAL_MAX_TOKENS, CATEGORY_EVAL_RETRY_TEMPERATURE, SCRUTINY_MAX_QUESTIONS_PER_FIELD
+    CATEGORY_EVAL_MAX_TOKENS, CATEGORY_EVAL_RETRY_TEMPERATURE, SCRUTINY_MAX_QUESTIONS_PER_FIELD, HR_CHECK_ITEMS_KEY
 )
 from src.core.logger import log_llm_call, log_broken_json
 from src.core.json_utils import clean_and_parse_json
@@ -454,6 +454,8 @@ class ResumeEvaluator:
             },
             "dimension_scores": dimension_results,
             "hidden_requirements_assessment": dimension_results.get("hidden_culture", {}),
+            # Not scored: HR checks these by hand. The Review Panel sees them only so it can leave them out
+            HR_CHECK_ITEMS_KEY: self.rag.get_hr_check_items(),
             "summary": {
                 "total_strengths": sum([len(v["strengths"]) for v in dimension_results.values()]),
                 "total_gaps": sum([len(v["gaps"]) for v in dimension_results.values()])

@@ -13,7 +13,7 @@ import json
 import threading
 from datetime import datetime
 from typing import Dict, List, Any, Optional
-from src.core.config import ROOT_DIR, RAG_DIR, DEFAULT_EMBEDDING_MODEL
+from src.core.config import ROOT_DIR, RAG_DIR, DEFAULT_EMBEDDING_MODEL, HR_CHECK_ITEMS_KEY
 from src.providers.rag_exporter import export_hr_rag_file, get_stored_rag_summary
 
 
@@ -204,7 +204,10 @@ class LocalCriteriaRAG:
                         if cleaned_item:
                             item_counter += 1
                             doc_id = f"crit_{cat}_{item_counter}"
-                            req_type = "hidden" if cat == "hidden_culture" else "standard"
+                            if cat == HR_CHECK_ITEMS_KEY:
+                                req_type = "hr_check"
+                            else:
+                                req_type = "hidden" if cat == "hidden_culture" else "standard"
                             
                             doc_obj = {
                                 "id": doc_id,
@@ -307,6 +310,11 @@ class LocalCriteriaRAG:
                 hidden_req = originals["hidden_requirements"]
         self.ingest_decomposed_dict(categories, standard_req=standard_req, hidden_req=hidden_req)
         return self.get_stored_rag_summary()
+
+    def get_hr_check_items(self) -> List[str]:
+        """The stored HR Check Items: requirements set aside for HR to check by hand, never retrieved as Criteria."""
+        with self._lock:
+            return [doc["text"] for doc in self.documents if doc.get("category") == HR_CHECK_ITEMS_KEY]
 
     def export_hr_rag_file(self, standard_req: str, hidden_req: str, decomposed: Dict[str, List[str]], output_path: str = "hr_rag.txt"):
         """Exports a summary detailing how HR requirements are classified into 5 RAG dimensions."""

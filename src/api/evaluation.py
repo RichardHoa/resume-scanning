@@ -17,7 +17,8 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from src.core.config import (
-    APPROVED_DIR, OUTPUT_DIR, EVAL_RESULTS_DIR, LOGGING_DIR, EVAL_JOB_TTL_SECONDS, VLLM_MAX_CONCURRENT_REQUESTS
+    APPROVED_DIR, OUTPUT_DIR, EVAL_RESULTS_DIR, LOGGING_DIR, EVAL_JOB_TTL_SECONDS, VLLM_MAX_CONCURRENT_REQUESTS,
+    EXTRACTION_MARKDOWN_DIR
 )
 from src.core.state import state
 from src.core.durations import record_duration
@@ -26,7 +27,8 @@ from src.core.evaluation_order import (
     get_candidate_tier,
     get_report_tier,
     get_eval_search_dirs,
-    find_eval_file
+    find_eval_file,
+    find_source_resume_path
 )
 from src.core.resume_pdfs import find_resume_pdf
 from src.reports.candidate_report import build_candidate_report_pdf
@@ -379,6 +381,7 @@ def list_eval_results():
         "evaluations": evaluations,
         "evaluation_order_active": order_data["file_found"],
         "evaluation_order_path": order_data["file_path"],
+        "tech_mode": order_data["tech_mode"],
         "tier1_count": len(order_data["tier1"]),
         "tier2_count": len(order_data["tier2"])
     }
@@ -422,6 +425,29 @@ def get_eval_resume_pdf(filename: str):
     if not pdf_path:
         raise HTTPException(status_code=404, detail="No resume PDF is stored for this candidate.")
     return FileResponse(pdf_path, media_type="application/pdf", content_disposition_type="inline")
+
+
+@router.get("/eval_results/{filename}/resume_json")
+def get_eval_resume_json(filename: str):
+    """Developer view: the extracted resume JSON this evaluation was made from, served inline."""
+    resume_path = find_source_resume_path(_load_eval_result(filename))
+    if not resume_path:
+        raise HTTPException(status_code=404, detail="The extracted resume JSON for this candidate is gone.")
+    return FileResponse(resume_path, media_type="application/json", content_disposition_type="inline")
+
+
+@router.get("/eval_results/{filename}/resume_markdown")
+def get_eval_resume_markdown(filename: str):
+    """Developer view: the markdown text extracted from the resume PDF, served inline as plain text."""
+    data = _load_eval_result(filename)
+    resume_path = find_source_resume_path(data)
+    names = [os.path.basename(resume_path)] if resume_path else []
+    names.append(data.get("resume_name") or filename)
+    for name in names:
+        md_path = os.path.join(EXTRACTION_MARKDOWN_DIR, os.path.splitext(os.path.basename(name))[0] + ".md")
+        if os.path.isfile(md_path):
+            return FileResponse(md_path, media_type="text/plain; charset=utf-8", content_disposition_type="inline")
+    raise HTTPException(status_code=404, detail="No extraction markdown is stored for this candidate.")
 
 
 @router.get("/eval_results/{filename}/report_pdf")

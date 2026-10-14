@@ -3,6 +3,7 @@ import asyncio
 from typing import Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from src.core.config import HR_CHECK_ITEMS_KEY
 from src.core.state import state
 from src.core.durations import record_duration
 
@@ -23,6 +24,7 @@ class ScrutinizeRequirementsRequest(BaseModel):
 
 class UpdateRagCriteriaRequest(BaseModel):
     categories: Dict[str, List[str]] = Field(..., description="Map of dimension categories to lists of criteria strings")
+    hr_check_items: List[str] = Field(default_factory=list, description="HR Check Items: requirements no resume would show, never scored")
     standard_requirements: Optional[str] = Field(default=None, description="Raw standard requirements text; omit to keep the stored original")
     hidden_requirements: Optional[str] = Field(default=None, description="Raw hidden requirements text; omit to keep the stored original")
 
@@ -116,7 +118,7 @@ def update_rag_criteria_endpoint(payload: UpdateRagCriteriaRequest):
     try:
         start_time = time.time()
         summary = state.evaluator.rag.update_criteria_manually(
-            payload.categories,
+            {**payload.categories, HR_CHECK_ITEMS_KEY: payload.hr_check_items},
             standard_req=payload.standard_requirements,
             hidden_req=payload.hidden_requirements
         )

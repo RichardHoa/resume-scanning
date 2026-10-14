@@ -11,10 +11,34 @@ from src.core.config import ROOT_DIR, EVAL_RESULTS_DIR, EVALUATION_JSON_DIR, APP
 
 SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# The Tech resume set has its own secret file, evaluation_order_tech.txt: the top 10 candidates' emails in rank
+# order, with everyone else outside the list. A server started with --tech reads only that file; any other server
+# never reads it, so neither dataset is ranked by the other's answer key
+_tech_mode = False
+
+
+def set_tech_mode(enabled: bool) -> None:
+    global _tech_mode
+    _tech_mode = bool(enabled)
+
+
+def is_tech_mode() -> bool:
+    return _tech_mode
+
+
+def _is_order_file_name(fname: str) -> bool:
+    """Whether a file name found by the recursive search is this mode's secret file (a text file, never code)."""
+    name = fname.lower()
+    if os.path.splitext(name)[1] not in ("", ".txt", ".md"):
+        return False
+    if _tech_mode:
+        return name.startswith("evaluation_order_tech") or name.startswith("evaluation-order-tech")
+    return name.startswith("evaluation_order") and "tech" not in name
+
 
 def load_evaluation_order() -> dict:
     """
-    Locates and reads the secret file 'evaluation_order.txt' or 'evaluation_order'
+    Locates and reads the secret file 'evaluation_order.txt' (or 'evaluation_order_tech.txt' in tech mode)
     from project root, cwd, or subdirectories.
     Returns parsed tier1 and tier2 email/name/filename lists.
     """
@@ -25,14 +49,23 @@ def load_evaluation_order() -> dict:
         os.path.dirname(ROOT_DIR)
     ]
     
-    possible_names = [
-        "evaluation_order.txt",
-        "evaluation_order",
-        ".evaluation_order",
-        "evaluation_order.md",
-        "evaluation-order.txt",
-        "evaluation-order"
-    ]
+    if _tech_mode:
+        possible_names = [
+            "evaluation_order_tech.txt",
+            "evaluation_order_tech",
+            "evaluation_order_tech.md",
+            "evaluation-order-tech.txt",
+            "evaluation-order-tech"
+        ]
+    else:
+        possible_names = [
+            "evaluation_order.txt",
+            "evaluation_order",
+            ".evaluation_order",
+            "evaluation_order.md",
+            "evaluation-order.txt",
+            "evaluation-order"
+        ]
 
     found_path = None
     # 1. Check search_dirs directly
@@ -65,7 +98,7 @@ def load_evaluation_order() -> dict:
                 continue
             for root, _, files in os.walk(d):
                 for fname in files:
-                    if fname.lower() in possible_names or fname.lower().startswith("evaluation_order"):
+                    if fname.lower() in possible_names or _is_order_file_name(fname):
                         found_path = os.path.join(root, fname)
                         break
                 if found_path:
@@ -77,7 +110,7 @@ def load_evaluation_order() -> dict:
     tier2: List[str] = []
     if not found_path:
         print(f"[SERVER EVALUATION ORDER] Secret file not found in search dirs: {search_dirs}", file=sys.stderr)
-        return {"tier1": tier1, "tier2": tier2, "file_found": False, "file_path": None}
+        return {"tier1": tier1, "tier2": tier2, "file_found": False, "file_path": None, "tech_mode": _tech_mode}
 
     try:
         with open(found_path, "r", encoding="utf-8", errors="replace") as f:
@@ -112,10 +145,10 @@ def load_evaluation_order() -> dict:
                     tier2.append(clean_item)
 
         print(f"[SERVER EVALUATION ORDER] Loaded secret file from '{found_path}': Tier 1={len(tier1)} items, Tier 2={len(tier2)} items", file=sys.stderr)
-        return {"tier1": tier1, "tier2": tier2, "file_found": True, "file_path": found_path}
+        return {"tier1": tier1, "tier2": tier2, "file_found": True, "file_path": found_path, "tech_mode": _tech_mode}
     except Exception as e:
         print(f"[SERVER EVALUATION ORDER] Error reading file {found_path}: {e}", file=sys.stderr)
-        return {"tier1": tier1, "tier2": tier2, "file_found": False, "file_path": found_path}
+        return {"tier1": tier1, "tier2": tier2, "file_found": False, "file_path": found_path, "tech_mode": _tech_mode}
 
 
 def extract_candidate_identifiers(data: dict, fname: str) -> dict:
@@ -224,10 +257,10 @@ def get_candidate_tier(data: dict, fname: str, order_data: dict) -> dict:
     }
 
 
-def _load_source_resume(report: dict) -> Optional[tuple]:
+def _source_resume_paths(report: dict) -> List[str]:
     """
-    The extracted resume an evaluation report was made from, as (data, filename), or None when it is gone.
-    Looked up by the report's resume_path, then by resume_name in approved_jsons/ and output_jsons/.
+    Where the extracted resume behind an evaluation report may be, most likely first: the report's
+    resume_path, then its resume_name in approved_jsons/ and output_jsons/.
     """
     candidates: List[str] = []
     resume_path = report.get("resume_path")
@@ -238,8 +271,20 @@ def _load_source_resume(report: dict) -> Optional[tuple]:
     if isinstance(resume_name, str) and resume_name:
         json_name = os.path.splitext(os.path.basename(resume_name))[0] + ".json"
         candidates += [os.path.join(d, json_name) for d in (APPROVED_DIR, OUTPUT_DIR)]
+    return candidates
 
-    for path in candidates:
+
+def find_source_resume_path(report: dict) -> Optional[str]:
+    """The extracted resume JSON file an evaluation report was made from, or None when it is gone."""
+    for path in _source_resume_paths(report):
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def _load_source_resume(report: dict) -> Optional[tuple]:
+    """The extracted resume an evaluation report was made from, as (data, filename), or None when it is gone."""
+    for path in _source_resume_paths(report):
         if not os.path.isfile(path):
             continue
         try:

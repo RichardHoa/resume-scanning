@@ -14,6 +14,7 @@ import time
 import re
 from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, APPROVED_DIR
 from src.core.resume_pdfs import store_resume_pdf
+from src.core.reference_date import set_reference_date
 from src.pipelines.extractor import ResumeExtractor
 
 
@@ -38,11 +39,14 @@ def parse_args():
                         help="Target parse language: 'vietnamese' (default) or 'english'")
     parser.add_argument("--workers", type=int, default=1,
                         help="Number of concurrent worker threads for batch extraction (vLLM recommended: 4-8)")
+    parser.add_argument("--reference-date", type=str, default="",
+                        help="Date (YYYY-MM-DD) the prompts treat as today, for old resume sets (default: the real date)")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    set_reference_date(args.reference_date)
 
     if not args.pdf and not args.dir:
         print("Error: You must specify either --pdf or --dir.", file=sys.stderr)

@@ -183,16 +183,18 @@ export const API = {
     /**
      * Updates persistent RAG database with user-edited criteria across 5 dimensions.
      * @param {Object} categories - Map of category names to arrays of string criteria items.
+     * @param {Array<string>} hrCheckItems - HR Check Items: requirements no resume would show, never scored.
      * @param {?string} [stdReq=null] - Standard requirements text; null keeps the stored original.
      * @param {?string} [hiddenReq=null] - Hidden requirements text; null keeps the stored original.
      * @returns {Promise<Object>} Updated RAG summary.
      */
-    async updateRagCriteria(categories, stdReq = null, hiddenReq = null) {
+    async updateRagCriteria(categories, hrCheckItems, stdReq = null, hiddenReq = null) {
         const res = await fetch('/api/rag/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 categories: categories,
+                hr_check_items: hrCheckItems || [],
                 standard_requirements: stdReq,
                 hidden_requirements: hiddenReq
             })
@@ -263,6 +265,17 @@ export const API = {
      */
     resumePdfUrl(filename) {
         return `/api/eval_results/${encodeURIComponent(filename)}/resume_pdf`;
+    },
+
+    /**
+     * Developer views of the files behind an evaluation, each opened raw in a new tab.
+     * @param {string} filename - Evaluation result file name.
+     * @returns {{resumeJson: string, resumeMarkdown: string, evalJson: string}} URLs of the extracted resume JSON,
+     *          the extraction markdown and the evaluation report JSON.
+     */
+    devFileUrls(filename) {
+        const base = `/api/eval_results/${encodeURIComponent(filename)}`;
+        return { resumeJson: `${base}/resume_json`, resumeMarkdown: `${base}/resume_markdown`, evalJson: base };
     },
 
     /**

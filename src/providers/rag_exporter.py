@@ -5,7 +5,7 @@ import os
 import sys
 from datetime import datetime
 from typing import Dict, List, Any
-from src.core.config import ROOT_DIR
+from src.core.config import ROOT_DIR, HR_CHECK_ITEMS_KEY
 
 
 def export_hr_rag_file(
@@ -46,6 +46,19 @@ def export_hr_rag_file(
         else:
             lines.append("   (No items classified in this category)")
 
+    check_items = decomposed.get(HR_CHECK_ITEMS_KEY, [])
+    lines.extend([
+        "\n" + "=" * 80,
+        "HR CHECK ITEMS (Cần HR kiểm tra thủ công - không chấm điểm):",
+        "Requirements no ordinary resume would show; not scored, HR checks them by hand.",
+        "=" * 80,
+    ])
+    if check_items:
+        for idx, item in enumerate(check_items, 1):
+            lines.append(f"   {idx}. {item}")
+    else:
+        lines.append("   (No HR Check Items)")
+
     lines.extend([
         "\n" + "=" * 80,
         "END OF CLASSIFICATION SUMMARY",
@@ -69,8 +82,12 @@ def get_stored_rag_summary(rag_inst: Any) -> Dict[str, Any]:
         "education_certifications": [],
         "hidden_culture": []
     }
+    hr_check_items = []
     for doc in rag_inst.documents:
         raw_cat = str(doc.get("category") or "").strip().lower()
+        if raw_cat == HR_CHECK_ITEMS_KEY:
+            hr_check_items.append(doc.get("text"))
+            continue
         cat_map = {
             "seniority": "seniority_title",
             "seniority_title": "seniority_title",
@@ -115,6 +132,8 @@ def get_stored_rag_summary(rag_inst: Any) -> Dict[str, Any]:
         "db_path": rag_inst.db_path,
         "engine": engine_name,
         "categories": categories_dict,
+        # Kept apart from the Categories: not weighted, not judged, shown to HR as a manual checklist
+        HR_CHECK_ITEMS_KEY: hr_check_items,
         "hr_rag_text": hr_rag_content,
         "standard_requirements": originals["standard_requirements"],
         "hidden_requirements": originals["hidden_requirements"]

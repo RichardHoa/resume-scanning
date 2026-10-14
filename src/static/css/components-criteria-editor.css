@@ -130,3 +130,47 @@
     font-weight: 600;
     white-space: nowrap;
 }
+
+.criteria-item-move {
+    flex-shrink: 0;
+    max-width: 150px;
+    margin-top: 2px;
+    padding: 3px 6px;
+    font-size: 0.72rem;
+    font-family: var(--font-sans);
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.criteria-item-move:hover,
+.criteria-item-move:focus-visible {
+    color: var(--text-main);
+    border-color: var(--brand-azure);
+}
+
+/* HR Check Items: never scored, so set apart from the five Category cards */
+.criteria-hr-check-card {
+    border-style: dashed;
+    background: var(--brand-azure-mist);
+}
+
+.criteria-hr-check-note {
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+@media (max-width: 600px) {
+    .criteria-item-row {
+        flex-wrap: wrap;
+    }
+
+    .criteria-item-move {
+        max-width: none;
+        margin-left: 30px;
+    }
+}

@@ -14,6 +14,7 @@ import argparse
 import time
 import re
 from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, VLLM_MAX_CONCURRENT_REQUESTS
+from src.core.reference_date import set_reference_date
 from src.pipelines.evaluator import ResumeEvaluator, TRANSFORMERS_BACKEND_REFUSED
 
 
@@ -35,6 +36,7 @@ def parse_args():
     parser.add_argument("--force-reingest", action="store_true", help="Force re-ingesting HR requirements into RAG vector database")
     parser.add_argument("--no-feedback", action="store_true", help="Skip the Review Panel's Candidate Feedback (scores only)")
     parser.add_argument("--language", type=str, default="vietnamese", choices=["vietnamese", "english"], help="Output language for evaluation reasoning, strengths, and gaps ('vietnamese' or 'english')")
+    parser.add_argument("--reference-date", type=str, default="", help="Date (YYYY-MM-DD) the prompts treat as today, for old resume sets (default: the real date)")
     args = parser.parse_args()
     if args.backend == "transformers":
         parser.error(TRANSFORMERS_BACKEND_REFUSED)
@@ -86,6 +88,7 @@ def load_requirements(args):
 
 def main():
     args = parse_args()
+    set_reference_date(args.reference_date)
 
     input_dir = args.dir
     single_file = args.resume_json

@@ -9,7 +9,7 @@ from typing import Dict, List, Any, NamedTuple, Optional
 
 from src.core.config import (
     DIMENSION_WEIGHTS, FALLBACK_ERROR_SCORE, MATCH_THRESHOLDS, MAX_NEW_TOKENS,
-    REQUIREMENTS_DECOMPOSITION_MAX_TOKENS,
+    REQUIREMENTS_DECOMPOSITION_MAX_TOKENS, HR_CHECK_ITEMS_KEY,
     SCRUTINY_TEMPERATURE, SCRUTINY_MAX_QUESTIONS_PER_FIELD
 )
 from src.core.logger import log_broken_json
@@ -100,8 +100,8 @@ def decompose_requirements_with_llm(
     resume_name: str = "job_requirements",
     log_dir: Optional[str] = None
 ) -> Optional[Dict[str, List[str]]]:
-    """Helper to decompose HR standard & hidden requirements into 5 dimension categories."""
-    categories = list(CATEGORY_LABELS.keys())
+    """Helper to decompose HR standard & hidden requirements into 5 dimension categories, plus the HR Check Items."""
+    categories = list(CATEGORY_LABELS.keys()) + [HR_CHECK_ITEMS_KEY]
     standard_req = (standard_req or "").strip()
     hidden_req = (hidden_req or "").strip()
 

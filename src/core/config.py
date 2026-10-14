@@ -40,6 +40,10 @@ DIMENSION_WEIGHTS = {
     "hidden_culture": 0.12
 }
 
+# Key the decomposer and the RAG store use for HR Check Items: requirements no ordinary resume would show, which
+# are kept beside the five Categories but never weighted or judged, and handed to HR to check by hand
+HR_CHECK_ITEMS_KEY = "hr_check_items"
+
 # Fallback score when evaluation fails or retries are exhausted
 FALLBACK_ERROR_SCORE = 0
 

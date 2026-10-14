@@ -41,6 +41,28 @@ function isMissingPosition(cand) {
 }
 
 /**
+ * The evaluation-order section label and badge for a candidate's tier. The Tech resume set's secret file lists
+ * only the top 10, in rank order, so in tech mode tier 1 is the Top 10 and everyone else is the rest.
+ * @returns {{title: string, badge: string}} The section heading and the short badge text.
+ */
+function tierLabels(tier, techMode) {
+    if (techMode) {
+        return tier === 1
+            ? { title: 'Top 10 ứng viên', badge: 'Top 10' }
+            : { title: 'Ứng viên còn lại', badge: 'Còn lại' };
+    }
+    const titles = { 1: 'Nhóm CV 1 (Ứng viên ưu tiên)', 2: 'Nhóm CV 2 (Ứng viên thứ cấp)', 3: 'Nhóm CV 3 (Ứng viên ngoài danh sách)' };
+    return { title: titles[tier] || titles[3], badge: `Nhóm ${tier || 3}` };
+}
+
+/**
+ * Rank (1-based) of a tier-1 candidate in the secret evaluation order, or 0 when it has none.
+ */
+function tierRank(cand) {
+    return cand.tier === 1 && Number.isInteger(cand.tier_order) && cand.tier_order < 9999 ? cand.tier_order + 1 : 0;
+}
+
+/**
  * A Not Applicable Category got no Criterion from HR's requirements. It is never judged, so it is never shown.
  */
 function isNotApplicableCategory(d) {
@@ -76,6 +98,7 @@ function candidateIdentity(cand) {
 export class CandidatePoolController {
     constructor() {
         this.allCandidatesData = [];
+        this.techMode = false;
         this.currentModalCandidate = null;
         this.modalEvaluationHtml = '';
         this.modalShowingResume = false;
@@ -152,6 +175,7 @@ export class CandidatePoolController {
         try {
             const data = await API.getEvalResults();
             this.allCandidatesData = data.evaluations || [];
+            this.techMode = data.tech_mode === true;
             this.updateSummaryStats(this.allCandidatesData);
             this.applyCandidateFiltersAndSort();
         } catch (err) {
@@ -274,11 +298,11 @@ export class CandidatePoolController {
         const sortBy = this.candSortBy ? this.candSortBy.value : 'evaluation_order';
 
         if (sortBy === 'evaluation_order') {
-            const tiers = {
-                1: { title: 'Nhóm CV 1 (Ứng viên ưu tiên)', badgeClass: 'tier-badge-1', blockClass: 'tier-1-block', items: [] },
-                2: { title: 'Nhóm CV 2 (Ứng viên thứ cấp)', badgeClass: 'tier-badge-2', blockClass: 'tier-2-block', items: [] },
-                3: { title: 'Nhóm CV 3 (Ứng viên ngoài danh sách)', badgeClass: 'tier-badge-3', blockClass: 'tier-3-block', items: [] }
-            };
+            const tiers = {};
+            [1, 2, 3].forEach(t => {
+                const labels = tierLabels(t, this.techMode);
+                tiers[t] = { title: labels.title, badge: labels.badge, badgeClass: `tier-badge-${t}`, blockClass: `tier-${t}-block`, items: [] };
+            });
 
             candidates.forEach(c => {
                 const t = c.tier || 3;
@@ -298,7 +322,7 @@ export class CandidatePoolController {
                     <div class="cand-tier-header">
                         <div class="cand-tier-title-group">
                             <h3>${group.title}</h3>
-                            <span class="tier-badge ${group.badgeClass}">Nhóm ${tNum}</span>
+                            <span class="tier-badge ${group.badgeClass}">${group.badge}</span>
                         </div>
                         <span style="font-size: 0.88rem; font-weight: 700; color: #334155;">${group.items.length} ứng viên</span>
                     </div>
@@ -336,7 +360,9 @@ export class CandidatePoolController {
         if (unscored) { recClass = 'match-error'; recText = unscored; }
 
         const tierBadgeClass = cand.tier === 1 ? 'tier-badge-1' : (cand.tier === 2 ? 'tier-badge-2' : 'tier-badge-3');
-        const tierLabel = cand.tier ? `Nhóm ${cand.tier}` : 'Nhóm 3';
+        const tierLabel = tierLabels(cand.tier || 3, this.techMode).badge;
+        const rank = tierRank(cand);
+        const rankBadgeHtml = rank ? `<span class="tier-rank-badge" title="Thứ hạng trong danh sách đánh giá">#${rank}</span>` : '';
 
         card.setAttribute('aria-label', unscored
             ? `Ứng viên: ${name}, Email: ${contactEmail || 'Không có'}, ${recText}`
@@ -401,6 +427,7 @@ export class CandidatePoolController {
 
             <div class="cand-badges-row">
                 <span class="match-pill ${recClass}">${recText}</span>
+                ${rankBadgeHtml}
                 <span class="tier-badge ${tierBadgeClass}">${tierLabel}</span>
                 ${ocrPillHtml}
                 ${missingPositionPillHtml}
@@ -549,7 +576,9 @@ export class CandidatePoolController {
             ${failedEvaluationBanner}
             ${ocrAlertBanner}
             ${feedbackHtml}
+            ${this.renderHrCheckItems(cand.hr_check_items)}
             <div class="modal-dim-grid">${dimCardsHtml}</div>
+            ${this.renderDevFileLinks(cand)}
         `;
         this.showModalEvaluation();
 
@@ -559,6 +588,43 @@ export class CandidatePoolController {
         if (this.modalCloseBtn) {
             this.modalCloseBtn.focus();
         }
+    }
+
+    /**
+     * Renders the HR Check Items: requirements no resume would show, never scored, listed for HR to check by hand.
+     * Reports saved before HR Check Items existed render nothing.
+     * @param {Array<string>} items - The report's hr_check_items.
+     * @returns {string} HTML for the card, or '' when there are none.
+     */
+    renderHrCheckItems(items) {
+        const list = (items || []).map(i => `<li>${this.escapeHtml(i)}</li>`).join('');
+        if (!list) return '';
+        return `
+            <div class="modal-hr-check-card">
+                <div class="modal-dim-title">Cần HR kiểm tra thủ công</div>
+                <p class="modal-hr-check-note">CV thông thường không thể hiện các yêu cầu này, nên ứng viên không bị chấm điểm theo chúng. Hãy kiểm tra trực tiếp, ví dụ khi phỏng vấn.</p>
+                <ul class="modal-bullets">${list}</ul>
+            </div>
+        `;
+    }
+
+    /**
+     * Small links to the raw files behind the evaluation, for developers; HR never needs them.
+     * @param {Object} cand - Candidate evaluation data object.
+     * @returns {string} HTML for the link row, or '' without a result file name.
+     */
+    renderDevFileLinks(cand) {
+        if (!cand.filename) return '';
+        const urls = API.devFileUrls(cand.filename);
+        const link = (href, label, title) => `<a class="modal-dev-link" href="${href}" target="_blank" rel="noopener" title="${title}">${label}</a>`;
+        return `
+            <div class="modal-dev-links" aria-label="Tệp dành cho nhà phát triển">
+                <span>Dev:</span>
+                ${link(urls.resumeJson, 'JSON', 'JSON trích xuất từ CV')}
+                ${link(urls.resumeMarkdown, 'MD', 'Markdown trích xuất từ PDF')}
+                ${link(urls.evalJson, 'Eval JSON', 'JSON kết quả đánh giá')}
+            </div>
+        `;
     }
 
     /**

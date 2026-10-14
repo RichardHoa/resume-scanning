@@ -28,7 +28,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="dspy.*")
 logging.getLogger("dspy").setLevel(logging.WARNING)
 
 from src.core.config import (
-    MATCH_THRESHOLDS, DIMENSION_WEIGHTS, DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, MAX_NEW_TOKENS, DSPY_MAX_TOKENS
+    MATCH_THRESHOLDS, DIMENSION_WEIGHTS, DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, MAX_NEW_TOKENS, DSPY_MAX_TOKENS,
+    HR_CHECK_ITEMS_KEY
 )
 from src.prompts.evaluator_prompts import get_evaluator_system_prompt
 from src.pipelines.evaluator_backend import CATEGORY_LABELS
@@ -69,7 +70,8 @@ def load_rag_criteria_by_category() -> Dict[str, str]:
             for doc in rag.documents:
                 cat = doc.get("category")
                 text = doc.get("text")
-                if cat and text:
+                # HR Check Items are never judged, so they are no training criteria
+                if cat and text and cat != HR_CHECK_ITEMS_KEY:
                     grouped.setdefault(cat, []).append(str(text))
             for cat, items in grouped.items():
                 if items:

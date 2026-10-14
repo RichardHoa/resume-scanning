@@ -303,3 +303,47 @@
     color: #0F172A;
     white-space: pre-wrap;
 }
+
+/* HR Check Items: never scored, listed for HR to check by hand */
+.modal-hr-check-card {
+    background: var(--warning-bg);
+    border: 1.5px dashed #FCD34D;
+    border-radius: var(--radius-md);
+    padding: 1.1rem 1.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.modal-hr-check-note {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+/* Developer-only links to the raw files behind an evaluation; kept small and quiet for HR */
+.modal-dev-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+}
+
+.modal-dev-link {
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    text-decoration: none;
+}
+
+.modal-dev-link:hover,
+.modal-dev-link:focus-visible {
+    color: var(--text-main);
+    border-color: var(--brand-azure);
+}

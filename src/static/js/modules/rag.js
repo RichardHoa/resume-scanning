@@ -90,7 +90,7 @@ export class RagController {
             this.hrRagCodeView.textContent = data.hr_rag_text || 'Hiện chưa lưu tệp tóm tắt hr_rag.txt nào.';
         }
 
-        this.criteriaEditor.setCategories(data.categories || {});
+        this.criteriaEditor.setCategories(data.categories || {}, data.hr_check_items || []);
     }
 
     /**
@@ -104,7 +104,7 @@ export class RagController {
                 'save_criteria',
                 'Đang lưu tiêu chí vào RAG...',
                 'Đang embedding lại toàn bộ tiêu chí vào kho vector RAG và cập nhật hr_rag.txt...',
-                () => API.updateRagCriteria(this.criteriaEditor.getCategories())
+                () => API.updateRagCriteria(this.criteriaEditor.getCategories(), this.criteriaEditor.getHrCheckItems())
             );
             this.renderRagSummary(updated);
             alert('Đã lưu tiêu chí vào RAG.');

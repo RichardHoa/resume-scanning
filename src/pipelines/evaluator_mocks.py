@@ -4,6 +4,8 @@ Mock data and mock requirement decomposition handlers for Resume Evaluator pipel
 import json
 from typing import Any, Dict, List
 
+from src.core.config import HR_CHECK_ITEMS_KEY
+
 
 def get_mock_category_response(category: str, language: str = "vietnamese") -> str:
     """Returns mock JSON response string for a given evaluation category."""
@@ -136,15 +138,20 @@ def get_mock_decomposed_requirements(standard_req: str, hidden_req: str) -> Dict
     lines_std = [l.strip() for l in (standard_req or "").split('\n') if l.strip()]
     lines_hid = [l.strip() for l in (hidden_req or "").split('\n') if l.strip()]
     
+    # HR Check Items: requirements no resume would show, set aside before the Categories are filled
+    check_words = ["tăng ca", "overtime", "ngoài giờ", "đi công tác", "nhận việc ngay", "mức lương", "salary"]
+    is_check_item = lambda line: any(w in line.lower() for w in check_words)
+
     result = {
         "seniority_title": [],
         "technical_skills": [],
         "work_experience": [],
         "education_certifications": [],
-        "hidden_culture": lines_hid or []
+        "hidden_culture": [l for l in lines_hid if not is_check_item(l)],
+        HR_CHECK_ITEMS_KEY: [l for l in lines_std + lines_hid if is_check_item(l)]
     }
-    
-    for line in lines_std:
+
+    for line in (l for l in lines_std if not is_check_item(l)):
         line_low = line.lower()
         if any(w in line_low for w in ["năm", "year", "senior", "junior", "level", "vị trí", "chức danh", "c&b", "kinh nghiệm"]):
             result["seniority_title"].append(line)
