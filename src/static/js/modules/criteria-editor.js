@@ -2,23 +2,26 @@
  * ==============================================================================
  * Shared Criteria Editor (Verify step & RAG Workbench)
  * ==============================================================================
- * Description: Renders the five Category cards stacked full-width, one per row,
- *              then a card of HR Check Items (requirements no resume would show,
- *              never scored). Each item is an auto-growing, wrapping textarea; Enter
- *              never inserts a newline, so items stay single logical lines. Each
- *              Criterion has an Importance menu (Bắt buộc / Tiêu chuẩn / Ưu tiên)
- *              that weights its Verdict in the Category score; HR Check Items have
- *              none. A "move to" menu on each item moves it to another Category
- *              (keeping its Importance) or to the HR Check Items (dropping it).
+ * Description: Renders a collapsible guide to the Importance levels (always open
+ *              on render), then a matrix: one row per Category, one column per
+ *              Importance (Bắt buộc / Tiêu chuẩn / Ưu tiên), and a last row of HR
+ *              Check Items (requirements no resume would show, never scored) that
+ *              spans every column. Each item is a chip whose text is edited in place
+ *              (Enter never inserts a newline, so items stay single logical lines).
+ *              Dragging a chip to another cell sets its Category and Importance in one
+ *              move; its "⋯" menu does the same (and deletes) for keyboard and touch.
+ *              Every cell has its own add box. A chip dropped in the HR Check Items
+ *              loses its Importance, so one moved back out is Standard. When the editor is
+ *              narrower than 900px each row stacks its cells, each labelled with its Importance.
  *              Callers pass in the RAG summary's categories ({category_key:
  *              [criterion]}, each a string or {text, importance}), its HR Check
  *              Items and its Importance levels (src/core/config.py is their only
  *              source), and read them back with getCategories()
  *              ({category_key: [{text, importance}]}) and getHrCheckItems() (strings).
- * Line Count: ~260 lines (Strict Limit: < 500 lines)
+ * Line Count: ~410 lines (Strict Limit: < 500 lines)
  */
 
-// Display names of the five Categories, in card order. Also used to label evaluation dimensions.
+// Display names of the five Categories, in row order. Also used to label evaluation dimensions.
 export const CATEGORY_NAMES = {
     seniority_title: 'Vị trí & Số năm kinh nghiệm',
     technical_skills: 'Kỹ năng, Công cụ & Chuyên môn',
@@ -35,18 +38,33 @@ export const HR_CHECK_ITEMS_NAME = 'Cần HR kiểm tra thủ công';
 // detail comes from the server with the RAG summary
 export const MUST_HAVE = 'must_have';
 
-// Every list the editor holds, in card order: the five Categories, then the HR Check Items
+// Every list the editor holds, in row order: the five Categories, then the HR Check Items
 const LIST_NAMES = { ...CATEGORY_NAMES, [HR_CHECK_ITEMS_KEY]: HR_CHECK_ITEMS_NAME };
+
+// What each Importance level means to HR, shown in the guide. Keyed like src/core/config.py;
+// a level missing here is listed with its label and weight only
+const IMPORTANCE_HELP = {
+    must_have: 'Ứng viên cần có. Nếu CV không cho thấy bằng chứng, ứng viên bị gắn cờ “Thiếu yêu cầu bắt buộc” — nhưng <strong>không bị loại tự động</strong> và vẫn được xếp hạng, vì CV có thể bỏ sót thông tin. HR là người quyết định.',
+    standard: 'Yêu cầu thông thường của vị trí. Đây là mức mặc định khi bạn không chọn mức nào khác.',
+    nice_to_have: 'Điểm cộng. Ứng viên có thì được thêm điểm; không có thì chỉ mất ít điểm.'
+};
+
+const HR_CHECK_HELP = 'Yêu cầu mà CV thông thường không thể hiện (vd: sẵn sàng tăng ca, thời gian nhận việc, mức lương mong muốn). Không chấm điểm ứng viên theo các mục này; HR tự kiểm tra khi phỏng vấn.';
+
+// Value of the "⋯" menu option that deletes the item
+const DELETE_ACTION = '__delete__';
 
 export class CriteriaEditor {
     /**
-     * @param {HTMLElement} container - Element the Category cards are rendered into.
+     * @param {HTMLElement} container - Element the guide and matrix are rendered into.
      */
     constructor(container) {
         this.container = container;
         this.categories = CriteriaEditor.emptyCategories();
         this.importanceLevels = {};
         this.defaultImportance = '';
+        this.matrixEl = null;
+        this.dragged = null;
         window.addEventListener('resize', () => this.resizeAll());
     }
 
@@ -62,7 +80,7 @@ export class CriteriaEditor {
      * Every list is held as [{text, importance}]; the HR Check Items' importance is unused.
      * @param {Object} rawCats - {category_key: [criterion]} for the five Categories.
      * @param {Array} [hrCheckItems=[]] - The HR Check Items.
-     * @param {Object} importanceLevels - {key: {label, weight}} from the RAG summary, in menu order.
+     * @param {Object} importanceLevels - {key: {label, weight}} from the RAG summary, in column order.
      * @param {string} defaultImportance - The level of a Criterion that has none (the RAG summary's).
      */
     setCategories(rawCats, hrCheckItems = [], importanceLevels = {}, defaultImportance = '') {
@@ -82,13 +100,6 @@ export class CriteriaEditor {
     /** A known Importance key; anything missing or unknown reads as the default level. */
     normalizeImportance(value) {
         return Object.hasOwn(this.importanceLevels, value) ? value : this.defaultImportance;
-    }
-
-    /** The line under each Category header, e.g. "Bắt buộc ×3 · Tiêu chuẩn ×2 · Ưu tiên ×1 trong điểm của chiều này". */
-    importanceNote() {
-        return Object.values(this.importanceLevels)
-            .map(level => `${level.label} ×${level.weight}`)
-            .join(' · ') + ' trong điểm của chiều này';
     }
 
     /**
@@ -112,149 +123,272 @@ export class CriteriaEditor {
         return Object.values(this.getCategories()).reduce((acc, items) => acc + items.length, 0);
     }
 
+    /** An Importance level as HR reads it, e.g. "Bắt buộc ×3". */
+    levelLabel(key) {
+        const level = this.importanceLevels[key];
+        return `${level.label} ×${level.weight}`;
+    }
+
+    /** Renders the guide (open again) and the matrix. */
     render() {
         if (!this.container) return;
         this.container.innerHTML = '';
-        this.cards = {};
+        this.container.appendChild(this.buildGuide());
+        this.matrixEl = document.createElement('div');
+        this.matrixEl.className = 'criteria-matrix';
+        this.matrixEl.style.setProperty('--criteria-matrix-cols', Object.keys(this.importanceLevels).length || 1);
+        this.container.appendChild(this.matrixEl);
+        this.renderMatrix();
+    }
+
+    /** The collapsible box explaining each Importance level and the HR Check Items, in Vietnamese. */
+    buildGuide() {
+        const guide = document.createElement('details');
+        guide.className = 'criteria-guide';
+        guide.open = true;
+        const levels = Object.entries(this.importanceLevels);
+        const items = levels.map(([key]) => `
+            <li>
+                <span class="criteria-level-tag" data-importance="${key}">${this.levelLabel(key)}</span>
+                <span>${IMPORTANCE_HELP[key] || ''}</span>
+            </li>`).join('');
+        const [highest, lowest] = [levels[0], levels[levels.length - 1]];
+        const example = levels.length > 1
+            ? `<p class="criteria-guide-example"><strong>Cách tính điểm:</strong> mỗi chiều được chấm bằng trung bình các tiêu chí của nó, có trọng số theo mức độ quan trọng. Ví dụ: một chiều có 1 tiêu chí ${highest[1].label} và 1 tiêu chí ${lowest[1].label} — tiêu chí ${highest[1].label} được tính gấp ${highest[1].weight / lowest[1].weight} lần tiêu chí ${lowest[1].label}.</p>`
+            : '';
+        guide.innerHTML = `
+            <summary>Ý nghĩa các mức độ quan trọng</summary>
+            <div class="criteria-guide-body">
+                <ul>
+                    ${items}
+                    <li>
+                        <span class="criteria-level-tag criteria-level-tag-check">${HR_CHECK_ITEMS_NAME}</span>
+                        <span>${HR_CHECK_HELP}</span>
+                    </li>
+                </ul>
+                ${example}
+                <p class="criteria-guide-hint">Kéo thả một tiêu chí sang ô khác để đổi chiều và mức độ quan trọng cùng lúc, hoặc dùng nút ⋯ trên tiêu chí. Nhấn vào nội dung để sửa.</p>
+            </div>
+        `;
+        return guide;
+    }
+
+    /** Rebuilds the matrix from this.categories; the guide is left as HR set it. */
+    renderMatrix() {
+        if (!this.matrixEl) return;
+        // Text typed into an add box but not yet added survives the rebuild
+        const drafts = new Map();
+        this.matrixEl.querySelectorAll('.criteria-cell').forEach(cell => {
+            const value = cell.querySelector('.criteria-add-input')?.value;
+            if (value) drafts.set(this.cellSelector(cell.dataset.cat, cell.dataset.importance || null), value);
+        });
+        this.matrixEl.innerHTML = '';
+        const levels = Object.entries(this.importanceLevels);
+
+        const head = document.createElement('div');
+        head.className = 'criteria-matrix-row criteria-matrix-head';
+        head.innerHTML = '<div class="criteria-matrix-corner">Chiều đánh giá</div>' + levels.map(([key, level]) =>
+            `<div class="criteria-col-head" data-importance="${key}">${level.label} <span class="criteria-col-weight">×${level.weight}</span></div>`).join('');
+        this.matrixEl.appendChild(head);
 
         Object.keys(LIST_NAMES).forEach((catKey, catIdx) => {
             const isCheckList = catKey === HR_CHECK_ITEMS_KEY;
-            const card = document.createElement('div');
-            card.className = isCheckList ? 'criteria-category-card criteria-hr-check-card' : 'criteria-category-card';
-            card.setAttribute('data-cat', catKey);
-
-            card.innerHTML = `
-                <div class="criteria-card-header">
-                    <span class="criteria-card-title">${isCheckList ? '' : `${catIdx + 1}. `}${LIST_NAMES[catKey]}</span>
-                    <span class="badge-success cat-count-badge" style="font-size:0.75rem;"></span>
-                </div>
-                ${isCheckList
-                    ? '<p class="criteria-hr-check-note">Yêu cầu mà CV thông thường không thể hiện (vd: sẵn sàng tăng ca, thời gian nhận việc). Không chấm điểm ứng viên theo các mục này; HR tự kiểm tra khi phỏng vấn.</p>'
-                    : `<p class="criteria-importance-note">Mức độ quan trọng: ${this.importanceNote()}.</p>`}
-                <div class="criteria-items-list"></div>
-                <div class="criteria-add-box">
-                    <textarea rows="1" class="criteria-add-input" placeholder="${isCheckList ? '+ Thêm mục HR cần kiểm tra...' : '+ Thêm tiêu chí mới cho chiều này...'}"></textarea>
-                    <button class="btn btn-sm btn-secondary criteria-add-btn" type="button">Thêm</button>
-                </div>
-            `;
-
-            const listEl = card.querySelector('.criteria-items-list');
-            this.cards[catKey] = { card, listEl };
-            this.renderItemList(card, listEl, catKey);
-
-            const addInput = card.querySelector('.criteria-add-input');
-            const addBtn = card.querySelector('.criteria-add-btn');
-            const handleAdd = () => {
-                const val = addInput.value.replace(/[\r\n]+/g, ' ').trim();
-                if (val) {
-                    this.categories[catKey].push({ text: val, importance: this.defaultImportance });
-                    this.renderItemList(card, listEl, catKey);
-                    addInput.value = '';
-                    this.autosize(addInput);
-                }
-            };
-
-            addBtn.addEventListener('click', handleAdd);
-            addInput.addEventListener('input', () => this.autosize(addInput));
-            addInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAdd();
-                }
-            });
-
-            this.container.appendChild(card);
+            const count = this.categories[catKey].length;
+            const row = document.createElement('div');
+            row.className = isCheckList ? 'criteria-matrix-row criteria-check-row' : 'criteria-matrix-row';
+            row.innerHTML = `
+                <div class="criteria-row-head">
+                    <span class="criteria-row-title">${isCheckList ? '' : `${catIdx + 1}. `}${LIST_NAMES[catKey]}</span>
+                    <span class="criteria-row-count">${count} ${isCheckList ? 'mục' : 'tiêu chí'}</span>
+                    ${isCheckList ? '<span class="criteria-row-note">Không chấm điểm</span>' : ''}
+                </div>`;
+            if (isCheckList) {
+                row.appendChild(this.buildCell(catKey, null));
+            } else {
+                levels.forEach(([key]) => row.appendChild(this.buildCell(catKey, key)));
+            }
+            this.matrixEl.appendChild(row);
         });
 
-        this.resizeAll();
+        drafts.forEach((value, selector) => {
+            const input = this.matrixEl.querySelector(`${selector} .criteria-add-input`);
+            if (input) input.value = value;
+        });
+        this.resizeAll(this.matrixEl);
     }
 
-    renderItemList(card, listEl, catKey) {
-        listEl.innerHTML = '';
-        const items = this.categories[catKey];
-        const isCheckList = catKey === HR_CHECK_ITEMS_KEY;
-        const countBadge = card.querySelector('.cat-count-badge');
-        if (countBadge) countBadge.textContent = `${items.length} ${isCheckList ? 'mục' : 'tiêu chí'}`;
-
-        if (items.length === 0) {
-            const emptyText = isCheckList ? 'Không có mục nào cần HR kiểm tra thủ công.' : 'Chưa có tiêu chí nào trong chiều này.';
-            listEl.innerHTML = `<div style="font-size:0.8rem; color:var(--text-muted); font-style:italic; padding:6px 0;">${emptyText}</div>`;
-            return;
+    /**
+     * One cell of the matrix: the Category's items at one Importance (or all HR Check Items
+     * when importance is null), plus an add box. It is also a drop target.
+     */
+    buildCell(catKey, importance) {
+        const cell = document.createElement('div');
+        cell.className = 'criteria-cell';
+        cell.dataset.cat = catKey;
+        if (importance) {
+            cell.dataset.importance = importance;
+            const label = document.createElement('div');
+            label.className = 'criteria-cell-label';
+            label.dataset.importance = importance;
+            label.textContent = this.levelLabel(importance);
+            cell.appendChild(label);
         }
 
-        const moveOptions = Object.keys(LIST_NAMES)
-            .filter(k => k !== catKey)
-            .map(k => `<option value="${k}">${LIST_NAMES[k]}</option>`)
-            .join('');
+        const list = document.createElement('div');
+        list.className = 'criteria-chip-list';
+        this.categories[catKey]
+            .filter(item => importance === null || item.importance === importance)
+            .forEach(item => list.appendChild(this.buildChip(catKey, item)));
+        cell.appendChild(list);
 
-        const importanceOptions = Object.entries(this.importanceLevels)
-            .map(([key, level]) => `<option value="${key}">${level.label}</option>`)
-            .join('');
-
-        items.forEach((item, idx) => {
-            const row = document.createElement('div');
-            row.className = 'criteria-item-row';
-            row.innerHTML = `
-                <span class="criteria-item-num">${idx + 1}.</span>
-                <textarea rows="1" class="criteria-item-text"></textarea>
-                ${isCheckList ? '' : `
-                <select class="criteria-item-importance" title="Mức độ quan trọng" aria-label="Mức độ quan trọng">
-                    ${importanceOptions}
-                </select>`}
-                <select class="criteria-item-move" title="Chuyển sang chiều khác" aria-label="Chuyển sang chiều khác">
-                    <option value="" selected>Chuyển sang…</option>
-                    ${moveOptions}
-                </select>
-                <button class="criteria-item-del-btn" title="Xóa tiêu chí" type="button">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-                </button>
-            `;
-
-            const textInput = row.querySelector('.criteria-item-text');
-            textInput.value = item.text;
-            textInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') e.preventDefault();
-            });
-            textInput.addEventListener('input', () => {
-                // Pasted text can still carry newlines; fold them into spaces.
-                if (/[\r\n]/.test(textInput.value)) {
-                    textInput.value = textInput.value.replace(/[\r\n]+/g, ' ');
-                }
-                this.categories[catKey][idx].text = textInput.value;
-                this.autosize(textInput);
-            });
-
-            const importanceSelect = row.querySelector('.criteria-item-importance');
-            if (importanceSelect) {
-                importanceSelect.value = item.importance;
-                importanceSelect.dataset.importance = item.importance;
-                importanceSelect.addEventListener('change', () => {
-                    item.importance = this.normalizeImportance(importanceSelect.value);
-                    importanceSelect.dataset.importance = item.importance;
-                });
+        const addBox = document.createElement('div');
+        addBox.className = 'criteria-add-box';
+        addBox.innerHTML = `
+            <textarea rows="1" class="criteria-add-input" placeholder="+ Thêm" aria-label="Thêm ${importance ? `tiêu chí ${this.importanceLevels[importance].label} vào` : 'mục vào'} ${LIST_NAMES[catKey]}"></textarea>
+            <button class="btn btn-sm btn-secondary criteria-add-btn" type="button" aria-label="Thêm">+</button>
+        `;
+        const addInput = addBox.querySelector('.criteria-add-input');
+        const handleAdd = () => {
+            const val = addInput.value.replace(/[\r\n]+/g, ' ').trim();
+            if (!val) return;
+            this.categories[catKey].push({ text: val, importance: importance || this.defaultImportance });
+            this.renderMatrix();
+            // Keep typing into the same cell's add box
+            this.matrixEl.querySelector(`${this.cellSelector(catKey, importance)} .criteria-add-input`)?.focus();
+        };
+        addBox.querySelector('.criteria-add-btn').addEventListener('click', handleAdd);
+        addInput.addEventListener('input', () => this.autosize(addInput));
+        addInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAdd();
             }
+        });
+        cell.appendChild(addBox);
 
-            row.querySelector('.criteria-item-move').addEventListener('change', (e) => {
-                const target = e.target.value;
-                if (!target || !this.cards[target]) return;
-                const [moved] = this.categories[catKey].splice(idx, 1);
-                // A Criterion keeps its Importance between Categories; an HR Check Item has none,
-                // so one moved there (and later back) is Standard
-                if (target === HR_CHECK_ITEMS_KEY) moved.importance = this.defaultImportance;
-                this.categories[target].push(moved);
-                this.renderItemList(card, listEl, catKey);
-                this.renderItemList(this.cards[target].card, this.cards[target].listEl, target);
-            });
+        cell.addEventListener('dragover', (e) => {
+            if (!this.dragged) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            cell.classList.add('is-drop-target');
+        });
+        cell.addEventListener('dragleave', (e) => {
+            if (!cell.contains(e.relatedTarget)) cell.classList.remove('is-drop-target');
+        });
+        cell.addEventListener('drop', (e) => {
+            e.preventDefault();
+            cell.classList.remove('is-drop-target');
+            if (!this.dragged) return;
+            const { catKey: fromCat, item } = this.dragged;
+            this.dragged = null;
+            this.moveItem(fromCat, item, catKey, importance);
+        });
+        return cell;
+    }
 
-            row.querySelector('.criteria-item-del-btn').addEventListener('click', () => {
-                this.categories[catKey].splice(idx, 1);
-                this.renderItemList(card, listEl, catKey);
-            });
+    cellSelector(catKey, importance) {
+        return importance
+            ? `.criteria-cell[data-cat="${catKey}"][data-importance="${importance}"]`
+            : `.criteria-cell[data-cat="${catKey}"]`;
+    }
 
-            listEl.appendChild(row);
+    /** One item: a drag handle, its in-place editable text and its "⋯" menu. */
+    buildChip(catKey, item) {
+        const chip = document.createElement('div');
+        chip.className = 'criteria-chip';
+        chip.innerHTML = `
+            <span class="criteria-chip-handle" title="Kéo để chuyển sang ô khác" aria-hidden="true">⠿</span>
+            <textarea rows="1" class="criteria-item-text" aria-label="Nội dung tiêu chí"></textarea>
+            <select class="criteria-chip-menu" title="Chuyển hoặc xóa" aria-label="Chuyển hoặc xóa tiêu chí">
+                <option value="" selected>⋯</option>
+                ${this.menuOptions(catKey, item)}
+            </select>
+        `;
+
+        const textInput = chip.querySelector('.criteria-item-text');
+        textInput.value = item.text;
+        textInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                textInput.blur();
+            }
+        });
+        textInput.addEventListener('input', () => {
+            // Pasted text can still carry newlines; fold them into spaces.
+            if (/[\r\n]/.test(textInput.value)) {
+                textInput.value = textInput.value.replace(/[\r\n]+/g, ' ');
+            }
+            item.text = textInput.value;
+            this.autosize(textInput);
         });
 
-        this.resizeAll(listEl);
+        // Only the handle starts a drag, so selecting text in the textarea still works
+        const handle = chip.querySelector('.criteria-chip-handle');
+        handle.addEventListener('mousedown', () => {
+            chip.draggable = true;
+            // A press with no drag must not leave the chip draggable
+            document.addEventListener('mouseup', () => { if (!this.dragged) chip.draggable = false; }, { once: true });
+        });
+        chip.addEventListener('dragstart', (e) => {
+            this.dragged = { catKey, item };
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', item.text);
+            chip.classList.add('is-dragging');
+        });
+        chip.addEventListener('dragend', () => {
+            chip.draggable = false;
+            chip.classList.remove('is-dragging');
+            this.dragged = null;
+            this.matrixEl?.querySelectorAll('.is-drop-target').forEach(el => el.classList.remove('is-drop-target'));
+        });
+
+        chip.querySelector('.criteria-chip-menu').addEventListener('change', (e) => {
+            const value = e.target.value;
+            if (!value) return;
+            if (value === DELETE_ACTION) {
+                const list = this.categories[catKey];
+                const idx = list.indexOf(item);
+                if (idx !== -1) list.splice(idx, 1);
+                this.renderMatrix();
+                return;
+            }
+            const [toCat, toImportance] = value.split('|');
+            this.moveItem(catKey, item, toCat, toImportance || null);
+        });
+        return chip;
+    }
+
+    /** The "⋯" menu: every other cell, grouped by row, then delete. */
+    menuOptions(catKey, item) {
+        const levels = Object.entries(this.importanceLevels);
+        const groups = Object.keys(LIST_NAMES).map(k => {
+            if (k === HR_CHECK_ITEMS_KEY) {
+                return k === catKey ? '' : `<optgroup label="Chuyển đến: ${LIST_NAMES[k]}"><option value="${k}|">${LIST_NAMES[k]} (không chấm điểm)</option></optgroup>`;
+            }
+            const options = levels.map(([key, level]) => {
+                const here = k === catKey && key === item.importance;
+                return `<option value="${k}|${key}"${here ? ' disabled' : ''}>${level.label}${here ? ' (hiện tại)' : ''}</option>`;
+            }).join('');
+            return `<optgroup label="Chuyển đến: ${LIST_NAMES[k]}">${options}</optgroup>`;
+        }).join('');
+        return `${groups}<optgroup label="Thao tác"><option value="${DELETE_ACTION}">Xóa</option></optgroup>`;
+    }
+
+    /**
+     * Moves an item to the end of another cell. A Criterion takes the target column's
+     * Importance; an HR Check Item has none, so one moved there (and later back out) is Standard.
+     */
+    moveItem(fromCat, item, toCat, toImportance) {
+        if (!this.categories[toCat]) return;
+        const isCheck = toCat === HR_CHECK_ITEMS_KEY;
+        if (fromCat === toCat && (isCheck || item.importance === toImportance)) return;
+        const from = this.categories[fromCat];
+        const idx = from.indexOf(item);
+        if (idx === -1) return;
+        from.splice(idx, 1);
+        item.importance = isCheck ? this.defaultImportance : this.normalizeImportance(toImportance);
+        this.categories[toCat].push(item);
+        this.renderMatrix();
     }
 
     /**

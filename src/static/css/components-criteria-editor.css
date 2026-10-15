@@ -1,78 +1,260 @@
 /* Shared Criteria Editor - Verify step & RAG Workbench */
 
 .criteria-editor-grid {
+    container-type: inline-size;
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 1rem;
     margin-bottom: 1.5rem;
 }
 
-.criteria-category-card {
-    background: #FFFFFF;
+/* Guide: what each Importance level means (collapsible, open on render) */
+.criteria-guide {
+    background: var(--brand-azure-mist);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    padding: 1.15rem;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    box-shadow: var(--shadow-sm);
-    width: 100%;
+    padding: 0.75rem 1rem;
 }
 
-.criteria-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #F1F5F9;
-}
-
-.criteria-card-title {
+.criteria-guide summary {
+    cursor: pointer;
     font-size: 0.88rem;
     font-weight: 700;
     color: var(--brand-legacy-blue);
 }
 
-.criteria-items-list {
+.criteria-guide-body ul {
+    list-style: none;
+    margin: 0.75rem 0 0;
+    padding: 0;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    min-height: 50px;
 }
 
-.criteria-item-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    background: #F8FAFC;
+.criteria-guide-body li {
+    display: grid;
+    grid-template-columns: 190px 1fr;
+    gap: 10px;
+    align-items: baseline;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+}
+
+.criteria-guide-example,
+.criteria-guide-hint {
+    margin: 0.75rem 0 0;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+}
+
+.criteria-guide-hint {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* Importance colors, shared by guide tags, column heads and cell labels */
+.criteria-level-tag,
+.criteria-col-head,
+.criteria-cell-label {
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+
+.criteria-level-tag {
+    justify-self: start;
+    padding: 2px 8px;
+    font-size: 0.75rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    padding: 6px 10px;
-    transition: all var(--transition-fast);
+    background: var(--bg-card);
 }
 
-.criteria-item-row:hover {
-    border-color: var(--brand-azure);
-    background: #FFFFFF;
+[data-importance="must_have"].criteria-level-tag,
+[data-importance="must_have"].criteria-col-head,
+[data-importance="must_have"].criteria-cell-label {
+    color: var(--danger);
 }
 
-.criteria-item-num {
-    font-size: 0.75rem;
+[data-importance="must_have"].criteria-level-tag {
+    background: var(--danger-bg);
+    border-color: var(--danger);
+}
+
+[data-importance="nice_to_have"].criteria-level-tag,
+[data-importance="nice_to_have"].criteria-col-head,
+[data-importance="nice_to_have"].criteria-cell-label {
+    color: var(--success);
+}
+
+[data-importance="nice_to_have"].criteria-level-tag {
+    background: var(--success-bg);
+    border-color: var(--success);
+}
+
+.criteria-level-tag-check {
+    border-style: dashed;
+}
+
+/* Matrix: one row per Category, one column per Importance */
+.criteria-matrix {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.criteria-matrix-row {
+    display: grid;
+    grid-template-columns: 200px repeat(var(--criteria-matrix-cols, 3), minmax(0, 1fr));
+    border-top: 1px solid var(--border);
+}
+
+.criteria-matrix-head {
+    border-top: none;
+    background: var(--bg-card-active);
+}
+
+.criteria-matrix-corner,
+.criteria-col-head {
+    padding: 8px 12px;
+    font-size: 0.8rem;
+}
+
+.criteria-matrix-corner {
+    font-weight: 700;
+    color: var(--text-muted);
+}
+
+.criteria-col-head {
+    border-left: 1px solid var(--border);
+}
+
+.criteria-col-weight {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.criteria-row-head {
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--bg-card-hover);
+}
+
+.criteria-row-title {
+    font-size: 0.82rem;
     font-weight: 700;
     color: var(--brand-legacy-blue);
-    min-width: 22px;
-    padding-top: 6px;
+}
+
+.criteria-row-count,
+.criteria-row-note {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.criteria-cell {
+    min-width: 0;
+    padding: 8px;
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: background var(--transition-fast);
+}
+
+.criteria-cell[data-importance="must_have"] {
+    background: color-mix(in srgb, var(--danger-bg) 55%, transparent);
+}
+
+.criteria-cell.is-drop-target {
+    background: var(--brand-azure-mist);
+    outline: 2px dashed var(--brand-azure);
+    outline-offset: -4px;
+}
+
+/* Labels each cell with its Importance once the column heads are hidden (narrow screens) */
+.criteria-cell-label {
+    display: none;
+    font-size: 0.75rem;
+}
+
+/* HR Check Items: never scored, one cell across every column */
+.criteria-check-row {
+    grid-template-columns: 200px minmax(0, 1fr);
+    background: var(--brand-azure-mist);
+}
+
+.criteria-check-row .criteria-row-head {
+    background: transparent;
+}
+
+.criteria-check-row .criteria-chip-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.criteria-check-row .criteria-chip {
+    flex: 1 1 260px;
+    border-style: dashed;
+}
+
+.criteria-chip-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.criteria-chip {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 4px 4px 4px 2px;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.criteria-chip:hover,
+.criteria-chip:focus-within {
+    border-color: var(--brand-azure);
+    box-shadow: var(--shadow-sm);
+}
+
+.criteria-chip.is-dragging {
+    opacity: 0.45;
+}
+
+.criteria-chip-handle {
+    flex-shrink: 0;
+    padding: 4px 2px;
+    font-size: 0.85rem;
+    line-height: 1.2;
+    color: var(--text-dim);
+    cursor: grab;
+    user-select: none;
+}
+
+.criteria-chip-handle:active {
+    cursor: grabbing;
 }
 
 .criteria-item-text,
 .criteria-add-input {
     flex-grow: 1;
     min-width: 0;
-    font-size: 0.82rem;
-    line-height: 1.5;
+    font-size: 0.8rem;
+    line-height: 1.45;
     color: var(--text-main);
     font-family: var(--font-sans);
-    padding: 4px 6px;
+    padding: 3px 4px;
     resize: none;
     overflow: hidden;
     white-space: pre-wrap;
@@ -84,6 +266,7 @@
     border: 1px solid transparent;
     background: transparent;
     border-radius: var(--radius-xs);
+    cursor: text;
 }
 
 .criteria-item-text:focus {
@@ -92,127 +275,96 @@
     outline: none;
 }
 
-.criteria-item-del-btn {
-    background: transparent;
-    border: none;
+/* "⋯" menu: a native select, so it works with keyboard and touch */
+.criteria-chip-menu {
+    flex-shrink: 0;
+    width: 28px;
+    padding: 2px 0;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-align: center;
     color: var(--text-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
     cursor: pointer;
-    padding: 4px;
-    margin-top: 2px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all var(--transition-fast);
+    appearance: none;
+    -webkit-appearance: none;
 }
 
-.criteria-item-del-btn:hover {
-    color: #DC2626;
-    background: #FEE2E2;
+.criteria-chip-menu:hover,
+.criteria-chip-menu:focus-visible {
+    color: var(--text-main);
+    border-color: var(--brand-azure);
+}
+
+.criteria-chip-menu option,
+.criteria-chip-menu optgroup {
+    font-size: 0.85rem;
+    font-weight: 400;
+    text-align: left;
+    color: var(--text-main);
 }
 
 .criteria-add-box {
     display: flex;
     align-items: flex-start;
-    gap: 6px;
-    margin-top: 4px;
+    gap: 4px;
 }
 
 .criteria-add-input {
-    padding: 6px 10px;
+    padding: 4px 8px;
     border: 1px dashed var(--border);
     border-radius: var(--radius-sm);
+    background: transparent;
+}
+
+.criteria-add-input:focus {
+    background: var(--bg-card);
+    border-color: var(--brand-azure);
+    outline: none;
 }
 
 .criteria-add-btn {
-    padding: 4px 10px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    white-space: nowrap;
+    padding: 3px 9px;
+    font-size: 0.8rem;
+    font-weight: 700;
 }
 
-.criteria-item-move {
-    flex-shrink: 0;
-    max-width: 150px;
-    margin-top: 2px;
-    padding: 3px 6px;
-    font-size: 0.72rem;
-    font-family: var(--font-sans);
-    color: var(--text-muted);
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-}
+/* Narrow editor: each Category stacks its cells, each labelled with its Importance */
+@container (max-width: 900px) {
+    .criteria-matrix-head {
+        display: none;
+    }
 
-.criteria-item-move:hover,
-.criteria-item-move:focus-visible {
-    color: var(--text-main);
-    border-color: var(--brand-azure);
-}
+    .criteria-matrix-row,
+    .criteria-check-row {
+        grid-template-columns: minmax(0, 1fr);
+        border-top: 1px solid var(--border);
+    }
 
-/* Importance of a Criterion: weights its Verdict in the Category score */
-.criteria-importance-note {
-    margin: 0;
-    font-size: 0.75rem;
-    line-height: 1.5;
-    color: var(--text-muted);
-}
+    .criteria-matrix-row:nth-child(2) {
+        border-top: none;
+    }
 
-.criteria-item-importance {
-    flex-shrink: 0;
-    margin-top: 2px;
-    padding: 3px 6px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    font-family: var(--font-sans);
-    color: var(--text-secondary);
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-}
+    .criteria-cell {
+        border-left: none;
+        border-top: 1px solid var(--bg-card-active);
+    }
 
-.criteria-item-importance:hover,
-.criteria-item-importance:focus-visible {
-    border-color: var(--brand-azure);
-}
+    .criteria-cell-label {
+        display: block;
+    }
 
-.criteria-item-importance[data-importance="must_have"] {
-    color: var(--danger);
-    background: var(--danger-bg);
-    border-color: var(--danger);
-}
-
-.criteria-item-importance[data-importance="nice_to_have"] {
-    color: var(--text-muted);
-    font-weight: 500;
-}
-
-/* HR Check Items: never scored, so set apart from the five Category cards */
-.criteria-hr-check-card {
-    border-style: dashed;
-    background: var(--brand-azure-mist);
-}
-
-.criteria-hr-check-note {
-    margin: 0;
-    font-size: 0.78rem;
-    line-height: 1.5;
-    color: var(--text-secondary);
-}
-
-@media (max-width: 600px) {
-    .criteria-item-row {
+    .criteria-row-head {
+        flex-direction: row;
         flex-wrap: wrap;
+        align-items: baseline;
+        gap: 8px;
     }
 
-    .criteria-item-importance {
-        margin-left: 30px;
-    }
-
-    .criteria-item-move {
-        max-width: none;
-        margin-left: 30px;
+    .criteria-guide-body li {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 4px;
     }
 }
