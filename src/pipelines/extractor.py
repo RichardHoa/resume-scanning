@@ -1,5 +1,5 @@
 """
-Resume Extractor Pipeline — PDF text extraction (Docling, PyMuPDF4LLM fallback) + LLM structured JSON generation
+Resume Extractor Pipeline — PDF text extraction (PyMuPDF4LLM) + LLM structured JSON generation
 """
 import os
 import sys
@@ -12,7 +12,6 @@ if _PROJECT_ROOT not in sys.path:
 import html
 import json
 import re
-import threading
 import unicodedata
 from typing import Optional
 from src.core.config import DEFAULT_VLLM_URL, EXTRACTION_MARKDOWN_DIR
@@ -163,9 +162,6 @@ SCANNED_RESUME_MESSAGE = (
     "Vui lòng yêu cầu ứng viên gửi bản PDF có thể chọn chữ."
 )
 
-# Past this, Docling is treated as stuck and PyMuPDF4LLM parses the resume instead
-DOCLING_TIMEOUT_SECONDS = 120
-
 
 class ScannedResumeError(ValueError):
     """A resume PDF in which no page has text: rejected before any parser runs."""
@@ -183,44 +179,8 @@ def find_textless_pages(pdf_path: str) -> tuple[list[int], int]:
         return textless, doc.page_count
 
 
-_docling_converter = None
-_docling_lock = threading.Lock()
-
-
-def _parse_with_docling(pdf_path: str) -> str:
-    """
-    Docling Markdown, built by one shared converter (its models load once). OCR is off: a Scanned Resume never
-    reaches here. Raises when Docling fails or runs past DOCLING_TIMEOUT_SECONDS (which Docling reports as a
-    partial success, not an error).
-    """
-    global _docling_converter
-    from docling.datamodel.base_models import ConversionStatus, InputFormat
-    from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
-    from docling.document_converter import DocumentConverter, PdfFormatOption
-
-    # One converter, used by one thread at a time: batch extraction runs several workers
-    with _docling_lock:
-        if _docling_converter is None:
-            options = PdfPipelineOptions()
-            options.do_ocr = False
-            options.do_table_structure = True
-            options.table_structure_options.mode = TableFormerMode.ACCURATE
-            options.document_timeout = DOCLING_TIMEOUT_SECONDS
-            _docling_converter = DocumentConverter(
-                format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)}
-            )
-        result = _docling_converter.convert(pdf_path)
-
-    if result.status != ConversionStatus.SUCCESS:
-        raise RuntimeError(f"Docling conversion ended with status {result.status} (timed out or partly failed)")
-    return result.document.export_to_markdown()
-
-
 def extract_text_from_pdf(pdf_path: str) -> tuple[str, list[str]]:
-    """
-    Converts a PDF resume to Markdown with Docling, falling back to PyMuPDF4LLM when Docling fails, times out or
-    finds no text. Raises ScannedResumeError for a Scanned Resume (no page has text).
-    """
+    """Converts a PDF resume to Markdown with PyMuPDF4LLM. Raises ScannedResumeError for a Scanned Resume (no page has text)."""
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"File not found: {pdf_path}")
 
@@ -228,23 +188,17 @@ def extract_text_from_pdf(pdf_path: str) -> tuple[str, list[str]]:
     if len(textless_pages) == page_count:
         raise ScannedResumeError(SCANNED_RESUME_MESSAGE)
 
-    parse_warnings = []
-    markdown_content = ""
+    # PyMuPDF4LLM only: Docling was tried and could not detect tables at all, do not switch back (ADR 0008)
     try:
-        print(f"Parsing PDF with Docling: {pdf_path}", file=sys.stderr)
-        markdown_content = _parse_with_docling(pdf_path)
-        if not _has_text(markdown_content):
-            raise RuntimeError("Docling returned no text")
+        import pymupdf4llm
+        print(f"Parsing PDF with PyMuPDF4LLM: {pdf_path}", file=sys.stderr)
+        markdown_content = pymupdf4llm.to_markdown(pdf_path)
     except Exception as e:
-        print(f"Warning: Docling failed on {pdf_path} ({e}). Falling back to PyMuPDF4LLM...", file=sys.stderr)
-        parse_warnings.append(f"Parser fallback: Docling failed ({e}); the resume was parsed with PyMuPDF4LLM.")
-        try:
-            import pymupdf4llm
-            markdown_content = pymupdf4llm.to_markdown(pdf_path)
-        except Exception as fallback_err:
-            raise ValueError(f"PDF parsing error: Docling and PyMuPDF4LLM both failed ({fallback_err}).")
-        if not _has_text(markdown_content):
-            raise ValueError("PDF parsing error: Docling and PyMuPDF4LLM both returned no text.")
+        raise ValueError(f"PyMuPDF parsing error: PyMuPDF failed to parse PDF file ({e}).")
+    if not _has_text(markdown_content):
+        raise ValueError("PDF parsing error: PyMuPDF4LLM returned no text.")
+
+    parse_warnings = []
 
     # Some pages without text (e.g. a scanned certificate attached): the text pages are read, HR checks the rest
     if textless_pages:

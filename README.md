@@ -6,7 +6,7 @@ An automated system to extract structured information (personal details, skills,
 
 ## 💡 Our Approach
 
-1. **Layout Extraction**: We use **Docling** (accurate table mode) to parse the PDF resume into a layout-aware Markdown format, falling back to **PyMuPDF4LLM** when Docling fails or times out. A scanned PDF (no page has text) is rejected and HR is asked to get a text PDF from the candidate; no OCR is run.
+1. **Layout Extraction**: We use **PyMuPDF4LLM** to parse the PDF resume into a layout-aware Markdown format (Docling was tried and rejected: it could not detect tables, see ADR 0008). A scanned PDF (no page has text) is rejected and HR is asked to get a text PDF from the candidate; no OCR is run.
 2. **Structured JSON Extraction**: We pass the Markdown representation to an LLM (such as `Qwen/Qwen3.5-9B` or `Qwen/Qwen3.5-35B-A3B`) which parses and formats the information according to predefined JSON schemas.
 
 *Recommended models for best extraction performance:*
@@ -19,7 +19,7 @@ An automated system to extract structured information (personal details, skills,
 
 Here is an overview of what each key file and folder does in this repository:
 
-- `src/step_1_extractor.py`: The main extraction script. Converts PDF resumes to Markdown using Docling (PyMuPDF4LLM fallback) and uses an LLM to generate structured JSON output.
+- `src/step_1_extractor.py`: The main extraction script. Converts PDF resumes to Markdown using PyMuPDF4LLM and uses an LLM to generate structured JSON output.
 - `src/server.py`: A web server (FastAPI) that provides a user-friendly browser interface for uploading resumes and viewing extracted JSON results.
 - `src/evaluate.py`: Evaluates the accuracy of extracted JSON output by comparing it against ground-truth data using semantic similarity scoring.
 - `src/ground_truth.py`: A web-based tool for reviewing and validating ground-truth resume extractions.
