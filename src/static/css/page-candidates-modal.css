@@ -249,6 +249,45 @@
     font-style: normal;
 }
 
+.modal-must-have-tag {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--danger);
+    background: var(--danger-bg);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-sm);
+    padding: 1px 6px;
+    margin-left: 6px;
+    font-style: normal;
+}
+
+/* Missing Must-Haves: must-have Criteria without evidence; informs HR, never rejects */
+.modal-missing-must-have-banner {
+    background: var(--danger-bg);
+    border: 1px solid var(--danger);
+    border-left: 4px solid var(--danger);
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
+    margin-bottom: 1rem;
+}
+
+.modal-missing-must-have-banner strong {
+    color: var(--danger);
+    font-size: 0.9rem;
+}
+
+.modal-missing-must-have-banner p {
+    margin: 4px 0 6px;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.modal-missing-must-have-cat {
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
 .modal-quote-box {
     background: #F1F5F9;
     border: 1px solid #CBD5E1;

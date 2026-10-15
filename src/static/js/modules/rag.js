@@ -90,7 +90,9 @@ export class RagController {
             this.hrRagCodeView.textContent = data.hr_rag_text || 'Hiện chưa lưu tệp tóm tắt hr_rag.txt nào.';
         }
 
-        this.criteriaEditor.setCategories(data.categories || {}, data.hr_check_items || []);
+        this.criteriaEditor.setCategories(
+            data.categories || {}, data.hr_check_items || [], data.importance_levels, data.default_importance
+        );
     }
 
     /**

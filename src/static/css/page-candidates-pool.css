@@ -427,6 +427,23 @@
     margin: 0;
 }
 
+/* Missing Must-Have: informs HR only; the candidate is still ranked */
+.badge-missing-must-have {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--danger-bg);
+    color: var(--danger);
+    border: 1.5px solid var(--danger);
+    border-radius: var(--radius-sm);
+    padding: 4px 10px;
+    font-size: 0.74rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
 /* HR warning badges: OCR review, Missing Position */
 .badge-ocr-review {
     display: inline-flex;

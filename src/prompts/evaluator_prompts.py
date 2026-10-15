@@ -263,14 +263,21 @@ MANDATORY VERBATIM EXTRACTION DIRECTIVES:
 - COMPLETE STRUCTURAL INTEGRITY: Maintain exact sentences and snippets from the input text, ensuring every extracted string matches the original text character-for-character.
 - SOURCE LANGUAGE FIDELITY: Preserve the original written language of both standard and hidden requirements.
 
+IMPORTANCE (5 categories only; HR will review and may change it):
+Give every criterion in the 5 categories an "importance" taken only from HR's own wording around that requirement. Importance is a separate field: never add, drop or change words in the "text" to express it.
+- "must_have": HR marks it as mandatory, e.g. "bắt buộc", "yêu cầu", "phải", "must", "required".
+- "nice_to_have": HR marks it as a bonus, e.g. "ưu tiên", "là lợi thế", "điểm cộng", "preferred", "a plus", "nice to have".
+- "standard": anything else, including every requirement HR wrote with no such wording.
+HR Check Items have no importance: "{HR_CHECK_ITEMS_KEY}" stays a list of plain strings.
+
 Return exclusively a valid JSON object:
 ```json
 {{
-  "seniority_title": ["<exact verbatim requirement string from source>"],
-  "technical_skills": ["<exact verbatim requirement string from source>"],
-  "work_experience": ["<exact verbatim requirement string from source>"],
-  "education_certifications": ["<exact verbatim requirement string from source>"],
-  "hidden_culture": ["<exact verbatim requirement string from source>"],
+  "seniority_title": [{{"text": "<exact verbatim requirement string from source>", "importance": "must_have|standard|nice_to_have"}}],
+  "technical_skills": [{{"text": "<exact verbatim requirement string from source>", "importance": "must_have|standard|nice_to_have"}}],
+  "work_experience": [{{"text": "<exact verbatim requirement string from source>", "importance": "must_have|standard|nice_to_have"}}],
+  "education_certifications": [{{"text": "<exact verbatim requirement string from source>", "importance": "must_have|standard|nice_to_have"}}],
+  "hidden_culture": [{{"text": "<exact verbatim requirement string from source>", "importance": "must_have|standard|nice_to_have"}}],
   "{HR_CHECK_ITEMS_KEY}": ["<exact verbatim requirement string from source that no ordinary resume would show>"]
 }}
 ```

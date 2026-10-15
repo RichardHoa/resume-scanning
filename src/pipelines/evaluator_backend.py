@@ -14,6 +14,7 @@ from src.core.config import (
 )
 from src.core.logger import log_broken_json
 from src.core.json_utils import clean_and_parse_json
+from src.core.importance import split_criterion_item
 from src.providers import vllm_client
 from src.prompts.evaluator_prompts import (
     get_requirements_decomposition_prompt,
@@ -99,8 +100,12 @@ def decompose_requirements_with_llm(
     hidden_req: str,
     resume_name: str = "job_requirements",
     log_dir: Optional[str] = None
-) -> Optional[Dict[str, List[str]]]:
-    """Helper to decompose HR standard & hidden requirements into 5 dimension categories, plus the HR Check Items."""
+) -> Optional[Dict[str, List[Any]]]:
+    """
+    Helper to decompose HR standard & hidden requirements into 5 dimension categories, plus the HR Check Items.
+    Each Criterion comes back as {"text", "importance"} (the decomposer's proposal, which HR reviews);
+    HR Check Items stay plain strings.
+    """
     categories = list(CATEGORY_LABELS.keys()) + [HR_CHECK_ITEMS_KEY]
     standard_req = (standard_req or "").strip()
     hidden_req = (hidden_req or "").strip()
@@ -119,10 +124,17 @@ def decompose_requirements_with_llm(
     parsed = clean_and_parse_json(raw_out)
 
     if parsed and isinstance(parsed, dict):
-        return {
-            cat: [str(x).strip() for x in (parsed.get(cat, []) if isinstance(parsed.get(cat), list) else [parsed.get(cat)] if parsed.get(cat) else []) if str(x).strip()]
-            for cat in categories
-        }
+        result: Dict[str, List[Any]] = {}
+        for cat in categories:
+            raw = parsed.get(cat)
+            raw_items = raw if isinstance(raw, list) else [raw] if raw else []
+            # Each item may be {"text", "importance"} or a plain string (read as Standard)
+            items = [split_criterion_item(x) for x in raw_items]
+            if cat == HR_CHECK_ITEMS_KEY:
+                result[cat] = [text for text, _ in items if text]
+            else:
+                result[cat] = [{"text": text, "importance": importance} for text, importance in items if text]
+        return result
 
     # Fallback text parsing for header-formatted responses
     if raw_out and any(cat in raw_out for cat in categories):

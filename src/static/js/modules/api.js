@@ -182,7 +182,7 @@ export const API = {
 
     /**
      * Updates persistent RAG database with user-edited criteria across 5 dimensions.
-     * @param {Object} categories - Map of category names to arrays of string criteria items.
+     * @param {Object} categories - Map of category names to arrays of Criteria, each {text, importance} or a plain string (read as Standard).
      * @param {Array<string>} hrCheckItems - HR Check Items: requirements no resume would show, never scored.
      * @param {?string} [stdReq=null] - Standard requirements text; null keeps the stored original.
      * @param {?string} [hiddenReq=null] - Hidden requirements text; null keeps the stored original.

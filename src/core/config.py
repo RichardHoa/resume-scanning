@@ -40,6 +40,18 @@ DIMENSION_WEIGHTS = {
     "hidden_culture": 0.12
 }
 
+# Importance of one Criterion inside its Category, set by HR in the HR RAG. The Category score is the mean of
+# the Verdicts weighted by these, so an all-Standard Category scores as an unweighted mean. See docs/adr/0006.
+# The single source of the levels: the API, hr_rag.txt and the criteria editor (through the RAG summary) read them here
+MUST_HAVE = "must_have"
+DEFAULT_IMPORTANCE = "standard"
+IMPORTANCE_LEVELS = {
+    MUST_HAVE: {"label": "Bắt buộc", "weight": 3},
+    DEFAULT_IMPORTANCE: {"label": "Tiêu chuẩn", "weight": 2},
+    "nice_to_have": {"label": "Ưu tiên", "weight": 1}
+}
+IMPORTANCE_WEIGHTS = {key: level["weight"] for key, level in IMPORTANCE_LEVELS.items()}
+
 # Key the decomposer and the RAG store use for HR Check Items: requirements no ordinary resume would show, which
 # are kept beside the five Categories but never weighted or judged, and handed to HR to check by hand
 HR_CHECK_ITEMS_KEY = "hr_check_items"

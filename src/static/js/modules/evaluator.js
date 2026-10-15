@@ -484,7 +484,9 @@ export class EvaluatorController {
         if (this.hrRagPreviewText) {
             this.hrRagPreviewText.textContent = this.currentHrRagText || 'Chưa tạo tệp hr_rag.txt.';
         }
-        this.criteriaEditor.setCategories(data.categories || {}, data.hr_check_items || []);
+        this.criteriaEditor.setCategories(
+            data.categories || {}, data.hr_check_items || [], data.importance_levels, data.default_importance
+        );
     }
 
     /**

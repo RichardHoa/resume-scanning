@@ -5,13 +5,19 @@ import os
 import sys
 from datetime import datetime
 from typing import Dict, List, Any
-from src.core.config import ROOT_DIR, HR_CHECK_ITEMS_KEY
+from src.core.config import ROOT_DIR, HR_CHECK_ITEMS_KEY, IMPORTANCE_LEVELS, DEFAULT_IMPORTANCE
+from src.core.importance import normalize_importance, split_criterion_item
+
+
+def _importance_tag(importance: str) -> str:
+    """How an Importance level is tagged in hr_rag.txt, e.g. [BẮT BUỘC]."""
+    return f"[{IMPORTANCE_LEVELS[importance]['label'].upper()}]"
 
 
 def export_hr_rag_file(
     standard_req: str,
     hidden_req: str,
-    decomposed: Dict[str, List[str]],
+    decomposed: Dict[str, List[Any]],
     output_path: str = "hr_rag.txt"
 ):
     """Exports a summary detailing how HR requirements are classified into 5 RAG dimensions."""
@@ -26,6 +32,9 @@ def export_hr_rag_file(
         hidden_req or "None",
         "\n" + "=" * 80,
         "CLASSIFICATION BY DIMENSION CATEGORY:",
+        "Importance weights inside a Category: " + ", ".join(
+            f"{_importance_tag(key)} x{level['weight']}" for key, level in IMPORTANCE_LEVELS.items()
+        ),
         "=" * 80,
     ]
 
@@ -42,7 +51,8 @@ def export_hr_rag_file(
         lines.append(f"\n[{cat_label}] (Total items: {len(items)})")
         if items:
             for idx, item in enumerate(items, 1):
-                lines.append(f"   {idx}. {item}")
+                text, importance = split_criterion_item(item)
+                lines.append(f"   {idx}. {_importance_tag(importance)} {text}")
         else:
             lines.append("   (No items classified in this category)")
 
@@ -107,7 +117,8 @@ def get_stored_rag_summary(rag_inst: Any) -> Dict[str, Any]:
         if cat in categories_dict:
             categories_dict[cat].append({
                 "text": doc.get("text"),
-                "type": doc.get("type", "standard")
+                "type": doc.get("type", "standard"),
+                "importance": normalize_importance(doc.get("importance"))
             })
         else:
             print(f"[RAG Summary Warning] Document with unknown category '{raw_cat}' skipped from summary (id={doc.get('id', 'unknown')}).", file=sys.stderr)
@@ -134,6 +145,9 @@ def get_stored_rag_summary(rag_inst: Any) -> Dict[str, Any]:
         "categories": categories_dict,
         # Kept apart from the Categories: not weighted, not judged, shown to HR as a manual checklist
         HR_CHECK_ITEMS_KEY: hr_check_items,
+        # The criteria editor builds its Importance menu from these, so the levels live only in config.py
+        "importance_levels": IMPORTANCE_LEVELS,
+        "default_importance": DEFAULT_IMPORTANCE,
         "hr_rag_text": hr_rag_content,
         "standard_requirements": originals["standard_requirements"],
         "hidden_requirements": originals["hidden_requirements"]

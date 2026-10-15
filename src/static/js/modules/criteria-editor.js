@@ -5,12 +5,17 @@
  * Description: Renders the five Category cards stacked full-width, one per row,
  *              then a card of HR Check Items (requirements no resume would show,
  *              never scored). Each item is an auto-growing, wrapping textarea; Enter
- *              never inserts a newline, so items stay single logical lines. A "move
- *              to" menu on each item moves it to another Category or to the HR Check
- *              Items. Callers pass categories in as {category_key: [criterion text]}
- *              plus the HR Check Items list, and read them back with getCategories()
- *              and getHrCheckItems().
- * Line Count: ~215 lines (Strict Limit: < 500 lines)
+ *              never inserts a newline, so items stay single logical lines. Each
+ *              Criterion has an Importance menu (Bắt buộc / Tiêu chuẩn / Ưu tiên)
+ *              that weights its Verdict in the Category score; HR Check Items have
+ *              none. A "move to" menu on each item moves it to another Category
+ *              (keeping its Importance) or to the HR Check Items (dropping it).
+ *              Callers pass in the RAG summary's categories ({category_key:
+ *              [criterion]}, each a string or {text, importance}), its HR Check
+ *              Items and its Importance levels (src/core/config.py is their only
+ *              source), and read them back with getCategories()
+ *              ({category_key: [{text, importance}]}) and getHrCheckItems() (strings).
+ * Line Count: ~260 lines (Strict Limit: < 500 lines)
  */
 
 // Display names of the five Categories, in card order. Also used to label evaluation dimensions.
@@ -26,6 +31,10 @@ export const CATEGORY_NAMES = {
 export const HR_CHECK_ITEMS_KEY = 'hr_check_items';
 export const HR_CHECK_ITEMS_NAME = 'Cần HR kiểm tra thủ công';
 
+// The Importance key results are tagged by (MUST_HAVE in src/core/config.py). Every other level
+// detail comes from the server with the RAG summary
+export const MUST_HAVE = 'must_have';
+
 // Every list the editor holds, in card order: the five Categories, then the HR Check Items
 const LIST_NAMES = { ...CATEGORY_NAMES, [HR_CHECK_ITEMS_KEY]: HR_CHECK_ITEMS_NAME };
 
@@ -36,6 +45,8 @@ export class CriteriaEditor {
     constructor(container) {
         this.container = container;
         this.categories = CriteriaEditor.emptyCategories();
+        this.importanceLevels = {};
+        this.defaultImportance = '';
         window.addEventListener('resize', () => this.resizeAll());
     }
 
@@ -46,33 +57,54 @@ export class CriteriaEditor {
     }
 
     /**
-     * Replaces the edited set. Accepts items as plain strings or as {text} objects
-     * (the shape returned by the RAG info endpoint).
+     * Replaces the edited set. Accepts items as plain strings (read as Standard) or as
+     * {text, importance} objects (the shape returned by the RAG info endpoint).
+     * Every list is held as [{text, importance}]; the HR Check Items' importance is unused.
      * @param {Object} rawCats - {category_key: [criterion]} for the five Categories.
      * @param {Array} [hrCheckItems=[]] - The HR Check Items.
+     * @param {Object} importanceLevels - {key: {label, weight}} from the RAG summary, in menu order.
+     * @param {string} defaultImportance - The level of a Criterion that has none (the RAG summary's).
      */
-    setCategories(rawCats, hrCheckItems = []) {
+    setCategories(rawCats, hrCheckItems = [], importanceLevels = {}, defaultImportance = '') {
+        this.importanceLevels = importanceLevels || {};
+        this.defaultImportance = defaultImportance;
         this.categories = CriteriaEditor.emptyCategories();
-        const toText = it => (typeof it === 'object' && it !== null ? String(it.text || '') : String(it));
+        const toItem = it => (typeof it === 'object' && it !== null
+            ? { text: String(it.text || ''), importance: this.normalizeImportance(it.importance) }
+            : { text: String(it), importance: this.defaultImportance });
         Object.keys(CATEGORY_NAMES).forEach(k => {
-            this.categories[k] = ((rawCats && rawCats[k]) || []).map(toText);
+            this.categories[k] = ((rawCats && rawCats[k]) || []).map(toItem);
         });
-        this.categories[HR_CHECK_ITEMS_KEY] = (hrCheckItems || []).map(toText);
+        this.categories[HR_CHECK_ITEMS_KEY] = (hrCheckItems || []).map(it => ({ ...toItem(it), importance: this.defaultImportance }));
         this.render();
     }
 
+    /** A known Importance key; anything missing or unknown reads as the default level. */
+    normalizeImportance(value) {
+        return Object.hasOwn(this.importanceLevels, value) ? value : this.defaultImportance;
+    }
+
+    /** The line under each Category header, e.g. "Bắt buộc ×3 · Tiêu chuẩn ×2 · Ưu tiên ×1 trong điểm của chiều này". */
+    importanceNote() {
+        return Object.values(this.importanceLevels)
+            .map(level => `${level.label} ×${level.weight}`)
+            .join(' · ') + ' trong điểm của chiều này';
+    }
+
     /**
-     * Returns a copy of the five Categories as {category_key: [criterion text]}.
+     * Returns a copy of the five Categories as {category_key: [{text, importance}]}.
      */
     getCategories() {
         const cats = {};
-        Object.keys(CATEGORY_NAMES).forEach(k => { cats[k] = [...this.categories[k]]; });
+        Object.keys(CATEGORY_NAMES).forEach(k => {
+            cats[k] = this.categories[k].map(({ text, importance }) => ({ text, importance }));
+        });
         return cats;
     }
 
-    /** Returns a copy of the HR Check Items. */
+    /** Returns a copy of the HR Check Items as plain strings: they have no Importance. */
     getHrCheckItems() {
-        return [...this.categories[HR_CHECK_ITEMS_KEY]];
+        return this.categories[HR_CHECK_ITEMS_KEY].map(item => item.text);
     }
 
     /** Number of Criteria in the five Categories; HR Check Items are not Criteria. */
@@ -96,7 +128,9 @@ export class CriteriaEditor {
                     <span class="criteria-card-title">${isCheckList ? '' : `${catIdx + 1}. `}${LIST_NAMES[catKey]}</span>
                     <span class="badge-success cat-count-badge" style="font-size:0.75rem;"></span>
                 </div>
-                ${isCheckList ? '<p class="criteria-hr-check-note">Yêu cầu mà CV thông thường không thể hiện (vd: sẵn sàng tăng ca, thời gian nhận việc). Không chấm điểm ứng viên theo các mục này; HR tự kiểm tra khi phỏng vấn.</p>' : ''}
+                ${isCheckList
+                    ? '<p class="criteria-hr-check-note">Yêu cầu mà CV thông thường không thể hiện (vd: sẵn sàng tăng ca, thời gian nhận việc). Không chấm điểm ứng viên theo các mục này; HR tự kiểm tra khi phỏng vấn.</p>'
+                    : `<p class="criteria-importance-note">Mức độ quan trọng: ${this.importanceNote()}.</p>`}
                 <div class="criteria-items-list"></div>
                 <div class="criteria-add-box">
                     <textarea rows="1" class="criteria-add-input" placeholder="${isCheckList ? '+ Thêm mục HR cần kiểm tra...' : '+ Thêm tiêu chí mới cho chiều này...'}"></textarea>
@@ -113,7 +147,7 @@ export class CriteriaEditor {
             const handleAdd = () => {
                 const val = addInput.value.replace(/[\r\n]+/g, ' ').trim();
                 if (val) {
-                    this.categories[catKey].push(val);
+                    this.categories[catKey].push({ text: val, importance: this.defaultImportance });
                     this.renderItemList(card, listEl, catKey);
                     addInput.value = '';
                     this.autosize(addInput);
@@ -153,12 +187,20 @@ export class CriteriaEditor {
             .map(k => `<option value="${k}">${LIST_NAMES[k]}</option>`)
             .join('');
 
-        items.forEach((itemText, idx) => {
+        const importanceOptions = Object.entries(this.importanceLevels)
+            .map(([key, level]) => `<option value="${key}">${level.label}</option>`)
+            .join('');
+
+        items.forEach((item, idx) => {
             const row = document.createElement('div');
             row.className = 'criteria-item-row';
             row.innerHTML = `
                 <span class="criteria-item-num">${idx + 1}.</span>
                 <textarea rows="1" class="criteria-item-text"></textarea>
+                ${isCheckList ? '' : `
+                <select class="criteria-item-importance" title="Mức độ quan trọng" aria-label="Mức độ quan trọng">
+                    ${importanceOptions}
+                </select>`}
                 <select class="criteria-item-move" title="Chuyển sang chiều khác" aria-label="Chuyển sang chiều khác">
                     <option value="" selected>Chuyển sang…</option>
                     ${moveOptions}
@@ -169,7 +211,7 @@ export class CriteriaEditor {
             `;
 
             const textInput = row.querySelector('.criteria-item-text');
-            textInput.value = itemText;
+            textInput.value = item.text;
             textInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') e.preventDefault();
             });
@@ -178,14 +220,27 @@ export class CriteriaEditor {
                 if (/[\r\n]/.test(textInput.value)) {
                     textInput.value = textInput.value.replace(/[\r\n]+/g, ' ');
                 }
-                this.categories[catKey][idx] = textInput.value;
+                this.categories[catKey][idx].text = textInput.value;
                 this.autosize(textInput);
             });
+
+            const importanceSelect = row.querySelector('.criteria-item-importance');
+            if (importanceSelect) {
+                importanceSelect.value = item.importance;
+                importanceSelect.dataset.importance = item.importance;
+                importanceSelect.addEventListener('change', () => {
+                    item.importance = this.normalizeImportance(importanceSelect.value);
+                    importanceSelect.dataset.importance = item.importance;
+                });
+            }
 
             row.querySelector('.criteria-item-move').addEventListener('change', (e) => {
                 const target = e.target.value;
                 if (!target || !this.cards[target]) return;
                 const [moved] = this.categories[catKey].splice(idx, 1);
+                // A Criterion keeps its Importance between Categories; an HR Check Item has none,
+                // so one moved there (and later back) is Standard
+                if (target === HR_CHECK_ITEMS_KEY) moved.importance = this.defaultImportance;
                 this.categories[target].push(moved);
                 this.renderItemList(card, listEl, catKey);
                 this.renderItemList(this.cards[target].card, this.cards[target].listEl, target);

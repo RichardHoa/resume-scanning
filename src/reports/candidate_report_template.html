@@ -75,6 +75,10 @@
     .strengths li { color: #14532D; }
     .gaps li { color: #7F1D1D; }
     .partial-tag { font-size: 7.5pt; font-weight: 700; color: #92400E; background: #FEF3C7; border-radius: 3px; padding: 0 4pt; margin-left: 4pt; }
+    .must-have-tag { font-size: 7.5pt; font-weight: 700; color: #DC2626; background: #FEF2F2; border-radius: 3px; padding: 0 4pt; margin-left: 4pt; }
+    .alert.must-have { border-color: #DC2626; background: #FEF2F2; color: #7F1D1D; }
+    .alert.must-have ul { margin-top: 4pt; }
+    .alert .cat { font-weight: 500; color: #475569; }
     .quote {
         background: #F1F5F9;
         border-left: 3px solid #475569;
@@ -106,6 +110,14 @@
     <div class="alert">
         <strong>{{ "Lỗi – cần chạy lại" | upper }}</strong>
         Không thể chấm điểm {% if failed_categories %}các mục: {{ failed_categories | join(", ") }}{% else %}một số mục đánh giá{% endif %}. Kết quả này không được xếp hạng.
+    </div>
+    {% endif %}
+
+    {% if missing_must_haves %}
+    <div class="alert must-have">
+        <strong>Thiếu yêu cầu bắt buộc: {{ missing_must_haves | length }} tiêu chí</strong>
+        CV không cho thấy bằng chứng cho các tiêu chí HR đánh dấu là bắt buộc dưới đây. Ứng viên không bị loại tự động và vẫn được xếp hạng; CV có thể bỏ sót thông tin, nên HR hãy kiểm tra lại với ứng viên.
+        <ul>{% for m in missing_must_haves %}<li>{{ m.criterion }}{% if m.category %} <span class="cat">({{ m.category }})</span>{% endif %}</li>{% endfor %}</ul>
     </div>
     {% endif %}
 
@@ -151,7 +163,7 @@
         <ul class="strengths">
             {% for s in cat.met_criteria %}
             <li>
-                {{ s.text }}{% if s.partial %}<span class="partial-tag">Đáp ứng một phần</span>{% endif %}
+                {{ s.text }}{% if s.must_have %}<span class="must-have-tag">Bắt buộc</span>{% endif %}{% if s.partial %}<span class="partial-tag">Đáp ứng một phần</span>{% endif %}
                 {% for q in s.quotes %}<div class="quote">“{{ q }}”</div>{% endfor %}
             </li>
             {% endfor %}

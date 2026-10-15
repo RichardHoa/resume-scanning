@@ -37,11 +37,19 @@ The date treated as "today" when reading and judging a resume set, e.g. for turn
 _Avoid_: current date (alone), now
 
 **Criterion**:
-A single verbatim requirement string assigned to one Category during decomposition, stored in the RAG store.
+A single verbatim requirement string assigned to one Category during decomposition, stored in the RAG store with its Importance, which is kept apart from the text and never changes it.
 _Avoid_: requirement item
 
+**Importance**:
+How much one Criterion counts inside its Category: Must-have (weight 3), Standard (2) or Nice-to-have (1). The Category score is the mean of its Verdicts weighted by Importance, so a Category of only Standard Criteria scores as a plain mean. The decomposer proposes it from HR's wording (e.g. "bắt buộc" → Must-have, "ưu tiên" → Nice-to-have, otherwise Standard), and HR sets it per Criterion when reviewing the HR RAG. The evaluator LLM never sees it. HR Check Items have none. A Criterion stored without one reads as Standard.
+_Avoid_: priority, weight (alone)
+
+**Missing Must-Have**:
+A flag on an evaluation for each Must-have Criterion that got No Evidence. It is shown to HR and given to the Review Panel as a weakness, but it never rejects the candidate or caps the score: resumes leave things out, so HR decides. A Must-have with Partial evidence only costs weight and raises no flag.
+_Avoid_: dealbreaker, auto-reject
+
 **HR RAG**:
-The stored set of Criteria and HR Check Items for one job, with HR's original requirement text. HR sets it on the website's RAG page (decompose, then review) before any evaluation. Evaluation only reads it: no run builds, changes or deletes it, and a run with no HR RAG stops with an error.
+The stored set of Criteria (each with its Importance) and HR Check Items for one job, with HR's original requirement text. HR sets it on the website's RAG page (decompose, then review the Criteria and their Importance) before any evaluation. Evaluation only reads it: no run builds, changes or deletes it, and a run with no HR RAG stops with an error.
 _Avoid_: RAG store (alone), vector DB
 
 **Verdict**:

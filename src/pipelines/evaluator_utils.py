@@ -2,7 +2,11 @@
 Utility functions for data extraction, list deduplication, PII sanitization, and output validation in Resume Evaluator pipeline.
 """
 import re
+import difflib
 from typing import Dict, List, Any, Optional
+
+from src.core.config import IMPORTANCE_WEIGHTS, DEFAULT_IMPORTANCE, MUST_HAVE
+from src.core.importance import normalize_importance
 
 
 def clean_and_deduplicate_list(items: Any, max_items: int = 10) -> List[str]:
@@ -26,11 +30,40 @@ def clean_and_deduplicate_list(items: Any, max_items: int = 10) -> List[str]:
 
 EMPTY_QUOTE_PLACEHOLDERS = ("null", "none", "n/a", "na", "", "không có", "không", "none.", "nil")
 
+# How close the LLM's echoed criterion text must be to a stored Criterion to take its Importance
+IMPORTANCE_MATCH_MIN_RATIO = 0.85
 
-def validate_category_evaluation(parsed: Any) -> Optional[Dict[str, Any]]:
+
+def _normalize_criterion_text(text: str) -> str:
+    return " ".join(str(text).split()).casefold()
+
+
+def match_criterion_importance(criterion: str, importance_map: Dict[str, str]) -> str:
+    """
+    The Importance of the stored Criterion the LLM's echoed criterion text refers to: an exact match ignoring
+    whitespace and case, else the closest text at IMPORTANCE_MATCH_MIN_RATIO or above, else Standard.
+    Never by position, since the Criteria Permutation bias test reorders the Criteria.
+    """
+    target = _normalize_criterion_text(criterion)
+    if not target or not importance_map:
+        return DEFAULT_IMPORTANCE
+    normalized_map = {_normalize_criterion_text(k): v for k, v in importance_map.items()}
+    if target in normalized_map:
+        return normalize_importance(normalized_map[target])
+    best_ratio, best_importance = 0.0, DEFAULT_IMPORTANCE
+    for key, importance in normalized_map.items():
+        ratio = difflib.SequenceMatcher(None, target, key).ratio()
+        if ratio > best_ratio:
+            best_ratio, best_importance = ratio, importance
+    return normalize_importance(best_importance) if best_ratio >= IMPORTANCE_MATCH_MIN_RATIO else DEFAULT_IMPORTANCE
+
+
+def validate_category_evaluation(parsed: Any, importance_map: Optional[Dict[str, str]] = None) -> Optional[Dict[str, Any]]:
     """
     Validates that parsed JSON contains valid evaluation data.
-    If criteria_evaluations list is present, computes score deterministically from atomic criteria coverage.
+    If criteria_evaluations list is present, computes score deterministically from atomic criteria coverage:
+    the mean of the Verdicts weighted by each Criterion's Importance from importance_map ({criterion_text:
+    importance}). Without a map every Criterion is Standard, i.e. a plain mean.
     Otherwise, validates the numeric score (0-100) and required output fields.
     """
     if not isinstance(parsed, dict) or not parsed:
@@ -43,7 +76,7 @@ def validate_category_evaluation(parsed: Any) -> Optional[Dict[str, Any]]:
     raw_criteria = parsed.get("criteria_evaluations")
     if isinstance(raw_criteria, list) and len(raw_criteria) > 0:
         total_score_acc = 0.0
-        valid_count = 0
+        total_weight = 0.0
         for item in raw_criteria:
             if isinstance(item, dict):
                 crit_text = str(item.get("criterion", "")).strip()
@@ -69,10 +102,13 @@ def validate_category_evaluation(parsed: Any) -> Optional[Dict[str, Any]]:
                 else:
                     s = 0.0
 
-                total_score_acc += s
-                valid_count += 1
+                importance = match_criterion_importance(crit_text, importance_map) if importance_map else DEFAULT_IMPORTANCE
+                weight = IMPORTANCE_WEIGHTS[importance]
+                total_score_acc += weight * s
+                total_weight += weight
                 cleaned_criteria.append({
                     "criterion": crit_text,
+                    "importance": importance,
                     "verdict": verdict if verdict in ("STRONG_EVIDENCE", "PARTIAL_EVIDENCE", "NO_EVIDENCE") else ("STRONG_EVIDENCE" if s >= 0.9 else "PARTIAL_EVIDENCE" if s >= 0.4 else "NO_EVIDENCE"),
                     "score": round(s, 2),
                     "evidence_quote": quote_str,
@@ -81,8 +117,8 @@ def validate_category_evaluation(parsed: Any) -> Optional[Dict[str, Any]]:
                     "reasoning": str(item.get("reasoning", "")).strip()
                 })
 
-        if valid_count > 0:
-            deterministic_score = int(round((total_score_acc / valid_count) * 100.0))
+        if total_weight > 0:
+            deterministic_score = int(round((total_score_acc / total_weight) * 100.0))
 
     # 2. Determine final score (deterministic calculation preferred, fallback to explicit score)
     score: Optional[int] = None
@@ -121,6 +157,22 @@ def validate_category_evaluation(parsed: Any) -> Optional[Dict[str, Any]]:
         result["criteria_evaluations"] = cleaned_criteria
 
     return result
+
+
+def collect_missing_must_haves(dimension_results: Dict[str, Any]) -> List[Dict[str, str]]:
+    """
+    Every must-have Criterion that got NO_EVIDENCE in the reported (median-run) criteria_evaluations, as
+    [{"category", "criterion"}]. A Missing Must-Have only informs HR; it never rejects or caps the candidate.
+    """
+    missing: List[Dict[str, str]] = []
+    for cat_key, dim in (dimension_results or {}).items():
+        if not isinstance(dim, dict) or dim.get("not_applicable"):
+            continue
+        for crit in dim.get("criteria_evaluations") or []:
+            if (isinstance(crit, dict) and crit.get("importance") == MUST_HAVE
+                    and str(crit.get("verdict", "")).upper() == "NO_EVIDENCE"):
+                missing.append({"category": cat_key, "criterion": str(crit.get("criterion", "")).strip()})
+    return missing
 
 
 # The raw resume keys each Category is judged on, passed through unchanged.

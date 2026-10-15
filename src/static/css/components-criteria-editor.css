@@ -151,6 +151,44 @@
     border-color: var(--brand-azure);
 }
 
+/* Importance of a Criterion: weights its Verdict in the Category score */
+.criteria-importance-note {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.criteria-item-importance {
+    flex-shrink: 0;
+    margin-top: 2px;
+    padding: 3px 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-family: var(--font-sans);
+    color: var(--text-secondary);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.criteria-item-importance:hover,
+.criteria-item-importance:focus-visible {
+    border-color: var(--brand-azure);
+}
+
+.criteria-item-importance[data-importance="must_have"] {
+    color: var(--danger);
+    background: var(--danger-bg);
+    border-color: var(--danger);
+}
+
+.criteria-item-importance[data-importance="nice_to_have"] {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
 /* HR Check Items: never scored, so set apart from the five Category cards */
 .criteria-hr-check-card {
     border-style: dashed;
@@ -167,6 +205,10 @@
 @media (max-width: 600px) {
     .criteria-item-row {
         flex-wrap: wrap;
+    }
+
+    .criteria-item-importance {
+        margin-left: 30px;
     }
 
     .criteria-item-move {

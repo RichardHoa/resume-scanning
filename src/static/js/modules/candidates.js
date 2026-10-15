@@ -8,7 +8,7 @@
  */
 
 import { API } from './api.js';
-import { CATEGORY_NAMES } from './criteria-editor.js';
+import { CATEGORY_NAMES, MUST_HAVE } from './criteria-editor.js';
 
 const FAILED_EVALUATION_LABEL = 'Lỗi – cần chạy lại';
 const FEEDBACK_TITLE = 'Nhận xét của hội đồng đánh giá';
@@ -38,6 +38,19 @@ const MISSING_POSITION_MESSAGE = 'CV không ghi vị trí ứng tuyển; hệ th
  */
 function isMissingPosition(cand) {
     return cand.missing_position === true;
+}
+
+const MISSING_MUST_HAVE_LABEL = 'Thiếu yêu cầu bắt buộc';
+const MISSING_MUST_HAVE_MESSAGE = 'CV không cho thấy bằng chứng cho các tiêu chí HR đánh dấu là bắt buộc dưới đây. Ứng viên không bị loại tự động và vẫn được xếp hạng; CV có thể bỏ sót thông tin, nên HR hãy kiểm tra lại với ứng viên.';
+const MUST_HAVE_TAG = '<span class="modal-must-have-tag">Bắt buộc</span>';
+
+/**
+ * Missing Must-Haves: must-have Criteria judged NO_EVIDENCE. They only inform HR; the candidate is still ranked.
+ * Reports saved before Criterion Importance have none.
+ * @returns {Array<{category: string, criterion: string}>}
+ */
+function missingMustHaves(cand) {
+    return Array.isArray(cand.missing_must_haves) ? cand.missing_must_haves : [];
 }
 
 /**
@@ -406,6 +419,10 @@ export class CandidatePoolController {
         const isOcrReview = cand.ocr_applied || cand.intensive_hr_review_required || (Array.isArray(cand.warning) && cand.warning.some(w => typeof w === 'string' && w.includes('OCR')));
         const ocrPillHtml = isOcrReview ? `<span class="badge-ocr-review" title="PDF không có lớp văn bản. Đã dùng OCR để trích xuất văn bản. Cần HR kiểm tra thủ công kỹ lưỡng.">⚠️ CẦN HR KIỂM TRA KỸ (OCR)</span>` : '';
         const missingPositionPillHtml = isMissingPosition(cand) ? `<span class="badge-ocr-review" title="${MISSING_POSITION_MESSAGE}">⚠️ ${MISSING_POSITION_LABEL}</span>` : '';
+        const missing = unscored ? [] : missingMustHaves(cand);
+        const missingMustHavePillHtml = missing.length
+            ? `<span class="badge-missing-must-have" title="${this.escapeHtml(`${MISSING_MUST_HAVE_LABEL}: ${missing.map(m => m.criterion).join('; ')}`)}">⚠️ ${MISSING_MUST_HAVE_LABEL} (${missing.length})</span>`
+            : '';
 
         const emailHtml = email ? `
             <a href="mailto:${this.escapeHtml(email)}" class="cand-email" onclick="event.stopPropagation()" title="Gửi email tới ${this.escapeHtml(email)}">${this.escapeHtml(email)}</a>
@@ -431,6 +448,7 @@ export class CandidatePoolController {
                 <span class="tier-badge ${tierBadgeClass}">${tierLabel}</span>
                 ${ocrPillHtml}
                 ${missingPositionPillHtml}
+                ${missingMustHavePillHtml}
             </div>
 
             ${dimsBreakdownHtml ? `<div class="cand-dimensions-breakdown">${dimsBreakdownHtml}</div>` : ''}
@@ -570,8 +588,10 @@ export class CandidatePoolController {
         ` : '';
 
         const feedbackHtml = unscored ? '' : this.renderCandidateFeedback(cand.candidate_feedback);
+        const missingMustHaveBanner = unscored ? '' : this.renderMissingMustHaves(missingMustHaves(cand));
 
         this.modalEvaluationHtml = `
+            ${missingMustHaveBanner}
             ${missingPositionBanner}
             ${failedEvaluationBanner}
             ${ocrAlertBanner}
@@ -588,6 +608,25 @@ export class CandidatePoolController {
         if (this.modalCloseBtn) {
             this.modalCloseBtn.focus();
         }
+    }
+
+    /**
+     * Renders the Missing Must-Haves banner: must-have Criteria the resume shows no evidence for.
+     * @param {Array<{category: string, criterion: string}>} items - The report's missing_must_haves.
+     * @returns {string} HTML for the banner, or '' when there are none.
+     */
+    renderMissingMustHaves(items) {
+        if (!items.length) return '';
+        const list = items.map(m => `
+            <li>${this.escapeHtml(m.criterion)}${CATEGORY_NAMES[m.category] ? ` <span class="modal-missing-must-have-cat">(${this.escapeHtml(CATEGORY_NAMES[m.category])})</span>` : ''}</li>
+        `).join('');
+        return `
+            <div class="modal-missing-must-have-banner" role="note">
+                <strong>${MISSING_MUST_HAVE_LABEL}: ${items.length} tiêu chí</strong>
+                <p>${MISSING_MUST_HAVE_MESSAGE}</p>
+                <ul class="modal-bullets gaps">${list}</ul>
+            </div>
+        `;
     }
 
     /**
@@ -648,7 +687,7 @@ export class CandidatePoolController {
             .filter(c => c.verdict === 'STRONG_EVIDENCE' || c.verdict === 'PARTIAL_EVIDENCE')
             .map(c => `
                 <li>
-                    ${this.escapeHtml(c.criterion)}${c.verdict === 'PARTIAL_EVIDENCE' ? '<span class="modal-partial-tag">Đáp ứng một phần</span>' : ''}
+                    ${this.escapeHtml(c.criterion)}${c.importance === MUST_HAVE ? MUST_HAVE_TAG : ''}${c.verdict === 'PARTIAL_EVIDENCE' ? '<span class="modal-partial-tag">Đáp ứng một phần</span>' : ''}
                     ${(c.evidence_quotes || []).map(q => `<div class="modal-quote-box">"${this.escapeHtml(q)}"</div>`).join('')}
                 </li>
             `).join('');
@@ -664,7 +703,7 @@ export class CandidatePoolController {
     renderCategoryNoEvidence(d) {
         const list = (d.criteria_evaluations || [])
             .filter(c => c.verdict === 'NO_EVIDENCE')
-            .map(c => `<li>${this.escapeHtml(c.criterion)}</li>`)
+            .map(c => `<li>${this.escapeHtml(c.criterion)}${c.importance === MUST_HAVE ? MUST_HAVE_TAG : ''}</li>`)
             .join('');
         return list ? `<div class="modal-section-title">Tiêu chí chưa có bằng chứng:</div><ul class="modal-bullets gaps">${list}</ul>` : '';
     }

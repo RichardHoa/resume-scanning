@@ -110,8 +110,10 @@ def main():
             resume_name = report.get("resume_name") or os.path.splitext(os.path.basename(path))[0]
             log_dir = os.path.join(log_root, re.sub(r'[^a-zA-Z0-9_-]', '_', resume_name))
             os.makedirs(log_dir, exist_ok=True)
+            # Reports older than Criterion Importance have no Missing Must-Haves; the panel reads that as none
+            panel_report = {**report, "missing_must_haves": report.get("missing_must_haves") or []}
             feedback = panel.review(
-                report, resume, report["standard_requirements"], report["hidden_requirements"],
+                panel_report, resume, report["standard_requirements"], report["hidden_requirements"],
                 language=report.get("language") or args.language, resume_name=resume_name, log_dir=log_dir
             )
             # Only candidate_feedback changes; every score stays exactly as the evaluator wrote it

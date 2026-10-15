@@ -37,7 +37,8 @@ from src.pipelines.evaluator_utils import (
     clean_and_deduplicate_list,
     validate_category_evaluation,
     extract_relevant_resume_field,
-    is_missing_position
+    is_missing_position,
+    collect_missing_must_haves
 )
 from src.pipelines.evaluator_backend import (
     CATEGORY_LABELS,
@@ -173,7 +174,7 @@ class ResumeEvaluator:
         hidden_req: str,
         resume_name: str = "job_requirements",
         log_dir: Optional[str] = None
-    ) -> Optional[Dict[str, List[str]]]:
+    ) -> Optional[Dict[str, List[Any]]]:
         return decompose_requirements_with_llm(self, standard_req, hidden_req, resume_name, log_dir=log_dir)
 
     def decompose_requirements(
@@ -221,8 +222,13 @@ class ResumeEvaluator:
         max_retries: int = 5,
         run_index: Optional[int] = None,
         language: Optional[str] = None,
-        log_dir: Optional[str] = None
+        log_dir: Optional[str] = None,
+        importance_map: Optional[Dict[str, str]] = None
     ) -> Dict[str, Any]:
+        """
+        One evaluation run of a Category. importance_map ({criterion_text: importance}) weights the Verdicts in the
+        Category score; the LLM never sees it, so the prompt is the same whatever Importance HR set.
+        """
         eff_language = language or self.language
         resume_snippet = self._extract_relevant_resume_field(category, resume_data)
         prompt = get_category_evaluation_prompt(category_name, self.model_name, retrieved_criteria, resume_snippet)
@@ -235,7 +241,7 @@ class ResumeEvaluator:
                 json_schema=CATEGORY_EVALUATION_SCHEMA, log_dir=log_dir, max_tokens=CATEGORY_EVAL_MAX_TOKENS
             )
             parsed = clean_and_parse_json(reply.text)
-            validated = validate_category_evaluation(parsed)
+            validated = validate_category_evaluation(parsed, importance_map=importance_map)
 
             if validated is not None:
                 validated["failed"] = False
@@ -279,6 +285,7 @@ class ResumeEvaluator:
         t_cat_start = time.time()
         query_context = json.dumps(self._extract_relevant_resume_field(cat_key, resume_data), ensure_ascii=False)
         retrieved = self.rag.retrieve(cat_key, query_context, top_k=None)
+        importance_map = self.rag.get_importance_map(cat_key)
 
         if not retrieved:
             print(f"[Evaluation] Category '{cat_name}' has no criteria in RAG. Setting 0% weight (not applicable).", file=sys.stderr)
@@ -298,14 +305,18 @@ class ResumeEvaluator:
                 from concurrent.futures import ThreadPoolExecutor
                 def _run_single_eval(run_i: int) -> Dict[str, Any]:
                     return self.evaluate_category(
-                        cat_key, cat_name, resume_data, retrieved, resume_name, run_index=run_i, language=eff_language, log_dir=log_dir
+                        cat_key, cat_name, resume_data, retrieved, resume_name, run_index=run_i, language=eff_language, log_dir=log_dir,
+                        importance_map=importance_map
                     )
                 max_workers = 40
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     eval_runs = list(executor.map(_run_single_eval, range(1, num_evaluations + 1)))
             else:
                 eval_runs = [
-                    self.evaluate_category(cat_key, cat_name, resume_data, retrieved, resume_name, run_index=run_i, language=eff_language, log_dir=log_dir)
+                    self.evaluate_category(
+                        cat_key, cat_name, resume_data, retrieved, resume_name, run_index=run_i, language=eff_language, log_dir=log_dir,
+                        importance_map=importance_map
+                    )
                     for run_i in range(1, num_evaluations + 1)
                 ]
 
@@ -448,6 +459,8 @@ class ResumeEvaluator:
             "hidden_requirements_assessment": dimension_results.get("hidden_culture", {}),
             # Not scored: HR checks these by hand. The Review Panel sees them only so it can leave them out
             HR_CHECK_ITEMS_KEY: self.rag.get_hr_check_items(),
+            # Missing Must-Haves: informs HR (and the Review Panel) only; the candidate is still ranked
+            "missing_must_haves": collect_missing_must_haves(dimension_results),
             "summary": {
                 "total_strengths": sum([len(v["strengths"]) for v in dimension_results.values()]),
                 "total_gaps": sum([len(v["gaps"]) for v in dimension_results.values()])

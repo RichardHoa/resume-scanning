@@ -14,6 +14,7 @@ import threading
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from src.core.config import ROOT_DIR, RAG_DIR, DEFAULT_EMBEDDING_MODEL, HR_CHECK_ITEMS_KEY
+from src.core.importance import normalize_importance, split_criterion_item
 from src.providers.rag_exporter import export_hr_rag_file, get_stored_rag_summary
 
 # Evaluation never builds or changes the HR RAG: HR sets it on the RAG page first, so HR controls exactly what counts
@@ -113,6 +114,9 @@ class LocalCriteriaRAG:
                             "category": meta.get("category", "unknown"),
                             "type": meta.get("type", "standard")
                         }
+                        # HR Check Items are never scored, so they carry no Importance
+                        if doc_obj["category"] != HR_CHECK_ITEMS_KEY:
+                            doc_obj["importance"] = normalize_importance(meta.get("importance"))
                         if idx < len(embs) and embs[idx] is not None:
                             doc_obj["embedding"] = embs[idx]
                         self.documents.append(doc_obj)
@@ -128,6 +132,9 @@ class LocalCriteriaRAG:
                         saved_docs = json.load(f)
                     if isinstance(saved_docs, list):
                         self.documents = saved_docs
+                        for doc in self.documents:
+                            if isinstance(doc, dict) and doc.get("category") != HR_CHECK_ITEMS_KEY:
+                                doc["importance"] = normalize_importance(doc.get("importance"))
                         print(f"[LocalRAG] Loaded {len(self.documents)} persistent requirement criteria items from file backup ({json_path}).", file=sys.stderr)
                         self._compute_embeddings()
                 except Exception as e:
@@ -204,10 +211,11 @@ class LocalCriteriaRAG:
         """Returns a structured summary of all RAG criteria stored in the persistent database."""
         return get_stored_rag_summary(self)
 
-    def ingest_decomposed_dict(self, decomposed: Dict[str, List[str]], standard_req: str = "", hidden_req: str = ""):
+    def ingest_decomposed_dict(self, decomposed: Dict[str, List[Any]], standard_req: str = "", hidden_req: str = ""):
         """
-        Ingests a decomposed dictionary mapping category names to lists of criteria strings directly into RAG.
-        Updates ChromaDB / fallback storage, recomputes vector embeddings, and generates hr_rag.txt.
+        Ingests a decomposed dictionary mapping category names to lists of criteria directly into RAG.
+        Each Criterion is a plain string (read as Standard) or {"text": ..., "importance": ...}; HR Check Items
+        keep only their text. Updates ChromaDB / fallback storage, recomputes vector embeddings, and generates hr_rag.txt.
         """
         with self._lock:
             self.clear_rag_database()
@@ -222,11 +230,14 @@ class LocalCriteriaRAG:
             documents = []
             metadatas = []
             item_counter = 0
+            # The same items with Importance resolved, written to hr_rag.txt
+            normalized: Dict[str, List[Any]] = {}
 
             for cat, items in decomposed.items():
                 if isinstance(items, list):
+                    normalized[cat] = []
                     for item in items:
-                        cleaned_item = str(item).strip()
+                        cleaned_item, importance = split_criterion_item(item)
                         if cleaned_item:
                             item_counter += 1
                             doc_id = f"crit_{cat}_{item_counter}"
@@ -241,11 +252,19 @@ class LocalCriteriaRAG:
                                 "category": cat,
                                 "type": req_type
                             }
+                            meta = {"category": cat, "type": req_type, "created_at": now_str}
+                            # HR Check Items are never scored, so they carry no Importance (ADR 0004)
+                            if cat == HR_CHECK_ITEMS_KEY:
+                                normalized[cat].append(cleaned_item)
+                            else:
+                                doc_obj["importance"] = importance
+                                meta["importance"] = importance
+                                normalized[cat].append({"text": cleaned_item, "importance": importance})
                             self.documents.append(doc_obj)
                             
                             ids.append(doc_id)
                             documents.append(cleaned_item)
-                            metadatas.append({"category": cat, "type": req_type, "created_at": now_str})
+                            metadatas.append(meta)
 
             embeddings = []
             if self.model and documents:
@@ -281,7 +300,7 @@ class LocalCriteriaRAG:
                 except Exception as e:
                     print(f"[LocalRAG Error] Failed to write fallback JSON: {e}", file=sys.stderr)
 
-            self.export_hr_rag_file(standard_req, hidden_req, decomposed)
+            self.export_hr_rag_file(standard_req, hidden_req, normalized)
 
     def ingest_requirements(self, standard_req: str, hidden_req: str, llm_decomposer_func=None, force_reingest: bool = False):
         """
@@ -322,7 +341,7 @@ class LocalCriteriaRAG:
         self.ingest_requirements(standard_req, hidden_req, llm_decomposer_func=llm_decomposer_func, force_reingest=True)
         return self.get_stored_rag_summary()
 
-    def update_criteria_manually(self, categories: Dict[str, List[str]], standard_req: Optional[str] = None, hidden_req: Optional[str] = None) -> Dict[str, Any]:
+    def update_criteria_manually(self, categories: Dict[str, List[Any]], standard_req: Optional[str] = None, hidden_req: Optional[str] = None) -> Dict[str, Any]:
         """
         Updates stored RAG criteria with manual user edits, re-computes embeddings, and updates hr_rag.txt.
         Requirement text left as None falls back to the stored originals, so a Criteria-only
@@ -342,7 +361,15 @@ class LocalCriteriaRAG:
         with self._lock:
             return [doc["text"] for doc in self.documents if doc.get("category") == HR_CHECK_ITEMS_KEY]
 
-    def export_hr_rag_file(self, standard_req: str, hidden_req: str, decomposed: Dict[str, List[str]], output_path: str = "hr_rag.txt"):
+    def get_importance_map(self, category: str) -> Dict[str, str]:
+        """{criterion_text: importance} for one Category, used only by the deterministic Category scoring."""
+        with self._lock:
+            return {
+                doc["text"]: normalize_importance(doc.get("importance"))
+                for doc in self.documents if doc.get("category") == category
+            }
+
+    def export_hr_rag_file(self, standard_req: str, hidden_req: str, decomposed: Dict[str, List[Any]], output_path: str = "hr_rag.txt"):
         """Exports a summary detailing how HR requirements are classified into 5 RAG dimensions."""
         export_hr_rag_file(standard_req, hidden_req, decomposed, output_path)
 

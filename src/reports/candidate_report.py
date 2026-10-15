@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Optional
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pypdf import PdfWriter
 
+from src.core.config import MUST_HAVE
+
 TEMPLATE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_NAME = "candidate_report_template.html"
 
@@ -83,6 +85,8 @@ def met_criteria(dim: Dict[str, Any]) -> List[Dict[str, Any]]:
         {
             "text": c.get("criterion", ""),
             "partial": c.get("verdict") == "PARTIAL_EVIDENCE",
+            # Reports made before Criterion Importance have none, and show no tag
+            "must_have": c.get("importance") == MUST_HAVE,
             "quotes": c.get("evidence_quotes") or []
         }
         for c in dim.get("criteria_evaluations") or []
@@ -120,12 +124,19 @@ def _view(report: Dict[str, Any]) -> Dict[str, Any]:
                 "gaps": dim.get("gaps") or []
             })
 
+    # Missing Must-Haves inform HR only; older reports have none
+    missing_must_haves = [] if failed else [
+        {"criterion": m.get("criterion", ""), "category": CATEGORY_NAMES.get(m.get("category"), "")}
+        for m in report.get("missing_must_haves") or [] if isinstance(m, dict)
+    ]
+
     feedback = report.get("candidate_feedback") or {}
     return {
         "name": basic_name or email or report.get("candidate_identifier") or report.get("resume_name") or "Ứng viên",
         "email": email if basic_name else "",
         "failed": failed,
         "failed_categories": [CATEGORY_NAMES.get(k, k) for k in report.get("failed_categories") or []],
+        "missing_must_haves": missing_must_haves,
         "ocr": bool(report.get("ocr_applied") or report.get("intensive_hr_review_required")),
         "score": "—" if failed else f"{score:.1f}",
         "score_color": "#64748B" if failed else _score_color(score),
