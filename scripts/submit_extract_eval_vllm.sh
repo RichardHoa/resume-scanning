@@ -18,9 +18,13 @@
 # runs batch evaluation (Step 2) using the active vLLM server.
 # Log outputs are captured in dedicated log files under logs/.
 #
-# Dataset: CnB by default (Vietnamese-dataset/CnB + hr-requirement.txt).
-# Pass --tech (anywhere among the arguments) for Vietnamese-dataset/Tech +
-# hr-requirement-tech.txt. Explicit PDF dir / job req arguments still override.
+# Evaluation uses the HR RAG as HR set it on the website's RAG page, and never builds,
+# changes or clears it: set the HR RAG for the job before submitting, or the job stops
+# before it starts the server.
+#
+# Dataset: CnB by default (Vietnamese-dataset/CnB). Pass --tech (anywhere among the
+# arguments) for Vietnamese-dataset/Tech; the HR RAG must then hold the Tech job's
+# requirements (hr-requirement-tech.txt). An explicit PDF dir argument still overrides.
 # The Tech resumes are old, so --tech also sets the Reference Date (the date the prompts treat as today)
 # to June 2015.
 # -----------------------------------------------------------------------------
@@ -36,10 +40,8 @@ done
 set -- "${POSITIONAL_ARGS[@]}"
 
 if [ "$DATASET" = "Tech" ]; then
-  DEFAULT_JOB_REQ_NAME="hr-requirement-tech.txt"
   REFERENCE_DATE="2015-06-30"
 else
-  DEFAULT_JOB_REQ_NAME="hr-requirement.txt"
   REFERENCE_DATE=""
 fi
 
@@ -47,7 +49,6 @@ RAW_PDF_DIR="$1"
 RAW_MODEL="$2"
 RAW_OUTPUT_DIR="$3"
 RAW_EVAL_DIR="$4"
-RAW_JOB_REQ="$5"
 INITIAL_CWD="$(pwd)"
 
 # -----------------------------------------------------------------------------
@@ -171,37 +172,19 @@ else
   EVAL_DIR="$PROJECT_ROOT/evaluation_json"
 fi
 
-# Job Requirements File (Default: hr-requirement.txt, or hr-requirement-tech.txt with --tech, inside project root)
-if [ -n "$RAW_JOB_REQ" ]; then
-  if [[ "$RAW_JOB_REQ" = /* ]]; then
-    JOB_REQ="$RAW_JOB_REQ"
-  elif [ -f "$INITIAL_CWD/$RAW_JOB_REQ" ]; then
-    JOB_REQ="$(cd "$(dirname "$INITIAL_CWD/$RAW_JOB_REQ")" && pwd)/$(basename "$RAW_JOB_REQ")"
-  elif [ -f "$PROJECT_ROOT/$RAW_JOB_REQ" ]; then
-    JOB_REQ="$(cd "$(dirname "$PROJECT_ROOT/$RAW_JOB_REQ")" && pwd)/$(basename "$RAW_JOB_REQ")"
-  else
-    JOB_REQ="$RAW_JOB_REQ"
-  fi
-else
-  JOB_REQ="$PROJECT_ROOT/$DEFAULT_JOB_REQ_NAME"
-fi
-
 if [ ! -d "$PDF_DIR" ]; then
   echo "[ERROR] PDF directory '$PDF_DIR' does not exist." >&2
   exit 1
 fi
 
-if [ ! -f "$JOB_REQ" ]; then
-  echo "[ERROR] Job requirement file '$JOB_REQ' does not exist." >&2
-  exit 1
-fi
+require_hr_rag || exit 1
 
 # -----------------------------------------------------------------------------
 # STEP 4: Reset Workspace to Blank State & Create Target Directories
 # -----------------------------------------------------------------------------
 echo "====================================================================="
 echo "[$(date +'%Y-%m-%d %H:%M:%S')] STEP 4: Resetting workspace to blank state..."
-echo "Clearing extraction markdowns, output JSONs, evaluation JSONs, and RAG vector storage."
+echo "Clearing extraction markdowns, output JSONs and evaluation JSONs (the HR RAG is kept)."
 echo "====================================================================="
 
 mkdir -p "$PROJECT_ROOT/logs" \
@@ -211,7 +194,6 @@ mkdir -p "$PROJECT_ROOT/logs" \
          "$PROJECT_ROOT/eval_results" \
          "$PROJECT_ROOT/broken-json" \
          "$PROJECT_ROOT/approved_jsons" \
-         "$PROJECT_ROOT/rag" \
          "$OUTPUT_DIR" \
          "$EVAL_DIR"
 
@@ -221,8 +203,6 @@ rm -rf "$PROJECT_ROOT/extraction_markdown"/*
 rm -rf "$PROJECT_ROOT/eval_results"/*
 rm -rf "$PROJECT_ROOT/broken-json"/*
 rm -rf "$PROJECT_ROOT/approved_jsons"/*
-rm -rf "$PROJECT_ROOT/rag"/*
-rm -f "$PROJECT_ROOT/hr_rag.txt"
 rm -f "$PROJECT_ROOT/logging/token_usage.jsonl"
 
 # -----------------------------------------------------------------------------
@@ -249,7 +229,6 @@ echo "[$(date +'%H:%M:%S')] Target PDF Directory: $PDF_DIR" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Target Output Directory: $OUTPUT_DIR" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Target Evaluation Directory: $EVAL_DIR" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL" | tee -a "$JOB_LOG"
-echo "[$(date +'%H:%M:%S')] Target Job Requirement File: $JOB_REQ" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Server Log File: $VLLM_LOG" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Extractor Log File: $EXTRACT_LOG" | tee -a "$JOB_LOG"
@@ -297,7 +276,6 @@ python3 -u "$PROJECT_ROOT/src/step_2_evaluate.py" \
   --backend vllm \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --dir "$OUTPUT_DIR" \
-  --job-req "$JOB_REQ" \
   --output "$EVAL_DIR" \
   --reference-date "$REFERENCE_DATE" 2>&1 | tee "$EVAL_LOG" | tee -a "$JOB_LOG"
 

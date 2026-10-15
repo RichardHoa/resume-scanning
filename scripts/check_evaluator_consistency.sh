@@ -100,6 +100,7 @@ echo "[$(date +'%Y-%m-%d %H:%M:%S')] STEP 3: Inspecting GPU hardware allocation.
 nvidia-smi 2>/dev/null || echo "nvidia-smi not available"
 echo "====================================================================="
 
+require_hr_rag || exit 1
 PORT=$(find_free_port)
 resolve_model_arg "$RAW_MODEL" || exit 1
 
@@ -129,7 +130,6 @@ python3 -u "$PROJECT_ROOT/scripts/run_consistency.py" \
   --backend vllm \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --dir output_jsons \
-  --job-req hr-requirement.txt \
   --workers 6 \
   --rounds 20 \
   --num-evaluations 20 \

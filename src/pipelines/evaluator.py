@@ -411,15 +411,8 @@ class ResumeEvaluator:
         hidden_req = hidden_req or ""
         resume_data = resume_data if isinstance(resume_data, dict) else {}
 
-        # 1. Ingest requirements into Local RAG
-        t_decomp_start = time.time()
-        self.rag.ingest_requirements(
-            standard_req,
-            hidden_req,
-            llm_decomposer_func=lambda s, h: self._decompose_requirements_with_llm(s, h, resume_name, log_dir=log_dir)
-        )
-        decomp_time = time.time() - t_decomp_start
-        print(f"[Timing Log] [{resume_name}] HR Requirement Categorization took: {decomp_time:.2f}s", file=sys.stderr)
+        # 1. Judge against the HR RAG as HR set it; evaluation never builds or changes it
+        self.rag.require_stored_rag()
 
         # 2. Evaluate each category
         cat_eval_outputs = self._evaluate_all_categories(resume_data, resume_name, num_evaluations, language=eff_language, log_dir=log_dir)
@@ -448,7 +441,6 @@ class ResumeEvaluator:
             "match_recommendation": recommendation,
             "evaluated_at": datetime.now().isoformat(),
             "execution_timings": {
-                "requirement_decomposition_seconds": round(decomp_time, 2),
                 "total_resume_evaluation_seconds": round(total_resume_time, 2),
                 "category_timings_seconds": category_timings
             },

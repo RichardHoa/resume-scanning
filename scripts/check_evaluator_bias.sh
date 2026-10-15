@@ -144,6 +144,7 @@ echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT"
 export VLLM_URL="http://127.0.0.1:$PORT/v1"
 export MODEL_NAME="$MODEL"
 
+require_hr_rag || exit 1
 start_vllm_server "$MODEL" "$PORT" "$PROJECT_ROOT/logs/vllm_evaluator_bias_${MODEL_KEY}.log" || exit 1
 
 echo "=== vLLM Server Ready! ==="

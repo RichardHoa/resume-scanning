@@ -68,7 +68,7 @@ REQUIREMENTS_DECOMPOSITION_MAX_TOKENS = 4096
 # AI Proofreading Pass (src/cli/proofread.py): a page task rewrites at most one page of text; a note task
 # thinks first. Retries after the first attempt sample, as an identical prompt at temperature 0 fails the same way
 PROOFREAD_PAGE_MAX_TOKENS = 4096
-PROOFREAD_NOTE_MAX_TOKENS = 8192
+PROOFREAD_NOTE_MAX_TOKENS = 16384
 PROOFREAD_RETRY_TEMPERATURE = 0.3
 
 # Requirement-scrutiny step (web-only; surfaces Implicit Assumptions as Clarification Questions

@@ -40,6 +40,10 @@ _Avoid_: current date (alone), now
 A single verbatim requirement string assigned to one Category during decomposition, stored in the RAG store.
 _Avoid_: requirement item
 
+**HR RAG**:
+The stored set of Criteria and HR Check Items for one job, with HR's original requirement text. HR sets it on the website's RAG page (decompose, then review) before any evaluation. Evaluation only reads it: no run builds, changes or deletes it, and a run with no HR RAG stops with an error.
+_Avoid_: RAG store (alone), vector DB
+
 **Verdict**:
 The judgement the LLM gives one Criterion for one candidate: Strong, Partial or No Evidence. The LLM writes its reasoning before it writes the Verdict. The LLM never produces a score; the Category score is derived from the Verdicts.
 _Avoid_: score (for the LLM's output), category (collides with Category)

@@ -16,6 +16,27 @@ from typing import Dict, List, Any, Optional
 from src.core.config import ROOT_DIR, RAG_DIR, DEFAULT_EMBEDDING_MODEL, HR_CHECK_ITEMS_KEY
 from src.providers.rag_exporter import export_hr_rag_file, get_stored_rag_summary
 
+# Evaluation never builds or changes the HR RAG: HR sets it on the RAG page first, so HR controls exactly what counts
+NO_HR_RAG_MESSAGE = (
+    "No HR RAG is stored. Set the HR requirements on the website's RAG page (decompose them and review the "
+    "Criteria) before running an evaluation; evaluation never builds or changes the HR RAG."
+)
+
+
+def stored_criteria_count() -> int:
+    """Items (Criteria and HR Check Items) in the stored HR RAG, read without loading the embedding model."""
+    try:
+        import chromadb
+        client = chromadb.PersistentClient(path=os.path.join(RAG_DIR, "chroma_db"))
+        return client.get_or_create_collection(name="criteria_rag", metadata={"hnsw:space": "cosine"}).count()
+    except Exception:
+        json_path = os.path.join(RAG_DIR, "criteria_rag.json")
+        if not os.path.exists(json_path):
+            return 0
+        with open(json_path, "r", encoding="utf-8") as f:
+            saved_docs = json.load(f)
+        return len(saved_docs) if isinstance(saved_docs, list) else 0
+
 
 class LocalCriteriaRAG:
     """
@@ -115,6 +136,11 @@ class LocalCriteriaRAG:
     def has_stored_rag(self) -> bool:
         """Returns True if ChromaDB or fallback storage contains stored requirement criteria."""
         return len(self.documents) > 0
+
+    def require_stored_rag(self):
+        """Raises RuntimeError(NO_HR_RAG_MESSAGE) unless HR has set the HR RAG."""
+        if not self.has_stored_rag():
+            raise RuntimeError(NO_HR_RAG_MESSAGE)
 
     def clear_rag_database(self):
         """Clears all stored RAG criteria from persistent ChromaDB collection/file backup and deletes hr_rag.txt."""

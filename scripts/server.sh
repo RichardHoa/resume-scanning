@@ -199,6 +199,9 @@ start_vllm() {
   echo "$PORT" > "$VLLM_PORT_FILE"
 
   start_vllm_server "$MODEL" "$PORT" "$VLLM_LOG_FILE" || return 1
+  # start_vllm_server traps EXIT/INT/TERM to kill vLLM when this shell exits (meant for batch jobs).
+  # Here vLLM must outlive this script and the daemon; it is stopped explicitly via --stop / --stop-vllm.
+  trap - EXIT INT TERM
 
   if [ -n "$VLLM_PID" ]; then
     echo "$VLLM_PID" > "$VLLM_PID_FILE"

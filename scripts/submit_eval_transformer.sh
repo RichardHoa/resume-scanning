@@ -104,7 +104,6 @@ python3 -u "$PROJECT_ROOT/src/step_2_evaluate.py" \
   --model-name "$MODEL" \
   --backend transformers \
   --dir output_jsons \
-  --job-req hr-requirement.txt \
   --output evaluation_json
 
 echo "=== Batch Evaluation Job Finished ==="

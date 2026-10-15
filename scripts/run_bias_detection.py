@@ -230,20 +230,13 @@ def main():
         evaluator.load_model()
 
     rag_db_path = os.path.join(RAG_DIR, "chroma_db")
-    rag_status = "Collection loaded from persistent ChromaDB" if evaluator.rag.has_stored_rag() else "Empty (auto-ingesting from hr-requirement.txt)"
-
-    if not evaluator.rag.has_stored_rag():
-        hr_req_file = os.path.join(_PROJECT_ROOT, "hr-requirement.txt")
-        if os.path.isfile(hr_req_file):
-            print(f"[RAG Ingestion] Ingesting requirements from {hr_req_file}...", file=sys.stderr)
-            with open(hr_req_file, "r", encoding="utf-8") as f:
-                standard_req = f.read()
-            evaluator.rag.ingest_requirements(
-                standard_req,
-                "",
-                llm_decomposer_func=lambda s, h: evaluator._decompose_requirements_with_llm(s, h, "bias_init")
-            )
-            rag_status = f"Ingested from {hr_req_file}"
+    # Evaluation never builds or changes the HR RAG: HR sets it on the RAG page first
+    try:
+        evaluator.rag.require_stored_rag()
+    except RuntimeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    rag_status = "Collection loaded from persistent ChromaDB"
 
     # 3. Transparent Provenance Logging
     log_data_provenance_report(

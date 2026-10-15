@@ -19,7 +19,7 @@ os.chdir(_PROJECT_ROOT)
 
 from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL
 from src.pipelines.evaluator import ResumeEvaluator
-from src.cli.evaluate import load_requirements
+from src.cli.evaluate import load_hr_rag_requirements
 
 
 def extract_candidate_email(resume_data: dict, filename: str) -> str:
@@ -45,9 +45,6 @@ def extract_candidate_email(resume_data: dict, filename: str) -> str:
 def parse_args():
     parser = argparse.ArgumentParser(description="Candidate Evaluation Consistency Test (20 Rounds)")
     parser.add_argument("--dir", type=str, default="output_jsons", help="Directory containing extracted resume JSON files")
-    parser.add_argument("--job-req", type=str, default="hr-requirement.txt", help="Path to HR requirements file")
-    parser.add_argument("--hidden-req", type=str, default="", help="Path to hidden requirements file")
-    parser.add_argument("--hr-req", type=str, default="", help="Path to combined HR requirements file")
     parser.add_argument("--model-name", type=str, default=DEFAULT_LLM_MODEL, help="LLM model name")
     parser.add_argument("--backend", type=str, default="vllm", choices=["transformers", "vllm"], help="Inference backend")
     parser.add_argument("--vllm-url", type=str, default=DEFAULT_VLLM_URL, help="vLLM server URL")
@@ -108,25 +105,16 @@ def main():
     csv_headers = ["round"] + candidate_emails
     print(f"[CSV Matrix Setup] Matrix dimensions: {args.rounds} rows x {len(csv_headers)} columns wide.", file=sys.stderr)
 
-    # 2. Load requirements and initialize evaluator
-    standard_req, hidden_req = load_requirements(args)
-
+    # 2. Initialize evaluator and load requirements from the HR RAG HR set beforehand
     evaluator = ResumeEvaluator(
         model_name=args.model_name,
         backend=args.backend,
         vllm_url=args.vllm_url,
         mock=False
     )
+    standard_req, hidden_req = load_hr_rag_requirements(evaluator)
 
     evaluator.load_model()
-
-    if standard_req or hidden_req:
-        print("[HR Requirements] Pre-ingesting criteria into RAG vector store...", file=sys.stderr)
-        evaluator.rag.ingest_requirements(
-            standard_req,
-            hidden_req,
-            llm_decomposer_func=lambda s, h: evaluator._decompose_requirements_with_llm(s, h, "consistency_init")
-        )
 
     # 3. Open CSV and write header
     csv_file_path = args.output

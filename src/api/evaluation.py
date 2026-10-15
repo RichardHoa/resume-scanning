@@ -32,6 +32,7 @@ from src.core.evaluation_order import (
 )
 from src.core.resume_pdfs import find_resume_pdf
 from src.reports.candidate_report import build_candidate_report_pdf
+from src.providers.rag_engine import NO_HR_RAG_MESSAGE
 
 router = APIRouter(prefix="/api", tags=["evaluation"])
 
@@ -57,7 +58,7 @@ async def _run_batch_evaluation(
 ) -> dict:
     """
     Evaluates scanned resumes against HR Standard & Hidden Requirements strictly in secret evaluation_order.
-    Logs execution timings per requirement decomposition, per resume, and per dimension category.
+    Logs execution timings per resume and per dimension category.
     Outputs all raw prompt context & response logs into a structured web_evaluations folder hierarchy.
     Runs evaluation in worker thread via asyncio.to_thread to prevent blocking the FastAPI event loop.
     Calls on_progress(completed, total) once the candidate list is known and after each candidate
@@ -91,6 +92,8 @@ async def _run_batch_evaluation(
                 llm_decomposer_func=lambda s, h: state.evaluator._decompose_requirements_with_llm(s, h, "batch_init"),
                 force_reingest=True
             )
+        if not state.evaluator.rag.has_stored_rag():
+            raise HTTPException(status_code=400, detail=NO_HR_RAG_MESSAGE)
 
         # Create structured logging folder hierarchy for web evaluation batch session
         batch_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -248,10 +251,8 @@ async def _run_batch_evaluation(
         for res in results:
             rname = res.get("resume_name", "unknown")
             timings = res.get("execution_timings", {}) if isinstance(res.get("execution_timings"), dict) else {}
-            t_decomp = timings.get("requirement_decomposition_seconds", 0.0)
             t_resume = timings.get("total_resume_evaluation_seconds", 0.0)
             print(f"Resume: '{rname}' (Tier {res.get('tier', 3)})", file=sys.stderr)
-            print(f"  ├─ HR Requirement Categorization: {t_decomp:.2f}s", file=sys.stderr)
             print(f"  ├─ Total Resume Evaluation:       {t_resume:.2f}s", file=sys.stderr)
             cat_t = timings.get("category_timings_seconds", {}) if isinstance(timings.get("category_timings_seconds"), dict) else {}
             for cat_k, cat_v in cat_t.items():
