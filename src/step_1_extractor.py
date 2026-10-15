@@ -14,8 +14,6 @@ if _PROJECT_ROOT not in sys.path:
 from src.core.json_utils import load_schema_from_file, extract_json_substring, repair_truncated_json
 from src.prompts.extractor_prompts import get_system_prompt
 from src.providers.llm_backend import (
-    load_local_model,
-    run_local_inference,
     run_vllm_inference,
     run_mock_extraction,
 )

@@ -12,7 +12,6 @@ if _PROJECT_ROOT not in sys.path:
 import json
 import time
 import statistics
-import threading
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
@@ -43,7 +42,6 @@ from src.pipelines.evaluator_utils import (
 from src.pipelines.evaluator_backend import (
     CATEGORY_LABELS,
     LLMReply,
-    call_transformers_backend,
     call_vllm_backend,
     decompose_requirements_with_llm,
     scrutinize_requirements_with_llm,
@@ -56,13 +54,6 @@ from src.pipelines.review_panel import create_review_panel
 _clean_and_deduplicate_list = clean_and_deduplicate_list
 _validate_category_evaluation = validate_category_evaluation
 
-# The transformers code path is kept in the repo but refused at runtime
-TRANSFORMERS_BACKEND_REFUSED = (
-    "The transformers backend is no longer supported for evaluation. "
-    "Start a vLLM server and use '--backend vllm', or use '--mock'."
-)
-
-
 class ResumeEvaluator:
     """
     Resume Evaluator Agent powered by local RAG criteria + LLM / vLLM.
@@ -70,46 +61,23 @@ class ResumeEvaluator:
     def __init__(
         self,
         model_name: str = DEFAULT_LLM_MODEL,
-        backend: str = "vllm",
         vllm_url: str = DEFAULT_VLLM_URL,
         mock: bool = False,
         language: str = "vietnamese"
     ):
-        if backend == "transformers":
-            raise ValueError(TRANSFORMERS_BACKEND_REFUSED)
         self.model_name = model_name or DEFAULT_LLM_MODEL
-        self.backend = backend
         self.vllm_url = vllm_url
         self.mock = mock
         self.language = language
         self.rag = LocalCriteriaRAG()
         self.review_panel = create_review_panel(mock, vllm_url, self.model_name)
 
-        self.tokenizer = None
-        self.model = None
-        self._llm_lock = threading.Lock()
-
     def load_model(self):
-        """Loads HuggingFace model or checks vLLM connection."""
+        """Reports the vLLM server in use (nothing is loaded locally)."""
         if self.mock:
             print("[ResumeEvaluator] Running in MOCK mode. Model will not be loaded.", file=sys.stderr)
             return
-
-        if self.backend == "transformers":
-            import torch
-            from transformers import AutoTokenizer, AutoModelForCausalLM
-
-            print(f"[ResumeEvaluator] Loading HuggingFace model: {self.model_name}...", file=sys.stderr)
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, trust_remote_code=True)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_name,
-                torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
-                device_map="auto" if torch.cuda.is_available() else None,
-                trust_remote_code=True
-            )
-            print("[ResumeEvaluator] Model loaded successfully!", file=sys.stderr)
-        elif self.backend == "vllm":
-            print(f"[ResumeEvaluator] Using vLLM server backend at {self.vllm_url}", file=sys.stderr)
+        print(f"[ResumeEvaluator] Using vLLM server backend at {self.vllm_url}", file=sys.stderr)
 
     def _call_llm(
         self,
@@ -145,18 +113,10 @@ class ResumeEvaluator:
             {"role": "user", "content": prompt}
         ]
 
-        if self.backend == "transformers":
-            reply = LLMReply(self._call_transformers_backend(prompt, messages, temperature=temperature, max_tokens=max_tokens))
-        elif self.backend == "vllm":
-            reply = self._call_vllm_backend(messages, temperature=temperature, json_schema=json_schema, max_tokens=max_tokens, step=category)
-        else:
-            reply = LLMReply("")
+        reply = self._call_vllm_backend(messages, temperature=temperature, json_schema=json_schema, max_tokens=max_tokens, step=category)
 
         log_llm_call(full_prompt, reply.text, category, resume_name, run_index=run_index, log_dir=log_dir)
         return reply
-
-    def _call_transformers_backend(self, prompt: str, messages: List[Dict[str, str]], temperature: float = 0.0, max_tokens: int = MAX_NEW_TOKENS) -> str:
-        return call_transformers_backend(self, prompt, messages, temperature=temperature, max_tokens=max_tokens)
 
     def _call_vllm_backend(
         self,
@@ -301,7 +261,7 @@ class ResumeEvaluator:
                 "not_applicable": True
             }
         else:
-            if self.backend == "vllm" and num_evaluations > 1:
+            if num_evaluations > 1:
                 from concurrent.futures import ThreadPoolExecutor
                 def _run_single_eval(run_i: int) -> Dict[str, Any]:
                     return self.evaluate_category(

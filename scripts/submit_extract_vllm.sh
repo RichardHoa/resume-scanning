@@ -150,7 +150,6 @@ python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
   --dir "$PDF_DIR" \
   --output "$OUTPUT_DIR" \
   --model-name "$MODEL" \
-  --backend vllm \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --workers 6
 

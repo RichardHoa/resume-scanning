@@ -120,14 +120,12 @@ if [ "$JSON_COUNT" -eq 0 ]; then
     --dir pdfs \
     --output output_jsons \
     --model-name "$MODEL" \
-    --backend vllm \
     --vllm-url "http://127.0.0.1:$PORT/v1"
 fi
 
 echo "=== Starting 20-Round Consistency Evaluation Matrix Generation ==="
 python3 -u "$PROJECT_ROOT/scripts/run_consistency.py" \
   --model-name "$MODEL" \
-  --backend vllm \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --dir output_jsons \
   --workers 6 \

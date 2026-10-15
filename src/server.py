@@ -6,24 +6,15 @@ Provides a web UI and REST API for uploading PDF resumes and receiving
 structured JSON extractions.  Wraps :class:`ResumeExtractor` from
 ``step_1_extractor.py``.
 
-Backend selection:
-    This server defaults to ``--backend vllm`` because the web server
-    use-case (concurrent browser requests) is where vLLM's continuous
-    batching provides a real throughput advantage.  A running vLLM server
-    must be started first (see ``scripts/server.sh --start-vllm``).
-
-    For simple one-off or batch CLI usage without a web UI, prefer
-    running ``step_1_extractor.py`` directly with the default HuggingFace
-    Transformers backend (``--backend transformers``).
+Inference runs on a vLLM server, which must be started first
+(see ``scripts/server.sh --start-vllm``).
 
 Usage:
     # Start vLLM server first
     ./scripts/server.sh --start-vllm
 
     # Then start this web server
-    python src/server.py                            # defaults to vLLM
-
-    Evaluation refuses the transformers backend, so the server does too.
+    python src/server.py
 """
 import os
 import sys
@@ -43,7 +34,6 @@ if PARENT_DIR not in sys.path:
 
 from step_1_extractor import ResumeExtractor
 from step_2_evaluate import ResumeEvaluator
-from src.pipelines.evaluator import TRANSFORMERS_BACKEND_REFUSED
 from src.core.state import state
 from src.core.evaluation_order import load_evaluation_order, set_tech_mode
 from src.core.reference_date import set_reference_date, TECH_REFERENCE_DATE
@@ -55,10 +45,8 @@ parser.add_argument("--model", type=str, default=None,
                     help="Model name (auto-detected from vLLM server if not provided)")
 parser.add_argument("--mock", action="store_true",
                     help="Mock mode: use pre-defined mock extraction without loading the model")
-parser.add_argument("--backend", type=str, default="vllm", choices=["transformers", "vllm"],
-                    help="Inference backend: 'transformers' (load model locally) or 'vllm' (call a running vLLM server)")
 parser.add_argument("--vllm-url", type=str, default="http://127.0.0.1:8100/v1",
-                    help="Base URL of the vLLM OpenAI-compatible server (only used with --backend vllm)")
+                    help="Base URL of the vLLM OpenAI-compatible server")
 parser.add_argument("--host", type=str, default="0.0.0.0",
                     help="Host bind address")
 parser.add_argument("--port", type=int, default=8005,
@@ -68,8 +56,6 @@ parser.add_argument("--tech", action="store_true",
 
 # Use parse_known_args so that uvicorn flags like --reload do not crash our parser
 args, unknown_args = parser.parse_known_args()
-if args.backend == "transformers":
-    parser.error(TRANSFORMERS_BACKEND_REFUSED)
 
 # Before any prompt is built: the Tech resume set is ranked by its own secret file and read as of June 2015
 set_tech_mode(args.tech)
@@ -85,23 +71,16 @@ os.makedirs(state.temp_dir, exist_ok=True)
 os.makedirs(state.static_dir, exist_ok=True)
 
 # Initialize the global extractor and evaluator instances in state
-state.extractor = ResumeExtractor(
-    model_name=args.model, mock=args.mock,
-    backend=args.backend, vllm_url=args.vllm_url
-)
+state.extractor = ResumeExtractor(model_name=args.model, mock=args.mock, vllm_url=args.vllm_url)
 
-state.evaluator = ResumeEvaluator(
-    model_name=args.model, mock=args.mock,
-    backend=args.backend, vllm_url=args.vllm_url
-)
+state.evaluator = ResumeEvaluator(model_name=args.model, mock=args.mock, vllm_url=args.vllm_url)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load model once at startup to optimize processing times."""
+    """Resolves the vLLM model name once at startup."""
     print("----------------------------------------------------------------", file=sys.stderr)
     print("Initializing Resume Extraction & Evaluation Server", file=sys.stderr)
-    print(f"Backend: {args.backend}", file=sys.stderr)
     print(f"Mock Mode: {args.mock}", file=sys.stderr)
     print(f"Tech Mode: {args.tech}", file=sys.stderr)
     print("----------------------------------------------------------------", file=sys.stderr)
@@ -114,13 +93,7 @@ async def lifespan(app: FastAPI):
         order_name = "evaluation_order_tech.txt" if args.tech else "evaluation_order.txt"
         print(f"[SERVER EVALUATION ORDER] Warning: No secret {order_name} file found at startup.", file=sys.stderr)
 
-    if not args.mock and args.backend == "transformers":
-        print("Loading local model (this can take a few minutes)...", file=sys.stderr)
-        state.extractor.load_model()
-        state.evaluator.tokenizer = getattr(state.extractor, 'tokenizer_or_processor', None)
-        state.evaluator.model = state.extractor.model
-        print("Model loaded successfully!", file=sys.stderr)
-    elif args.backend == "vllm":
+    if not args.mock:
         print(f"Connecting to vLLM server at {args.vllm_url}...", file=sys.stderr)
         state.extractor.load_model()
         state.evaluator.model_name = state.extractor.model_name

@@ -5,4 +5,4 @@ The Review Panel that writes Candidate Feedback is built on Microsoft Agent Fram
 ## Consequences
 
 - Both clients talk to the same vLLM server and share one process-wide limit on in-flight requests, so the panel and Category evaluation never oversubscribe the server together.
-- The Review Panel runs only against vLLM (or its mock). Any run with the transformers backend is refused.
+- The Review Panel runs only against vLLM (or its mock), as does the rest of the pipeline: there is no local inference backend.

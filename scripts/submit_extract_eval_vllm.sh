@@ -250,7 +250,6 @@ python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
   --dir "$PDF_DIR" \
   --output "$OUTPUT_DIR" \
   --model-name "$MODEL" \
-  --backend vllm \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --workers 6 \
   --reference-date "$REFERENCE_DATE" 2>&1 | tee "$EXTRACT_LOG" | tee -a "$JOB_LOG"
@@ -273,7 +272,6 @@ echo "=====================================================================" | t
 
 python3 -u "$PROJECT_ROOT/src/step_2_evaluate.py" \
   --model-name "$MODEL" \
-  --backend vllm \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --dir "$OUTPUT_DIR" \
   --output "$EVAL_DIR" \

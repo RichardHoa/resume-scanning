@@ -125,13 +125,6 @@ def parse_cli_args() -> argparse.Namespace:
         help=f"Target LLM model name (default: {DEFAULT_LLM_MODEL})"
     )
     exec_group.add_argument(
-        "--backend", "-b",
-        type=str,
-        default=os.environ.get("BACKEND", "vllm"),
-        choices=["vllm", "transformers"],
-        help="Model inference backend (default: vllm)"
-    )
-    exec_group.add_argument(
         "--vllm-url",
         type=str,
         default=os.environ.get("VLLM_URL", DEFAULT_VLLM_URL),
@@ -222,7 +215,6 @@ def main():
     # 2. Initialize Evaluator & RAG
     evaluator = ResumeEvaluator(
         model_name=args.model,
-        backend=args.backend,
         vllm_url=args.vllm_url,
         mock=args.dry_run
     )

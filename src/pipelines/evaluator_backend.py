@@ -41,40 +41,6 @@ CATEGORY_LABELS = {
 }
 
 
-def call_transformers_backend(evaluator_inst: Any, prompt: str, messages: List[Dict[str, str]], temperature: float = 0.0, max_tokens: int = MAX_NEW_TOKENS) -> str:
-    """Helper to call HuggingFace transformers model backend."""
-    import torch
-    if evaluator_inst.model is None or evaluator_inst.tokenizer is None:
-        evaluator_inst.load_model()
-
-    if hasattr(evaluator_inst.tokenizer, "apply_chat_template"):
-        try:
-            formatted_prompt = evaluator_inst.tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-        except Exception:
-            formatted_prompt = prompt
-    else:
-        formatted_prompt = prompt
-
-    inputs = evaluator_inst.tokenizer(formatted_prompt, return_tensors="pt")
-    target_device = evaluator_inst.model.device if hasattr(evaluator_inst.model, "device") else ("cuda" if torch.cuda.is_available() else "cpu")
-    inputs = {k: v.to(target_device) for k, v in inputs.items()}
-
-    with evaluator_inst._llm_lock, torch.no_grad():
-        outputs = evaluator_inst.model.generate(
-            **inputs,
-            max_new_tokens=max_tokens,
-            temperature=temperature,
-            top_p=0.95,
-            repetition_penalty=1.05,
-            do_sample=temperature > 0.0
-        )
-    input_len = inputs["input_ids"].shape[1]
-    generated_tokens = outputs[0][input_len:]
-    return evaluator_inst.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
-
-
 def call_vllm_backend(
     evaluator_inst: Any,
     messages: List[Dict[str, str]],

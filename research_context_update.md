@@ -27,7 +27,7 @@ The screening process moves sequentially through five main stages:
 │ Stage 1:         │     │ Stage 2:         │     │ Stage 3:         │     │ Stage 4:         │     │ Stage 5:         │
 │ Resume           │ ──> │ Local RAG        │ ──> │ Evaluator        │ ──> │ Aggregation      │ ──> │ Web Server &     │
 │ Extraction       │     │ Criteria Storage │     │ Engine           │     │ & Recommendation │     │ REST API         │
-│ (Medoid 5-Run)   │     │ (ChromaDB)       │     │ (20-Run Median)  │     │ (Weights & Buckets)     │ (vLLM / Fast-API)│
+│ (Single Pass)    │     │ (ChromaDB)       │     │ (20-Run Median)  │     │ (Weights & Buckets)     │ (vLLM / Fast-API)│
 └──────────────────┘     └──────────────────┘     └──────────────────┘     └──────────────────┘     └──────────────────┘
 ```
 
@@ -39,7 +39,7 @@ The screening process moves sequentially through five main stages:
   - `work_experience` (Company name, duration, position, responsibilities, description)
   - `basic_information` (Name, contact details, address)
   - `education_background` & `certifications` & `languages`
-- **Consistency Verification (Medoid Consensus)**: Extraction is executed **5 times** (`consensus_runs = 5`) per resume. Pairwise JSON string similarity ratios are computed using `difflib.SequenceMatcher`. The **Medoid candidate JSON** (the output with the highest average similarity score relative to all other candidate outputs) is selected as the final extracted data.
+- **Fidelity Check**: Extraction runs once per resume (`temperature=0.0`, schema-enforced). Every extracted string is checked against the source markdown, and values not found there are flagged as warnings.
 
 ### Stage 2: Requirement Decomposition & Local RAG Criteria Storage
 - **Function**: Processes raw HR **Standard Job Requirements** and **Hidden Requirements**, using an LLM to decompose them into atomic requirement criteria across 5 specific evaluation dimensions. Criteria are embedded via `AITeamVN/Vietnamese_Embedding` and stored in a persistent **ChromaDB vector collection** (`rag/chroma_db`) configured with cosine distance (`hnsw:space: cosine`), with a fallback to `criteria_rag.json`.
@@ -58,7 +58,7 @@ The screening process moves sequentially through five main stages:
 
 ### Stage 5: Web Server & Execution Management
 - **Function**: A FastAPI web server (`src/server.py`) running on port `8005` providing UI and REST endpoints (`/api/extract`, `/api/evaluate_batch`, `/api/rag_summary`, `/api/eval_results`).
-- **Inference Backends**: Supports local HuggingFace `transformers` execution and high-throughput `vllm` continuous batching backend (`http://127.0.0.1:8100/v1`). When running on vLLM with `num_evaluations > 1`, category iterations run concurrently using a `ThreadPoolExecutor` (up to 10 parallel worker threads).
+- **Inference Backend**: All inference runs on a `vllm` server with continuous batching (`http://127.0.0.1:8100/v1`). With `num_evaluations > 1`, category iterations run concurrently using a `ThreadPoolExecutor` (up to 10 parallel worker threads).
 - **Candidate Ordering**: Loads a secret `evaluation_order.txt` file at startup to sort and prioritize candidate evaluation batches into Tier 1, Tier 2, and Tier 3.
 
 ---
@@ -176,8 +176,8 @@ Evaluate the candidate resume section inside <candidate_resume_data> against the
 ## 4. Current System Implementation Status
 
 - **Fully Active Pipelines**:
-  - **Stage 1 (Resume Extractor)**: PDF-to-Markdown (PyMuPDF4LLM + Docling fallback) with 5-run Medoid JSON consensus.
+  - **Stage 1 (Resume Extractor)**: PDF-to-Markdown (PyMuPDF4LLM + Docling OCR fallback), single-pass extraction with a source fidelity check.
   - **Stage 2 (Local RAG Criteria)**: LLM decomposition of HR standard & hidden requirements, stored in persistent ChromaDB vector store (`rag/chroma_db`) with `AITeamVN/Vietnamese_Embedding`, export to `hr_rag.txt`.
   - **Stage 3 (Resume Evaluator)**: 5-dimension prompt evaluation, 20-run median score selection, PII filtering (`hidden_culture`), prompt injection defense, role-specific experience calculation, and max 30 retry handling.
   - **Stage 4 (Aggregation)**: Weighted total score calculation and recommendation bucket classification (`STRONG_MATCH`, `POTENTIAL_MATCH`, `LOW_MATCH`, `REJECT`).
-  - **Stage 5 (Web Server & REST API)**: FastAPI web app (`src/server.py`) supporting Transformers & vLLM backends, multi-threaded parallel evaluation, and candidate tier-order sorting.
+  - **Stage 5 (Web Server & REST API)**: FastAPI web app (`src/server.py`) on a vLLM backend, multi-threaded parallel evaluation, and candidate tier-order sorting.

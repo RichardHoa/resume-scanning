@@ -237,7 +237,6 @@ start_web() {
 
   nohup python3 -u src/server.py \
     --model "$MODEL" \
-    --backend vllm \
     --vllm-url "http://127.0.0.1:$PORT/v1" \
     --host 0.0.0.0 \
     --port "$WEB_PORT" \

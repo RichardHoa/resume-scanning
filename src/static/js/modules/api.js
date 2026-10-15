@@ -9,7 +9,7 @@
  */
 export const API = {
     /**
-     * Retrieves server configuration (model name, backend engine, mock mode).
+     * Retrieves server configuration (model name, mock mode).
      * @returns {Promise<Object>} JSON response object containing server parameters.
      */
     async fetchConfig() {

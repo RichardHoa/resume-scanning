@@ -23,7 +23,7 @@ def parse_args():
     parser.add_argument("--pdf", type=str, help="Path to a single PDF resume file")
     parser.add_argument("--dir", type=str, help="Path to a directory containing PDF resumes to scan")
     parser.add_argument("--model-name", type=str, default=DEFAULT_LLM_MODEL,
-                        help="Model repository name or local path")
+                        help="Model name served by the vLLM server")
     parser.add_argument("--mock", action="store_true",
                         help="Mock run: performs text extraction and returns mock JSON output without loading the model")
     parser.add_argument("--output", type=str, help="Path to save the JSON output file (or output directory if --dir is used)")
@@ -31,10 +31,8 @@ def parse_args():
                         help="Comma-separated list of resume numbers to process (e.g., --arr=6,7,8,10)")
     parser.add_argument("--approved", action="store_true",
                         help="Only process PDFs that have a corresponding ground truth JSON in approved_jsons")
-    parser.add_argument("--backend", type=str, default="transformers", choices=["transformers", "vllm"],
-                        help="Inference backend: 'transformers' (load model locally) or 'vllm' (call a running vLLM server)")
     parser.add_argument("--vllm-url", type=str, default=DEFAULT_VLLM_URL,
-                        help="Base URL of the vLLM OpenAI-compatible server (only used with --backend vllm)")
+                        help="Base URL of the vLLM OpenAI-compatible server")
     parser.add_argument("--language", type=str, default="vietnamese", choices=["vietnamese", "english"],
                         help="Target parse language: 'vietnamese' (default) or 'english'")
     parser.add_argument("--workers", type=int, default=1,
@@ -55,12 +53,7 @@ def main():
         print("Error: You cannot specify both --pdf and --dir. Please choose one.", file=sys.stderr)
         sys.exit(1)
 
-    extractor = ResumeExtractor(
-        model_name=args.model_name, mock=args.mock,
-        backend=args.backend, vllm_url=args.vllm_url
-    )
-    if not args.mock and args.backend == "transformers":
-        extractor.load_model()
+    extractor = ResumeExtractor(model_name=args.model_name, mock=args.mock, vllm_url=args.vllm_url)
 
     if args.pdf:
         if args.approved:

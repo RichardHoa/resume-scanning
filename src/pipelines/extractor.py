@@ -12,18 +12,12 @@ if _PROJECT_ROOT not in sys.path:
 import html
 import json
 import re
-import time
 import unicodedata
 from typing import Optional
-from src.core.config import DEFAULT_VLLM_URL, ROOT_DIR, EXTRACTION_MARKDOWN_DIR
+from src.core.config import DEFAULT_VLLM_URL, EXTRACTION_MARKDOWN_DIR
 from src.core.logger import log_broken_json
 from src.core.json_utils import extract_json_substring, repair_truncated_json, clean_and_parse_json
-from src.providers.llm_backend import (
-    load_local_model,
-    run_local_inference,
-    run_vllm_inference,
-    run_mock_extraction,
-)
+from src.providers.llm_backend import run_vllm_inference, run_mock_extraction
 from src.providers import vllm_client
 
 
@@ -251,7 +245,7 @@ def perform_ocr_fallback(pdf_path: str) -> tuple[str, list[str]]:
     return ocr_text, ocr_warnings
 
 
-def extract_text_from_pdf(pdf_path: str, use_pymupdf: bool = True) -> tuple[str, list[str]]:
+def extract_text_from_pdf(pdf_path: str) -> tuple[str, list[str]]:
     """Converts a PDF file to Markdown representation using PyMuPDF4LLM with OCR fallback."""
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"File not found: {pdf_path}")
@@ -290,87 +284,16 @@ def extract_text_from_pdf(pdf_path: str, use_pymupdf: bool = True) -> tuple[str,
     return markdown_content, warnings
 
 
-import difflib
-
-
-def compute_json_similarity(dict_a: dict, dict_b: dict) -> float:
-    """Computes normalized sequence similarity between two JSON dictionaries."""
-    str_a = json.dumps(dict_a, sort_keys=True, ensure_ascii=False)
-    str_b = json.dumps(dict_b, sort_keys=True, ensure_ascii=False)
-    return difflib.SequenceMatcher(None, str_a, str_b).ratio()
-
-
-def select_medoid_json(candidates: list[dict]) -> tuple[dict, float]:
-    """
-    Selects the Medoid candidate dictionary (the candidate with highest average similarity to all others).
-    Returns a tuple of (medoid_dict, average_consensus_score).
-    """
-    if not candidates:
-        raise ValueError("Candidates list cannot be empty for Medoid selection.")
-    if len(candidates) == 1:
-        return candidates[0], 1.0
-
-    best_medoid = candidates[0]
-    highest_avg_score = -1.0
-
-    for i, cand_i in enumerate(candidates):
-        sim_sum = sum(
-            compute_json_similarity(cand_i, cand_j)
-            for j, cand_j in enumerate(candidates) if i != j
-        )
-        avg_sim = sim_sum / (len(candidates) - 1)
-        if avg_sim > highest_avg_score:
-            highest_avg_score = avg_sim
-            best_medoid = cand_i
-
-    return best_medoid, highest_avg_score
-
-
-def detect_resume_language_status(text: str) -> str:
-    """
-    Detects language status of resume text.
-    Returns: 'vietnamese', 'english', or 'bilingual'.
-    """
-    if not text:
-        return "unknown"
-
-    vn_diacritics_pattern = re.compile(r'[áàảãạăắằẳẵặâấầẩẫậđéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵ]', re.IGNORECASE)
-    words = re.findall(r'\b[a-zA-Záàảãạăắằẳẵặâấầẩẫậđéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵ]+\b', text)
-    total_words = len(words)
-    if total_words == 0:
-        return "unknown"
-
-    vn_words_count = sum(1 for w in words if vn_diacritics_pattern.search(w))
-    vn_ratio = vn_words_count / total_words
-
-    if vn_words_count == 0:
-        return "english"
-
-    if vn_words_count >= 2:
-        if vn_ratio >= 0.15:
-            return "vietnamese"
-        else:
-            return "bilingual"
-
-    return "english"
-
-
 class ResumeExtractor:
-    """Unified interface for resume extraction across both inference backends."""
+    """Extracts a resume PDF into the schema JSON through a vLLM server (or the mock)."""
 
-    def __init__(self, model_name: Optional[str] = None, mock: bool = False,
-                 backend: str = "transformers", vllm_url: str = DEFAULT_VLLM_URL):
+    def __init__(self, model_name: Optional[str] = None, mock: bool = False, vllm_url: str = DEFAULT_VLLM_URL):
         self.model_name = model_name
         self.mock = mock
-        self.backend = backend
         self.vllm_url = vllm_url
-        self.model = None
-        self.tokenizer_or_processor = None
 
     def load_model(self):
-        if not self.mock and self.backend == "transformers":
-            self.model, self.tokenizer_or_processor = load_local_model(self.model_name or "Qwen/Qwen3.5-9B")
-        elif self.backend == "vllm" and not self.model_name:
+        if not self.mock and not self.model_name:
             self.model_name = vllm_client.discover_model(self.vllm_url)
 
     def extract_single_pass(self, resume_text: str, pdf_path: str, language: str = "vietnamese", max_retries: int = 5) -> tuple[Optional[dict], str]:
@@ -380,10 +303,8 @@ class ResumeExtractor:
         for attempt in range(1, max_retries + 1):
             if self.mock:
                 result = run_mock_extraction(resume_text, language=language)
-            elif self.backend == "vllm":
-                result = run_vllm_inference(resume_text, self.model_name, self.vllm_url, language=language)
             else:
-                result = run_local_inference(resume_text, self.model, self.tokenizer_or_processor, language=language)
+                result = run_vllm_inference(resume_text, self.model_name, self.vllm_url, language=language)
 
             last_raw_result = result
             parsed_dict = clean_and_parse_json(result)
@@ -396,7 +317,7 @@ class ResumeExtractor:
 
         return None, last_raw_result
 
-    def extract(self, pdf_path: str, language: str = "vietnamese", max_retries: int = 5, consensus_runs: int = 1) -> str:
+    def extract(self, pdf_path: str, language: str = "vietnamese", max_retries: int = 5) -> str:
         pdf_warnings = []
         if self.mock:
             resume_text = "Mock resume content converted from PDF."
@@ -408,47 +329,11 @@ class ResumeExtractor:
                 print(f"[Extractor Rejected] {pdf_path}: {error_msg}", file=sys.stderr)
                 return json.dumps({"error": error_msg}, ensure_ascii=False, indent=2)
 
-        target_lang_normalized = "english" if language.lower() in ("english", "en") else "vietnamese"
-        if not self.mock:
-            lang_status = detect_resume_language_status(resume_text)
-            print(f"[Extractor Language] Detected resume language status: '{lang_status}' (Target tag language: '{target_lang_normalized}')", file=sys.stderr)
-
-        candidates = []
-        last_raw_result = ""
-
-        print(f"[Medoid Consensus] Gathering {consensus_runs} extraction candidates (target language: {target_lang_normalized})...", file=sys.stderr)
-        if self.backend == "vllm" and consensus_runs > 1:
-            from concurrent.futures import ThreadPoolExecutor
-            def _run_pass(pass_idx: int):
-                return self.extract_single_pass(resume_text, pdf_path, language=language, max_retries=max_retries)
-
-            with ThreadPoolExecutor(max_workers=min(consensus_runs, 5)) as executor:
-                pass_results = list(executor.map(_run_pass, range(1, consensus_runs + 1)))
-
-            for parsed_dict, raw_result in pass_results:
-                if raw_result:
-                    last_raw_result = raw_result
-                if parsed_dict is not None:
-                    candidates.append(parsed_dict)
-        else:
-            for run_idx in range(1, consensus_runs + 1):
-                parsed_dict, raw_result = self.extract_single_pass(resume_text, pdf_path, language=language, max_retries=max_retries)
-                if raw_result:
-                    last_raw_result = raw_result
-                if parsed_dict is not None:
-                    candidates.append(parsed_dict)
-
-        final_dict = None
-        consensus_score = 0.0
-        if candidates:
-            medoid_dict, consensus_score = select_medoid_json(candidates)
-            print(f"[Medoid Consensus] Successfully gathered {len(candidates)}/{consensus_runs} valid candidates. "
-                  f"Selected Medoid candidate with consensus score: {consensus_score:.4f}", file=sys.stderr)
-            final_dict = medoid_dict
-        else:
-            # Fallback if all consensus runs and retries failed to produce clean JSON
-            print(f"Warning: All {consensus_runs} extraction consensus runs failed to produce clean JSON. Attempting auto-repair...", file=sys.stderr)
-            clean_result = extract_json_substring(last_raw_result)
+        final_dict, raw_result = self.extract_single_pass(resume_text, pdf_path, language=language, max_retries=max_retries)
+        if final_dict is None:
+            # Fallback if every retry failed to produce clean JSON
+            print("Warning: Extraction failed to produce clean JSON. Attempting auto-repair...", file=sys.stderr)
+            clean_result = extract_json_substring(raw_result)
             repaired = repair_truncated_json(clean_result)
             try:
                 final_dict = json.loads(repaired)
@@ -462,9 +347,6 @@ class ResumeExtractor:
             warnings = check_extracted_fields_in_markdown(final_dict, resume_text)
             if pdf_warnings:
                 warnings.extend(pdf_warnings)
-            if not candidates or consensus_score < 0.8:
-                score_str = f"{consensus_score:.4f}" if candidates else "0.0000 (No candidates matched)"
-                warnings.insert(0, f"Low consensus score: Extraction consensus score ({score_str}) is below threshold 0.8.")
             final_dict["warning"] = warnings
 
             ocr_triggered = any("OCR Applied" in w for w in pdf_warnings)
@@ -475,5 +357,3 @@ class ResumeExtractor:
             return json.dumps(final_dict, ensure_ascii=False, indent=2)
 
         return clean_result
-
-

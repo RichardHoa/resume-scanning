@@ -342,12 +342,8 @@ def run_single_category_bias_test(
         try:
             if evaluator.mock:
                 raw_response = evaluator._call_llm(user_prompt, category_key, language=evaluator.language).text
-            elif evaluator.backend == "transformers":
-                raw_response = evaluator._call_transformers_backend(user_prompt, messages, max_tokens=CATEGORY_EVAL_MAX_TOKENS)
-            elif evaluator.backend == "vllm":
-                raw_response = evaluator._call_vllm_backend(messages, json_schema=CATEGORY_EVALUATION_SCHEMA, max_tokens=CATEGORY_EVAL_MAX_TOKENS, step=f"bias_{category_key}").text
             else:
-                raw_response = ""
+                raw_response = evaluator._call_vllm_backend(messages, json_schema=CATEGORY_EVALUATION_SCHEMA, max_tokens=CATEGORY_EVAL_MAX_TOKENS, step=f"bias_{category_key}").text
 
             parsed = clean_and_parse_json(raw_response)
             validated = validate_category_evaluation(parsed)

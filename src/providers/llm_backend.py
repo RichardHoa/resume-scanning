@@ -1,5 +1,5 @@
 """
-LLM Provider abstractions: Local Transformers, vLLM Server, and Mock Mode handlers.
+LLM Provider abstractions: vLLM Server and Mock Mode handlers.
 """
 import os
 import sys
@@ -10,90 +10,9 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 import json
-from typing import Any, Tuple
-from src.core.config import MAX_NEW_TOKENS
 from src.providers import vllm_client
 from src.core.json_utils import load_extraction_json_schema
 from src.prompts.extractor_prompts import get_system_prompt
-
-
-def load_local_model(model_name: str) -> Tuple[Any, Any]:
-    """Loads a HuggingFace CausalLM model and tokenizer."""
-    print(f"Loading local model for: {model_name}...", file=sys.stderr)
-    try:
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-    except ImportError:
-        print("Error: PyTorch and Transformers libraries are required for local inference.", file=sys.stderr)
-        print("Install them with: pip install torch transformers accelerate", file=sys.stderr)
-        sys.exit(1)
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}", file=sys.stderr)
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype="auto",
-        device_map="auto",
-        trust_remote_code=True
-    )
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-    return model, tokenizer
-
-
-def run_local_inference(resume_text: str, model: Any, tokenizer: Any, language: str = "vietnamese") -> str:
-    """Run text-based extraction using a locally-loaded HuggingFace model."""
-    messages = [
-        {"role": "system", "content": get_system_prompt(language)},
-        {"role": "user", "content": f"Below is the extracted markdown text from the candidate's resume:\n\n{resume_text}"}
-    ]
-
-    text = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True,
-        enable_thinking=False
-    )
-
-    model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
-
-    import inspect
-    sig_forward = inspect.signature(model.forward).parameters
-    sig_generate = inspect.signature(model.generate).parameters
-    standard_generate_keys = {
-        "max_length", "max_new_tokens", "min_length", "min_new_tokens", 
-        "early_stopping", "max_time", "do_sample", "num_beams", "num_beam_groups", 
-        "penalty_alpha", "use_cache", "temperature", "top_k", "top_p", "min_p", 
-        "typical_p", "epsilon_cutoff", "eta_cutoff", "diversity_penalty", 
-        "repetition_penalty", "encoder_repetition_penalty", "length_penalty", 
-        "no_repeat_ngram_size", "bad_words_ids", "force_words_ids", 
-        "renormalize_logits", "constraints", "forced_bos_token_id", 
-        "forced_eos_token_id", "remove_invalid_values", "exponential_decay_length_penalty", 
-        "suppress_tokens", "begin_suppress_tokens", "forced_decoder_ids", 
-        "sequence_bias", "guidance_scale", "low_memory", "num_return_sequences", 
-        "output_attentions", "output_hidden_states", "output_scores", 
-        "return_dict_in_generate", "pad_token_id", "bos_token_id", "eos_token_id"
-    }
-    valid_keys = set(sig_forward.keys()) | set(sig_generate.keys()) | standard_generate_keys
-    filtered_inputs = {k: v for k, v in model_inputs.items() if k in valid_keys}
-
-    print("Generating structured output...", file=sys.stderr)
-    generated_ids = model.generate(
-        **filtered_inputs,
-        max_new_tokens=MAX_NEW_TOKENS,
-        do_sample=False,
-        temperature=0.0,
-        repetition_penalty=1.05,
-        pad_token_id=tokenizer.eos_token_id
-    )
-
-    generated_ids = [
-        output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
-    ]
-
-    response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-    return response
-
 
 
 def run_vllm_inference(resume_text: str, model_name: str, vllm_url: str, language: str = "vietnamese") -> str:

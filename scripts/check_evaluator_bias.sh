@@ -157,7 +157,6 @@ if [ "$JSON_COUNT" -eq 0 ]; then
     --dir pdfs \
     --output output_jsons \
     --model-name "$MODEL" \
-    --backend vllm \
     --vllm-url "$VLLM_URL"
 fi
 

@@ -20,7 +20,6 @@ def get_config():
     """Exposes current server configuration to the UI."""
     return {
         "model": state.extractor.model_name if state.extractor else None,
-        "backend": state.args.backend if state.args else "vllm",
         "image_mode": False,
         "mock": state.args.mock if state.args else False
     }

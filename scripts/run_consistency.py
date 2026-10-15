@@ -46,7 +46,6 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Candidate Evaluation Consistency Test (20 Rounds)")
     parser.add_argument("--dir", type=str, default="output_jsons", help="Directory containing extracted resume JSON files")
     parser.add_argument("--model-name", type=str, default=DEFAULT_LLM_MODEL, help="LLM model name")
-    parser.add_argument("--backend", type=str, default="vllm", choices=["transformers", "vllm"], help="Inference backend")
     parser.add_argument("--vllm-url", type=str, default=DEFAULT_VLLM_URL, help="vLLM server URL")
     parser.add_argument("--workers", type=int, default=6, help="Worker threads for parallel evaluation")
     parser.add_argument("--rounds", type=int, default=20, help="Number of consistency test rounds")
@@ -108,7 +107,6 @@ def main():
     # 2. Initialize evaluator and load requirements from the HR RAG HR set beforehand
     evaluator = ResumeEvaluator(
         model_name=args.model_name,
-        backend=args.backend,
         vllm_url=args.vllm_url,
         mock=False
     )
@@ -160,7 +158,7 @@ def main():
                     return c_info["email"], 0.0
 
             workers = max(1, args.workers)
-            if workers > 1 and args.backend == "vllm":
+            if workers > 1:
                 from concurrent.futures import ThreadPoolExecutor
                 with ThreadPoolExecutor(max_workers=workers) as executor:
                     results = executor.map(_eval_single_candidate, candidates)

@@ -15,16 +15,15 @@ import time
 import re
 from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, VLLM_MAX_CONCURRENT_REQUESTS, HR_CHECK_ITEMS_KEY
 from src.core.reference_date import set_reference_date
-from src.pipelines.evaluator import ResumeEvaluator, TRANSFORMERS_BACKEND_REFUSED
+from src.pipelines.evaluator import ResumeEvaluator
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Vietnamese Resume Evaluator Agent (Step 2)")
     parser.add_argument("--resume-json", type=str, help="Path to single extracted resume JSON file")
     parser.add_argument("--dir", type=str, help="Path to directory containing extracted resume JSON files")
-    parser.add_argument("--model-name", type=str, default=DEFAULT_LLM_MODEL, help="LLM model repository or local path")
-    parser.add_argument("--backend", type=str, default="vllm", choices=["transformers", "vllm"], help="Inference backend ('transformers' is refused)")
-    parser.add_argument("--vllm-url", type=str, default=DEFAULT_VLLM_URL, help="Base URL of the vLLM OpenAI-compatible server (only used with --backend vllm)")
+    parser.add_argument("--model-name", type=str, default=DEFAULT_LLM_MODEL, help="Model name served by the vLLM server")
+    parser.add_argument("--vllm-url", type=str, default=DEFAULT_VLLM_URL, help="Base URL of the vLLM OpenAI-compatible server")
     parser.add_argument("--mock", action="store_true", help="Mock run without loading model weights")
     parser.add_argument("--output", type=str, help="Path to save evaluation JSON result (file path or output directory for batch mode)")
     parser.add_argument("--arr", type=str, help="Comma-separated list of resume numbers to process (e.g., --arr=6,7,8)")
@@ -33,10 +32,7 @@ def parse_args():
     parser.add_argument("--no-feedback", action="store_true", help="Skip the Review Panel's Candidate Feedback (scores only)")
     parser.add_argument("--language", type=str, default="vietnamese", choices=["vietnamese", "english"], help="Output language for evaluation reasoning, strengths, and gaps ('vietnamese' or 'english')")
     parser.add_argument("--reference-date", type=str, default="", help="Date (YYYY-MM-DD) the prompts treat as today, for old resume sets (default: the real date)")
-    args = parser.parse_args()
-    if args.backend == "transformers":
-        parser.error(TRANSFORMERS_BACKEND_REFUSED)
-    return args
+    return parser.parse_args()
 
 
 def load_hr_rag_requirements(evaluator):
@@ -80,7 +76,6 @@ def main():
 
     evaluator = ResumeEvaluator(
         model_name=args.model_name,
-        backend=args.backend,
         vllm_url=args.vllm_url,
         mock=args.mock,
         language=args.language

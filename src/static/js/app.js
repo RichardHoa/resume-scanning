@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Fetches current backend model, backend type (vLLM / Transformers), and mock mode config.
+     * Fetches current backend model and mock mode config.
      */
     async function fetchServerConfig() {
         try {

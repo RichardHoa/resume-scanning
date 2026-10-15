@@ -116,14 +116,12 @@ if [ "$JSON_COUNT" -eq 0 ]; then
     --dir pdfs \
     --output output_jsons \
     --model-name "$MODEL" \
-    --backend vllm \
     --vllm-url "http://127.0.0.1:$PORT/v1"
 fi
 
 echo "=== Starting Step 2 High-Precision vLLM Batch Evaluation ==="
 python3 -u "$PROJECT_ROOT/src/step_2_evaluate.py" \
   --model-name "$MODEL" \
-  --backend vllm \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --dir output_jsons \
   --output evaluation_json
