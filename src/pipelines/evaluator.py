@@ -37,7 +37,9 @@ from src.pipelines.evaluator_utils import (
     validate_category_evaluation,
     extract_relevant_resume_field,
     is_missing_position,
-    collect_missing_must_haves
+    is_scanned_resume,
+    collect_missing_must_haves,
+    SCANNED_RESUME_KEY
 )
 from src.pipelines.evaluator_backend import (
     CATEGORY_LABELS,
@@ -362,6 +364,41 @@ class ResumeEvaluator:
     ):
         return save_evaluation_report(evaluation_output, resume_name, output_dir, output_path)
 
+    def _scanned_resume_report(
+        self,
+        resume_data: Dict[str, Any],
+        standard_req: str,
+        hidden_req: str,
+        resume_name: str,
+        output_dir: Optional[str],
+        output_path: Optional[str],
+        resume_path: Optional[str],
+        language: str
+    ) -> Dict[str, Any]:
+        """
+        A Scanned Resume's report: no LLM call, no score, no Candidate Feedback. It is saved so the resume still
+        appears in the results list, unranked and marked as scanned, for HR to ask the candidate for a text PDF.
+        """
+        print(f"[{resume_name}] Scanned Resume: not evaluated", file=sys.stderr)
+        report = {
+            "status": "scanned",
+            SCANNED_RESUME_KEY: True,
+            "resume_name": resume_name,
+            "candidate_identifier": resume_name,
+            "candidate_name": "",
+            "overall_score": 0,
+            "match_recommendation": "SCANNED",
+            "evaluated_at": datetime.now().isoformat(),
+            "dimension_scores": {},
+            "error": resume_data.get("error", ""),
+            "standard_requirements": standard_req,
+            "hidden_requirements": hidden_req,
+            "resume_path": os.path.abspath(resume_path) if resume_path else None,
+            "language": language
+        }
+        self._save_evaluation_report(report, resume_name, output_dir, output_path)
+        return report
+
     def evaluate_resume(
         self,
         resume_data: Dict[str, Any],
@@ -384,6 +421,10 @@ class ResumeEvaluator:
 
         # 1. Judge against the HR RAG as HR set it; evaluation never builds or changes it
         self.rag.require_stored_rag()
+
+        if is_scanned_resume(resume_data):
+            return self._scanned_resume_report(resume_data, standard_req, hidden_req, resume_name, output_dir,
+                                               output_path, resume_path, eff_language)
 
         # 2. Evaluate each category
         cat_eval_outputs = self._evaluate_all_categories(resume_data, resume_name, num_evaluations, language=eff_language, log_dir=log_dir)
@@ -434,9 +475,6 @@ class ResumeEvaluator:
         if failed_categories:
             evaluation_output["failed_categories"] = failed_categories
 
-        if resume_data.get("ocr_applied") or resume_data.get("intensive_hr_review_required"):
-            evaluation_output["ocr_applied"] = True
-            evaluation_output["intensive_hr_review_required"] = True
         if "warning" in resume_data:
             evaluation_output["warning"] = resume_data["warning"]
 

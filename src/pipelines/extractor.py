@@ -1,5 +1,5 @@
 """
-Resume Extractor Pipeline — PDF text extraction (Docling) + LLM structured JSON generation
+Resume Extractor Pipeline — PDF text extraction (Docling, PyMuPDF4LLM fallback) + LLM structured JSON generation
 """
 import os
 import sys
@@ -12,6 +12,7 @@ if _PROJECT_ROOT not in sys.path:
 import html
 import json
 import re
+import threading
 import unicodedata
 from typing import Optional
 from src.core.config import DEFAULT_VLLM_URL, EXTRACTION_MARKDOWN_DIR
@@ -19,6 +20,7 @@ from src.core.logger import log_broken_json
 from src.core.json_utils import extract_json_substring, repair_truncated_json, clean_and_parse_json
 from src.providers.llm_backend import run_vllm_inference, run_mock_extraction
 from src.providers import vllm_client
+from src.pipelines.evaluator_utils import SCANNED_RESUME_KEY
 
 
 def clean_markdown_and_symbols(text: str) -> str:
@@ -125,27 +127,22 @@ def check_extracted_fields_in_markdown(extracted_dict: dict, markdown_content: s
 
 def validate_extracted_markdown(markdown_content: str) -> list[str]:
     """
-    Validates extracted markdown text from PyMuPDF.
-    Checks all failure conditions (scanned PDF, replacement/null bytes, invalid control characters, PUA font characters)
-    and returns a list of warning messages for any detected issues instead of raising errors.
+    Validates the parsed resume Markdown.
+    Checks for replacement/null bytes, invalid control characters and PUA font characters, and returns a list of
+    warning messages for any detected issues instead of raising errors.
     """
-    cleaned_text = markdown_content.strip()
     warnings = []
 
-    # 1. Check for scanned PDF (no text or whitespace-only / no alphanumeric characters)
-    if not cleaned_text or len(re.sub(r'\s+', '', cleaned_text)) == 0 or not any(c.isalnum() for c in cleaned_text):
-        warnings.append("Scanned PDF: Document contains no extractable text.")
-
-    # 2. Check for replacement characters (\ufffd) or null bytes (\x00)
+    # 1. Check for replacement characters (\ufffd) or null bytes (\x00)
     if '\ufffd' in markdown_content or '\x00' in markdown_content:
         warnings.append("Weird character: Document contains corrupted encoding or replacement characters (\\ufffd/null bytes).")
 
-    # 3. Check for non-printable control characters (excluding standard whitespace \n, \r, \t, \f)
+    # 2. Check for non-printable control characters (excluding standard whitespace \n, \r, \t, \f)
     invalid_control_chars = [c for c in markdown_content if ord(c) < 32 and c not in ('\n', '\r', '\t', '\f')]
     if invalid_control_chars:
         warnings.append(f"Weird character: Document contains invalid control characters ({len(invalid_control_chars)} found).")
 
-    # 4. Check for Private Use Area (PUA) characters (unmappable custom fonts)
+    # 3. Check for Private Use Area (PUA) characters (unmappable custom fonts)
     pua_count = sum(
         1 for c in markdown_content
         if 0xE000 <= ord(c) <= 0xF8FF or 0xF0000 <= ord(c) <= 0xFFFFD or 0x100000 <= ord(c) <= 0x10FFFD
@@ -159,116 +156,102 @@ def validate_extracted_markdown(markdown_content: str) -> list[str]:
     return warnings
 
 
-def perform_ocr_fallback(pdf_path: str) -> tuple[str, list[str]]:
+# A Scanned Resume has no page with text; the system never reads text from images, since resumes can be in any
+# language. HR sees this message and asks the candidate for a PDF with selectable text.
+SCANNED_RESUME_MESSAGE = (
+    "CV là bản scan (không có lớp văn bản), hệ thống không đọc được. "
+    "Vui lòng yêu cầu ứng viên gửi bản PDF có thể chọn chữ."
+)
+
+# Past this, Docling is treated as stuck and PyMuPDF4LLM parses the resume instead
+DOCLING_TIMEOUT_SECONDS = 120
+
+
+class ScannedResumeError(ValueError):
+    """A resume PDF in which no page has text: rejected before any parser runs."""
+
+
+def _has_text(text: str) -> bool:
+    return any(c.isalnum() for c in text or "")
+
+
+def find_textless_pages(pdf_path: str) -> tuple[list[int], int]:
+    """The 1-based numbers of the pages with no text layer, and the page count, from a cheap PyMuPDF read."""
+    import pymupdf
+    with pymupdf.open(pdf_path) as doc:
+        textless = [page.number + 1 for page in doc if not _has_text(page.get_text())]
+        return textless, doc.page_count
+
+
+_docling_converter = None
+_docling_lock = threading.Lock()
+
+
+def _parse_with_docling(pdf_path: str) -> str:
     """
-    Attempts OCR extraction on a scanned PDF using available OCR engines (Docling, PyMuPDF OCR, RapidOCR).
-    Supports Vietnamese and English text extraction and returns (ocr_text, ocr_warnings).
+    Docling Markdown, built by one shared converter (its models load once). OCR is off: a Scanned Resume never
+    reaches here. Raises when Docling fails or runs past DOCLING_TIMEOUT_SECONDS (which Docling reports as a
+    partial success, not an error).
     """
-    ocr_warnings = ["OCR Applied: Document contained no extractable text layer. OCR was used. Intensive HR Review Required."]
-    ocr_text = ""
+    global _docling_converter
+    from docling.datamodel.base_models import ConversionStatus, InputFormat
+    from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
+    from docling.document_converter import DocumentConverter, PdfFormatOption
 
-    # Attempt 1: Docling DocumentConverter
-    try:
-        from docling.document_converter import DocumentConverter
-        converter = DocumentConverter()
-        result = converter.convert(pdf_path)
-        doc_md = result.document.export_to_markdown()
-        if doc_md and any(c.isalnum() for c in doc_md):
-            print(f"[OCR Fallback] Docling successfully extracted text from {pdf_path}", file=sys.stderr)
-            return doc_md, ocr_warnings
-    except Exception as e:
-        print(f"[OCR Fallback] Docling OCR attempt skipped/failed: {e}", file=sys.stderr)
+    # One converter, used by one thread at a time: batch extraction runs several workers
+    with _docling_lock:
+        if _docling_converter is None:
+            options = PdfPipelineOptions()
+            options.do_ocr = False
+            options.do_table_structure = True
+            options.table_structure_options.mode = TableFormerMode.ACCURATE
+            options.document_timeout = DOCLING_TIMEOUT_SECONDS
+            _docling_converter = DocumentConverter(
+                format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)}
+            )
+        result = _docling_converter.convert(pdf_path)
 
-    # Attempt 2: PyMuPDF (fitz) page text / OCR / pixmap
-    try:
-        import fitz
-        doc = fitz.open(pdf_path)
-        page_texts = []
-        for page in doc:
-            try:
-                tp = page.get_textpage_ocr(language="vie+eng")
-                txt = tp.extractTEXT()
-                if txt and any(c.isalnum() for c in txt):
-                    page_texts.append(txt)
-                    continue
-            except Exception:
-                pass
-
-            txt = page.get_text()
-            if txt and any(c.isalnum() for c in txt):
-                page_texts.append(txt)
-
-        doc.close()
-        combined_text = "\n\n".join(page_texts).strip()
-        if combined_text and any(c.isalnum() for c in combined_text):
-            print(f"[OCR Fallback] PyMuPDF OCR successfully extracted text from {pdf_path}", file=sys.stderr)
-            return combined_text, ocr_warnings
-    except Exception as e:
-        print(f"[OCR Fallback] PyMuPDF OCR attempt failed: {e}", file=sys.stderr)
-
-    # Attempt 3: RapidOCR on rendered page images
-    try:
-        import fitz
-        doc = fitz.open(pdf_path)
-        rendered_texts = []
-
-        rapid_ocr = None
-        try:
-            from rapidocr_onnxruntime import RapidOCR
-            rapid_ocr = RapidOCR()
-        except Exception:
-            try:
-                from rapidocr import RapidOCR
-                rapid_ocr = RapidOCR()
-            except Exception:
-                pass
-
-        for page in doc:
-            pix = page.get_pixmap(dpi=150)
-            img_bytes = pix.tobytes("png")
-            if rapid_ocr:
-                res, _ = rapid_ocr(img_bytes)
-                if res:
-                    page_str = "\n".join([line[1] for line in res if len(line) >= 2])
-                    if page_str:
-                        rendered_texts.append(page_str)
-
-        doc.close()
-        combined_rapid = "\n\n".join(rendered_texts).strip()
-        if combined_rapid and any(c.isalnum() for c in combined_rapid):
-            print(f"[OCR Fallback] RapidOCR successfully extracted text from {pdf_path}", file=sys.stderr)
-            return combined_rapid, ocr_warnings
-    except Exception as e:
-        print(f"[OCR Fallback] RapidOCR image extraction attempt failed: {e}", file=sys.stderr)
-
-    print(f"[OCR Fallback] All OCR engines exhausted for {pdf_path}", file=sys.stderr)
-    return ocr_text, ocr_warnings
+    if result.status != ConversionStatus.SUCCESS:
+        raise RuntimeError(f"Docling conversion ended with status {result.status} (timed out or partly failed)")
+    return result.document.export_to_markdown()
 
 
 def extract_text_from_pdf(pdf_path: str) -> tuple[str, list[str]]:
-    """Converts a PDF file to Markdown representation using PyMuPDF4LLM with OCR fallback."""
+    """
+    Converts a PDF resume to Markdown with Docling, falling back to PyMuPDF4LLM when Docling fails, times out or
+    finds no text. Raises ScannedResumeError for a Scanned Resume (no page has text).
+    """
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"File not found: {pdf_path}")
 
-    # Attempt PyMuPDF4LLM parsing
+    textless_pages, page_count = find_textless_pages(pdf_path)
+    if len(textless_pages) == page_count:
+        raise ScannedResumeError(SCANNED_RESUME_MESSAGE)
+
+    parse_warnings = []
+    markdown_content = ""
     try:
-        import pymupdf4llm
-        print(f"Parsing PDF with PyMuPDF4LLM: {pdf_path}", file=sys.stderr)
-        markdown_content = pymupdf4llm.to_markdown(pdf_path)
+        print(f"Parsing PDF with Docling: {pdf_path}", file=sys.stderr)
+        markdown_content = _parse_with_docling(pdf_path)
+        if not _has_text(markdown_content):
+            raise RuntimeError("Docling returned no text")
     except Exception as e:
-        raise ValueError(f"PyMuPDF parsing error: PyMuPDF failed to parse PDF file ({e}).")
+        print(f"Warning: Docling failed on {pdf_path} ({e}). Falling back to PyMuPDF4LLM...", file=sys.stderr)
+        parse_warnings.append(f"Parser fallback: Docling failed ({e}); the resume was parsed with PyMuPDF4LLM.")
+        try:
+            import pymupdf4llm
+            markdown_content = pymupdf4llm.to_markdown(pdf_path)
+        except Exception as fallback_err:
+            raise ValueError(f"PDF parsing error: Docling and PyMuPDF4LLM both failed ({fallback_err}).")
+        if not _has_text(markdown_content):
+            raise ValueError("PDF parsing error: Docling and PyMuPDF4LLM both returned no text.")
 
-    # Validate extracted text
-    warnings = validate_extracted_markdown(markdown_content)
+    # Some pages without text (e.g. a scanned certificate attached): the text pages are read, HR checks the rest
+    if textless_pages:
+        pages = ", ".join(str(n) for n in textless_pages)
+        parse_warnings.append(f"Pages without text: page(s) {pages} have no text layer and were not read; HR should check them by hand.")
 
-    # Check if scanned PDF / no extractable text characters found
-    is_scanned = any("Scanned PDF" in w for w in warnings) or not any(c.isalnum() for c in markdown_content)
-    if is_scanned:
-        print(f"[OCR Fallback Triggered] {pdf_path} contains no text layer. Running OCR fallback...", file=sys.stderr)
-        ocr_text, ocr_warns = perform_ocr_fallback(pdf_path)
-        if ocr_text:
-            markdown_content = ocr_text
-        warnings.extend(ocr_warns)
+    warnings = validate_extracted_markdown(markdown_content) + parse_warnings
 
     try:
         os.makedirs(EXTRACTION_MARKDOWN_DIR, exist_ok=True)
@@ -324,6 +307,9 @@ class ResumeExtractor:
         else:
             try:
                 resume_text, pdf_warnings = extract_text_from_pdf(pdf_path)
+            except ScannedResumeError as e:
+                print(f"[Extractor Rejected] {pdf_path}: Scanned Resume (no page has text)", file=sys.stderr)
+                return json.dumps({"error": str(e), SCANNED_RESUME_KEY: True}, ensure_ascii=False, indent=2)
             except Exception as e:
                 error_msg = str(e)
                 print(f"[Extractor Rejected] {pdf_path}: {error_msg}", file=sys.stderr)
@@ -348,11 +334,6 @@ class ResumeExtractor:
             if pdf_warnings:
                 warnings.extend(pdf_warnings)
             final_dict["warning"] = warnings
-
-            ocr_triggered = any("OCR Applied" in w for w in pdf_warnings)
-            if ocr_triggered:
-                final_dict["ocr_applied"] = True
-                final_dict["intensive_hr_review_required"] = True
 
             return json.dumps(final_dict, ensure_ascii=False, indent=2)
 

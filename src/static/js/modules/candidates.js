@@ -29,6 +29,18 @@ function isFailedEvaluation(cand) {
     return cand.status === 'error';
 }
 
+const SCANNED_RESUME_LABEL = 'CV bản scan – không đọc được';
+const SCANNED_RESUME_MESSAGE = 'CV là bản scan (không có lớp văn bản), hệ thống không đọc được nên không chấm điểm hay xếp hạng. Vui lòng yêu cầu ứng viên gửi bản PDF có thể chọn chữ.';
+const SCANNED_SECTION_TITLE = 'CV bản scan – cần ứng viên gửi lại';
+
+/**
+ * A Scanned Resume: no page of its PDF has text, so it was never evaluated. It is listed, unranked, in its own
+ * section so HR can ask the candidate for a PDF with selectable text; a rerun cannot fix it.
+ */
+function isScannedResume(cand) {
+    return cand.status === 'scanned';
+}
+
 const MISSING_POSITION_LABEL = 'Thiếu vị trí ứng tuyển';
 const MISSING_POSITION_MESSAGE = 'CV không ghi vị trí ứng tuyển; hệ thống mặc định ứng viên ứng tuyển vị trí này và vẫn đánh giá, xếp hạng như bình thường.';
 
@@ -83,11 +95,12 @@ function isNotApplicableCategory(d) {
 }
 
 /**
- * The label shown instead of a score for an unscored report (a Failed Evaluation).
+ * The label shown instead of a score for an unscored report (a Failed Evaluation or a Scanned Resume).
  * @returns {string} The label, or '' for a scored report.
  */
 function unscoredLabel(cand) {
     if (isFailedEvaluation(cand)) return FAILED_EVALUATION_LABEL;
+    if (isScannedResume(cand)) return SCANNED_RESUME_LABEL;
     return '';
 }
 
@@ -317,13 +330,20 @@ export class CandidatePoolController {
                 tiers[t] = { title: labels.title, badge: labels.badge, badgeClass: `tier-badge-${t}`, blockClass: `tier-${t}-block`, items: [] };
             });
 
+            // Scanned Resumes are never ranked, so they leave their tier for a section of their own, last
+            tiers.scanned = { title: SCANNED_SECTION_TITLE, badge: 'Bản scan', badgeClass: 'tier-badge-3', blockClass: 'tier-3-block', items: [] };
+
             candidates.forEach(c => {
+                if (isScannedResume(c)) {
+                    tiers.scanned.items.push(c);
+                    return;
+                }
                 const t = c.tier || 3;
                 if (!tiers[t]) tiers[t] = tiers[3];
                 tiers[t].items.push(c);
             });
 
-            [1, 2, 3].forEach(tNum => {
+            [1, 2, 3, 'scanned'].forEach(tNum => {
                 const group = tiers[tNum];
                 if (group.items.length === 0) return;
 
@@ -374,7 +394,7 @@ export class CandidatePoolController {
 
         const tierBadgeClass = cand.tier === 1 ? 'tier-badge-1' : (cand.tier === 2 ? 'tier-badge-2' : 'tier-badge-3');
         const tierLabel = tierLabels(cand.tier || 3, this.techMode).badge;
-        const rank = tierRank(cand);
+        const rank = isScannedResume(cand) ? 0 : tierRank(cand);
         const rankBadgeHtml = rank ? `<span class="tier-rank-badge" title="Thứ hạng trong danh sách đánh giá">#${rank}</span>` : '';
 
         card.setAttribute('aria-label', unscored
@@ -416,8 +436,7 @@ export class CandidatePoolController {
             }
         });
 
-        const isOcrReview = cand.ocr_applied || cand.intensive_hr_review_required || (Array.isArray(cand.warning) && cand.warning.some(w => typeof w === 'string' && w.includes('OCR')));
-        const ocrPillHtml = isOcrReview ? `<span class="badge-ocr-review" title="PDF không có lớp văn bản. Đã dùng OCR để trích xuất văn bản. Cần HR kiểm tra thủ công kỹ lưỡng.">⚠️ CẦN HR KIỂM TRA KỸ (OCR)</span>` : '';
+        const scannedPillHtml = isScannedResume(cand) ? `<span class="badge-ocr-review" title="${SCANNED_RESUME_MESSAGE}">⚠️ Cần ứng viên gửi PDF có chữ</span>` : '';
         const missingPositionPillHtml = isMissingPosition(cand) ? `<span class="badge-ocr-review" title="${MISSING_POSITION_MESSAGE}">⚠️ ${MISSING_POSITION_LABEL}</span>` : '';
         const missing = unscored ? [] : missingMustHaves(cand);
         const missingMustHavePillHtml = missing.length
@@ -446,7 +465,7 @@ export class CandidatePoolController {
                 <span class="match-pill ${recClass}">${recText}</span>
                 ${rankBadgeHtml}
                 <span class="tier-badge ${tierBadgeClass}">${tierLabel}</span>
-                ${ocrPillHtml}
+                ${scannedPillHtml}
                 ${missingPositionPillHtml}
                 ${missingMustHavePillHtml}
             </div>
@@ -555,13 +574,12 @@ export class CandidatePoolController {
             `;
         });
 
-        const isOcrReview = cand.ocr_applied || cand.intensive_hr_review_required || (Array.isArray(cand.warning) && cand.warning.some(w => typeof w === 'string' && w.includes('OCR')));
-        const ocrAlertBanner = isOcrReview ? `
+        const scannedResumeBanner = isScannedResume(cand) ? `
             <div class="modal-ocr-alert-banner">
-                <div class="modal-ocr-alert-icon">⚠️</div>
+                <div class="modal-ocr-alert-icon">⛔</div>
                 <div class="modal-ocr-alert-content">
-                    <strong>CẦN HR KIỂM TRA KỸ (ĐÃ DÙNG OCR)</strong>
-                    <p>CV này không có lớp văn bản gốc (PDF scan hoặc ảnh). Hệ thống đã dùng nhận dạng ký tự quang học (OCR) để trích xuất thông tin ứng viên. Vui lòng kiểm tra thủ công kỹ các thông tin đã trích xuất.</p>
+                    <strong>${SCANNED_RESUME_LABEL.toUpperCase()}</strong>
+                    <p>${SCANNED_RESUME_MESSAGE}</p>
                 </div>
             </div>
         ` : '';
@@ -594,7 +612,7 @@ export class CandidatePoolController {
             ${missingMustHaveBanner}
             ${missingPositionBanner}
             ${failedEvaluationBanner}
-            ${ocrAlertBanner}
+            ${scannedResumeBanner}
             ${feedbackHtml}
             ${this.renderHrCheckItems(cand.hr_check_items)}
             <div class="modal-dim-grid">${dimCardsHtml}</div>

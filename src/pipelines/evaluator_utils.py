@@ -201,6 +201,15 @@ def is_missing_position(resume: Dict[str, Any]) -> bool:
     return not (isinstance(title, str) and title.strip())
 
 
+# Set on the extraction JSON of a Scanned Resume (no page has text), which is never evaluated or ranked
+SCANNED_RESUME_KEY = "scanned_resume"
+
+
+def is_scanned_resume(resume: Dict[str, Any]) -> bool:
+    """A Scanned Resume: rejected at extraction because no page of its PDF has text."""
+    return isinstance(resume, dict) and resume.get(SCANNED_RESUME_KEY) is True
+
+
 def extract_relevant_resume_field(category: str, resume: Dict[str, Any]) -> Dict[str, Any]:
     """The raw resume keys a Category is judged on, unchanged; basic_information is never one of them."""
     resume = resume if isinstance(resume, dict) else {}

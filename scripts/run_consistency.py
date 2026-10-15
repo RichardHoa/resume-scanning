@@ -19,6 +19,7 @@ os.chdir(_PROJECT_ROOT)
 
 from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL
 from src.pipelines.evaluator import ResumeEvaluator
+from src.pipelines.evaluator_utils import is_scanned_resume
 from src.cli.evaluate import load_hr_rag_requirements
 
 
@@ -80,6 +81,10 @@ def main():
         try:
             with open(fpath, "r", encoding="utf-8") as f:
                 rdata = json.load(f)
+            # A Scanned Resume is never evaluated, so it has no score to be consistent about
+            if is_scanned_resume(rdata):
+                print(f"Skipping {fname}: Scanned Resume", file=sys.stderr)
+                continue
             email = extract_candidate_email(rdata, fname)
         except Exception:
             base = os.path.splitext(fname)[0]

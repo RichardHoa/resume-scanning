@@ -32,7 +32,7 @@ The screening process moves sequentially through five main stages:
 ```
 
 ### Stage 1: Resume Extraction & Layout Parsing
-- **Function**: Converts PDF resumes into layout-aware Markdown using **PyMuPDF4LLM** as the primary parser (retaining horizontal lines and layout structures), with **Docling** as a fallback parser. Saves a Markdown preview to `extraction_markdown/{basename}.md`. An LLM then extracts structured JSON containing:
+- **Function**: Converts PDF resumes into layout-aware Markdown using **Docling** as the primary parser (accurate table structure, no OCR), with **PyMuPDF4LLM** as the fallback when Docling fails or times out. A scanned PDF with no text on any page is rejected as a Scanned Resume instead of being OCR'd. Saves a Markdown preview to `extraction_markdown/{basename}.md`. An LLM then extracts structured JSON containing:
   - `position_applied` (Target role details)
   - `self_evaluation` (Summary / career objective)
   - `skills_and_specialties` (Technical & domain skills)
@@ -176,7 +176,7 @@ Evaluate the candidate resume section inside <candidate_resume_data> against the
 ## 4. Current System Implementation Status
 
 - **Fully Active Pipelines**:
-  - **Stage 1 (Resume Extractor)**: PDF-to-Markdown (PyMuPDF4LLM + Docling OCR fallback), single-pass extraction with a source fidelity check.
+  - **Stage 1 (Resume Extractor)**: PDF-to-Markdown (Docling + PyMuPDF4LLM fallback; Scanned Resumes rejected), single-pass extraction with a source fidelity check.
   - **Stage 2 (Local RAG Criteria)**: LLM decomposition of HR standard & hidden requirements, stored in persistent ChromaDB vector store (`rag/chroma_db`) with `AITeamVN/Vietnamese_Embedding`, export to `hr_rag.txt`.
   - **Stage 3 (Resume Evaluator)**: 5-dimension prompt evaluation, 20-run median score selection, PII filtering (`hidden_culture`), prompt injection defense, role-specific experience calculation, and max 30 retry handling.
   - **Stage 4 (Aggregation)**: Weighted total score calculation and recommendation bucket classification (`STRONG_MATCH`, `POTENTIAL_MATCH`, `LOW_MATCH`, `REJECT`).

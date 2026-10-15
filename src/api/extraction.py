@@ -13,7 +13,7 @@ from src.core.state import state
 from src.core.durations import record_duration
 from src.core.resume_pdfs import store_resume_pdf
 from src.core.evaluation_order import load_evaluation_order, get_candidate_tier
-from src.pipelines.evaluator_utils import is_missing_position
+from src.pipelines.evaluator_utils import is_missing_position, is_scanned_resume
 
 router = APIRouter(prefix="/api", tags=["extraction"])
 
@@ -41,7 +41,9 @@ async def extract_resume(file: UploadFile = File(...), language: str = Form("vie
             extracted_data = json.loads(formatted_json_str)
             headers = {"X-Extraction-Time": f"{elapsed_time:.2f}"}
 
-            if isinstance(extracted_data, dict) and "error" in extracted_data:
+            # A Scanned Resume is kept, so it still reaches the results list marked as scanned; HR sees the error now
+            scanned = is_scanned_resume(extracted_data)
+            if isinstance(extracted_data, dict) and "error" in extracted_data and not scanned:
                 return JSONResponse(content=extracted_data, status_code=400, headers=headers)
 
             output_dir = OUTPUT_DIR
@@ -50,6 +52,8 @@ async def extract_resume(file: UploadFile = File(...), language: str = Form("vie
             with open(os.path.join(output_dir, f"{base_name}.json"), "w", encoding="utf-8") as f:
                 json.dump(extracted_data, f, ensure_ascii=False, indent=2)
             store_resume_pdf(temp_file_path, base_name)
+            if scanned:
+                return JSONResponse(content=extracted_data, status_code=400, headers=headers)
 
             record_duration("extract", elapsed_time)
             return JSONResponse(content=extracted_data, headers=headers)
@@ -106,6 +110,7 @@ def get_scanned_resumes():
                         "path": fpath,
                         "title": pos_info.get("title", "N/A"),
                         "missing_position": is_missing_position(data),
+                        "scanned_resume": is_scanned_resume(data),
                         "level": pos_info.get("level", "unknown"),
                         "email": tier_info["resolved_email"],
                         "skills_count": len(skills),

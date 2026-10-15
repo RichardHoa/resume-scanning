@@ -36,6 +36,17 @@ function isFailedEvaluation(res) {
     return res.status === 'error';
 }
 
+const SCANNED_RESUME_LABEL = 'CV bản scan – không đọc được';
+const SCANNED_RESUME_MESSAGE = 'CV là bản scan (không có lớp văn bản), hệ thống không đọc được nên không chấm điểm hay xếp hạng. Vui lòng yêu cầu ứng viên gửi bản PDF có thể chọn chữ.';
+
+/**
+ * A Scanned Resume: no page of its PDF has text, so it is never evaluated or ranked. Its result says so;
+ * a rerun cannot fix it, only a PDF with selectable text from the candidate.
+ */
+function isScannedResume(res) {
+    return res.status === 'scanned';
+}
+
 const MISSING_POSITION_LABEL = 'Thiếu vị trí ứng tuyển';
 const MISSING_POSITION_MESSAGE = 'CV không ghi vị trí ứng tuyển; hệ thống mặc định ứng viên ứng tuyển vị trí này và vẫn đánh giá, xếp hạng như bình thường.';
 
@@ -48,11 +59,12 @@ function isMissingPosition(res) {
 }
 
 /**
- * The label shown instead of a score for an unscored result (a Failed Evaluation).
+ * The label shown instead of a score for an unscored result (a Failed Evaluation or a Scanned Resume).
  * @returns {string} The label, or '' for a scored result.
  */
 function unscoredLabel(res) {
     if (isFailedEvaluation(res)) return FAILED_EVALUATION_LABEL;
+    if (isScannedResume(res)) return SCANNED_RESUME_LABEL;
     return '';
 }
 
@@ -649,7 +661,9 @@ export class EvaluatorController {
                     <input type="checkbox" class="chk-resume" data-file="${resItem.filename}" ${isSel ? 'checked' : ''}>
                     <div class="resume-info">
                         <span class="resume-title">${rank ? `<span class="tier-rank-badge" title="Thứ hạng trong danh sách đánh giá">#${rank}</span> ` : ''}${this.escapeHtml(resItem.filename)}</span>
-                        <span class="resume-meta">✉ ${this.escapeHtml(resItem.email)} • ${resItem.missing_position
+                        <span class="resume-meta">✉ ${this.escapeHtml(resItem.email)} • ${resItem.scanned_resume
+                            ? `<span class="badge-ocr-review" title="${SCANNED_RESUME_MESSAGE}">⛔ ${SCANNED_RESUME_LABEL}</span>`
+                            : resItem.missing_position
                             ? `<span class="badge-ocr-review" title="${MISSING_POSITION_MESSAGE}">⚠️ ${MISSING_POSITION_LABEL}</span>`
                             : this.escapeHtml(resItem.title)}</span>
                     </div>
@@ -773,10 +787,16 @@ export class EvaluatorController {
         const tierGroups = {
             1: { title: 'Nhóm CV 1 (Ứng viên ưu tiên)', badgeClass: 'tier-badge-1', cardClass: 'tier-1-card', items: [] },
             2: { title: 'Nhóm CV 2 (Ứng viên thứ cấp)', badgeClass: 'tier-badge-2', cardClass: 'tier-2-card', items: [] },
-            3: { title: 'Nhóm CV 3 (Ứng viên ngoài danh sách)', badgeClass: 'tier-badge-3', cardClass: 'tier-3-card', items: [] }
+            3: { title: 'Nhóm CV 3 (Ứng viên ngoài danh sách)', badgeClass: 'tier-badge-3', cardClass: 'tier-3-card', items: [] },
+            // Scanned Resumes are never ranked, so they leave their tier for a section of their own, last
+            scanned: { title: 'CV bản scan – cần ứng viên gửi lại', badge: 'Bản scan', badgeClass: 'tier-badge-3', cardClass: 'tier-3-card', items: [] }
         };
 
         results.forEach(res => {
+            if (isScannedResume(res)) {
+                tierGroups.scanned.items.push(res);
+                return;
+            }
             const t = res.tier || 3;
             if (!tierGroups[t]) tierGroups[t] = tierGroups[3];
             tierGroups[t].items.push(res);
@@ -784,7 +804,7 @@ export class EvaluatorController {
 
         let inspectSet = false;
 
-        [1, 2, 3].forEach(tNum => {
+        [1, 2, 3, 'scanned'].forEach(tNum => {
             const group = tierGroups[tNum];
             if (group.items.length === 0) return;
 
@@ -795,7 +815,7 @@ export class EvaluatorController {
                 <div class="panel-header-split" style="margin-bottom: 14px;">
                     <div style="display: flex; align-items: center; gap: 12px;">
                         <h3 style="margin: 0; color: var(--brand-legacy-blue); font-size: 1.1rem;">${group.title}</h3>
-                        <span class="tier-badge ${group.badgeClass}">Nhóm ${tNum}</span>
+                        <span class="tier-badge ${group.badgeClass}">${group.badge || `Nhóm ${tNum}`}</span>
                     </div>
                     <span class="text-muted" style="font-size: 0.85rem; font-weight:600;">${group.items.length} ứng viên</span>
                 </div>
@@ -824,7 +844,7 @@ export class EvaluatorController {
                 const unscored = unscoredLabel(res);
 
                 tr.innerHTML = `
-                    <td><span class="rank-badge rank-${evalOrderNum}">${evalOrderNum}</span></td>
+                    <td>${isScannedResume(res) ? '—' : `<span class="rank-badge rank-${evalOrderNum}">${evalOrderNum}</span>`}</td>
                     <td>
                         <strong style="color: var(--brand-legacy-blue); font-size: 0.95rem;">${this.escapeHtml(res.resume_name)}</strong><br>
                         <span style="font-size:0.78rem; color: var(--text-muted);">✉ ${this.escapeHtml(res.candidate_email || res.candidate_identifier || 'Không có')}</span>
@@ -888,7 +908,9 @@ export class EvaluatorController {
 
         // Executive summary body
         if (summaryEl) {
-            if (unscored) {
+            if (isScannedResume(cand)) {
+                summaryEl.textContent = SCANNED_RESUME_MESSAGE;
+            } else if (unscored) {
                 const failedNames = (cand.failed_categories || []).map(k => CATEGORY_NAMES[k] || k);
                 const what = failedNames.length > 0 ? `các mục: ${failedNames.join(', ')}` : 'một số mục đánh giá';
                 summaryEl.textContent = `Không thể chấm điểm ${what}. Kết quả này không được xếp hạng. Hãy chọn lại ứng viên này và bấm Đánh giá để chạy lại.`;

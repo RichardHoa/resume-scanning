@@ -121,10 +121,10 @@
     </div>
     {% endif %}
 
-    {% if ocr %}
+    {% if scanned %}
     <div class="alert">
-        <strong>CẦN HR KIỂM TRA KỸ (ĐÃ DÙNG OCR)</strong>
-        CV này không có lớp văn bản gốc (PDF scan hoặc ảnh). Hệ thống đã dùng OCR để trích xuất thông tin ứng viên. Vui lòng kiểm tra thủ công kỹ các thông tin đã trích xuất.
+        <strong>{{ "CV bản scan – không đọc được" | upper }}</strong>
+        CV là bản scan (không có lớp văn bản), hệ thống không đọc được nên không chấm điểm hay xếp hạng. Vui lòng yêu cầu ứng viên gửi bản PDF có thể chọn chữ.
     </div>
     {% endif %}
 

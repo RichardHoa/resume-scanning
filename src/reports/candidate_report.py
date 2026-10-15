@@ -29,6 +29,7 @@ CATEGORY_NAMES = {
 }
 
 FAILED_EVALUATION_LABEL = "Lỗi – cần chạy lại"
+SCANNED_RESUME_LABEL = "CV bản scan – không đọc được"
 
 _env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=select_autoescape(["html"]))
 
@@ -57,6 +58,8 @@ def _match(report: Dict[str, Any], score: float) -> Dict[str, str]:
     """The match pill, with the same rules as the /candidates page."""
     if report.get("status") == "error":
         return {"cls": "match-error", "text": FAILED_EVALUATION_LABEL}
+    if report.get("status") == "scanned":
+        return {"cls": "match-error", "text": SCANNED_RESUME_LABEL}
     rec = report.get("match_recommendation") or "POTENTIAL_MATCH"
     if rec == "STRONG_MATCH" or score >= 85:
         return {"cls": "match-strong", "text": "PHÙ HỢP CAO"}
@@ -97,6 +100,9 @@ def met_criteria(dim: Dict[str, Any]) -> List[Dict[str, Any]]:
 def _view(report: Dict[str, Any]) -> Dict[str, Any]:
     """Everything the template shows, already formatted."""
     failed = report.get("status") == "error"
+    # A Scanned Resume was never evaluated: no score, no Categories, no feedback
+    scanned = report.get("status") == "scanned"
+    unscored = failed or scanned
     score = float(report.get("overall_score") or 0)
     basic_name = (report.get("candidate_name") or "").strip()
     email = (report.get("candidate_email") or "").strip()
@@ -104,7 +110,7 @@ def _view(report: Dict[str, Any]) -> Dict[str, Any]:
         email = report["candidate_identifier"]
 
     categories = []
-    if not failed:
+    if not unscored:
         dims = report.get("dimension_scores") or {}
         for key in CATEGORY_NAMES:
             dim = dims.get(key)
@@ -125,7 +131,7 @@ def _view(report: Dict[str, Any]) -> Dict[str, Any]:
             })
 
     # Missing Must-Haves inform HR only; older reports have none
-    missing_must_haves = [] if failed else [
+    missing_must_haves = [] if unscored else [
         {"criterion": m.get("criterion", ""), "category": CATEGORY_NAMES.get(m.get("category"), "")}
         for m in report.get("missing_must_haves") or [] if isinstance(m, dict)
     ]
@@ -137,12 +143,12 @@ def _view(report: Dict[str, Any]) -> Dict[str, Any]:
         "failed": failed,
         "failed_categories": [CATEGORY_NAMES.get(k, k) for k in report.get("failed_categories") or []],
         "missing_must_haves": missing_must_haves,
-        "ocr": bool(report.get("ocr_applied") or report.get("intensive_hr_review_required")),
-        "score": "—" if failed else f"{score:.1f}",
-        "score_color": "#64748B" if failed else _score_color(score),
+        "scanned": scanned,
+        "score": "—" if unscored else f"{score:.1f}",
+        "score_color": "#64748B" if unscored else _score_color(score),
         "match": _match(report, score),
         "evaluated_at": _evaluated_at(report.get("evaluated_at")),
-        "feedback": feedback if not failed and feedback.get("status") in ("ok", "failed") else None,
+        "feedback": feedback if not unscored and feedback.get("status") in ("ok", "failed") else None,
         "categories": categories
     }
 

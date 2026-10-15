@@ -70,6 +70,9 @@ def main():
         if report.get("status") == "error":
             failed_evaluations.append(fname)
             continue
+        # A Scanned Resume was never evaluated and gets no Candidate Feedback
+        if report.get("status") == "scanned":
+            continue
         feedback = report.get("candidate_feedback")
         if isinstance(feedback, dict) and feedback.get("status") == "ok":
             already_done += 1
