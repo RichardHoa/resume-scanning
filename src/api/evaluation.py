@@ -9,7 +9,6 @@ import uuid
 import asyncio
 import traceback
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from typing import Callable, List, Optional
 from urllib.parse import quote
 from fastapi import APIRouter, HTTPException
@@ -17,8 +16,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from src.core.config import (
-    APPROVED_DIR, OUTPUT_DIR, EVAL_RESULTS_DIR, LOGGING_DIR, EVAL_JOB_TTL_SECONDS, VLLM_MAX_CONCURRENT_REQUESTS,
-    EXTRACTION_MARKDOWN_DIR
+    RESUME_JSON_DIRS, EVALUATION_JSON_DIR, EVAL_JOB_TTL_SECONDS, VLLM_MAX_CONCURRENT_REQUESTS
 )
 from src.core.state import state
 from src.core.durations import record_duration
@@ -31,6 +29,10 @@ from src.core.evaluation_order import (
     find_source_resume_path
 )
 from src.core.resume_pdfs import find_resume_pdf
+from src.core.run_files import (
+    clear_resume_evaluation, extraction_markdown_path, run_dir_of_evaluation, run_dir_of_extraction
+)
+from src.core.dev_details import resume_dev_details
 from src.reports.candidate_report import build_candidate_report_pdf
 from src.providers.rag_engine import NO_HR_RAG_MESSAGE
 
@@ -59,13 +61,11 @@ async def _run_batch_evaluation(
     """
     Evaluates scanned resumes against HR Standard & Hidden Requirements strictly in secret evaluation_order.
     Logs execution timings per resume and per dimension category.
-    Outputs all raw prompt context & response logs into a structured web_evaluations folder hierarchy.
+    Each candidate's earlier evaluation and its prompt logs are cleared first, so the run folder holds only this one.
     Runs evaluation in worker thread via asyncio.to_thread to prevent blocking the FastAPI event loop.
     Calls on_progress(completed, total) once the candidate list is known and after each candidate
     finishes. Every failure is raised as an HTTPException.
     """
-    import re
-
     try:
         os.environ["DISABLE_PROMPT_LOGGING"] = "0"
         start_batch_time = time.time()
@@ -89,27 +89,17 @@ async def _run_batch_evaluation(
                 state.evaluator.rag.ingest_requirements,
                 standard_req,
                 hidden_req,
-                llm_decomposer_func=lambda s, h: state.evaluator._decompose_requirements_with_llm(s, h, "batch_init"),
+                llm_decomposer_func=lambda s, h: state.evaluator._decompose_requirements_with_llm(s, h),
                 force_reingest=True
             )
         if not state.evaluator.rag.has_stored_rag():
             raise HTTPException(status_code=400, detail=NO_HR_RAG_MESSAGE)
 
-        # Create structured logging folder hierarchy for web evaluation batch session
-        batch_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        web_batch_log_dir = os.path.join(LOGGING_DIR, "web_evaluations", f"batch_{batch_timestamp}")
-        os.makedirs(web_batch_log_dir, exist_ok=True)
-
         order_data = load_evaluation_order()
-        search_dirs = [
-            APPROVED_DIR,
-            OUTPUT_DIR
-        ]
-
         candidate_items = []
         for fname in filenames:
             fpath = None
-            for sdir in search_dirs:
+            for sdir in RESUME_JSON_DIRS:
                 candidate_path = os.path.join(sdir, fname)
                 if os.path.exists(candidate_path):
                     fpath = candidate_path
@@ -141,13 +131,12 @@ async def _run_batch_evaluation(
                 print(f"Error pre-loading candidate {fname}: {e}", file=sys.stderr)
 
         if not candidate_items:
-            raise HTTPException(status_code=400, detail=f"Selected resume file(s) [{', '.join(filenames[:3])}] were not found in scanned candidate directories ({APPROVED_DIR}, {OUTPUT_DIR}). Please run Step 1 Extraction first.")
+            raise HTTPException(status_code=400, detail=f"Selected resume file(s) [{', '.join(filenames[:3])}] were not found in scanned candidate directories ({', '.join(RESUME_JSON_DIRS)}). Please run Step 1 Extraction first.")
 
         candidate_items.sort(key=lambda c: (c["tier"], c["tier_order"], c["fname"]))
 
         print(f"\n================================================================================", file=sys.stderr)
         print(f"[SERVER EVALUATION] Starting evaluation of {len(candidate_items)} candidate resume(s) in evaluation order, throttled by the {VLLM_MAX_CONCURRENT_REQUESTS}-request vLLM limit...", file=sys.stderr)
-        print(f"[SERVER EVALUATION] Output prompt logs directory: {web_batch_log_dir}", file=sys.stderr)
         print(f"================================================================================", file=sys.stderr)
 
         # Candidates are scheduled freely; the process-wide vLLM request limit does the throttling. The
@@ -173,11 +162,9 @@ async def _run_batch_evaluation(
             fname = item["fname"]
             resume_data = item["data"]
             base_name = os.path.splitext(fname)[0]
-            safe_base_name = re.sub(r'[^a-zA-Z0-9_-]', '_', base_name or "candidate")
-            cand_log_dir = os.path.join(web_batch_log_dir, safe_base_name)
-            os.makedirs(cand_log_dir, exist_ok=True)
 
             try:
+                clear_resume_evaluation(base_name)
                 candidate_start_time = time.time()
                 eval_result = await loop.run_in_executor(
                     executor,
@@ -186,10 +173,9 @@ async def _run_batch_evaluation(
                         standard_req,
                         hidden_req,
                         resume_name=base_name,
-                        output_dir=EVAL_RESULTS_DIR,
+                        output_dir=EVALUATION_JSON_DIR,
                         num_evaluations=num_evaluations,
                         language=eval_language,
-                        log_dir=cand_log_dir,
                         resume_path=item["fpath"],
                         generate_feedback=True
                     )
@@ -200,7 +186,6 @@ async def _run_batch_evaluation(
                 eval_result["tier"] = item["tier"]
                 eval_result["tier_name"] = item["tier_name"]
                 eval_result["tier_order"] = item["tier_order"]
-                eval_result["prompt_log_dir"] = cand_log_dir
                 return eval_result
             except Exception as e:
                 print(f"Error evaluating {fname}: {e}\n{traceback.format_exc()}", file=sys.stderr)
@@ -213,8 +198,7 @@ async def _run_batch_evaluation(
                     "candidate_email": item["email"],
                     "tier": item["tier"],
                     "tier_name": item["tier_name"],
-                    "tier_order": item["tier_order"],
-                    "prompt_log_dir": cand_log_dir
+                    "tier_order": item["tier_order"]
                 }
             finally:
                 _mark_candidate_done()
@@ -227,26 +211,9 @@ async def _run_batch_evaluation(
 
         total_batch_time = time.time() - start_batch_time
 
-        # Write manifest summary into the structured web batch prompt logs directory
-        manifest_path = os.path.join(web_batch_log_dir, "batch_prompt_logs_manifest.json")
-        manifest_data = {
-            "batch_timestamp": datetime.now().isoformat(),
-            "web_batch_log_dir": web_batch_log_dir,
-            "total_candidates": len(candidate_items),
-            "num_evaluations_per_category": num_evaluations,
-            "language": eval_language,
-            "candidates": [item["fname"] for item in candidate_items]
-        }
-        try:
-            with open(manifest_path, "w", encoding="utf-8") as f:
-                json.dump(manifest_data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"Warning: Failed to write prompt logs manifest to {manifest_path}: {e}", file=sys.stderr)
-
         # Output formatted server log summary
         print(f"\n================================================================================", file=sys.stderr)
         print(f"[SERVER EVALUATION TIMING SUMMARY] Total Batch Elapsed Time: {total_batch_time:.2f}s", file=sys.stderr)
-        print(f"[SERVER EVALUATION PROMPT LOGS] Saved to: {web_batch_log_dir}", file=sys.stderr)
         print(f"--------------------------------------------------------------------------------", file=sys.stderr)
         for res in results:
             rname = res.get("resume_name", "unknown")
@@ -262,9 +229,7 @@ async def _run_batch_evaluation(
         return {
             "results": results,
             "total_evaluated": len(results),
-            "batch_execution_time_seconds": round(total_batch_time, 2),
-            "prompt_logs_dir": web_batch_log_dir,
-            "prompt_logs_manifest": manifest_path
+            "batch_execution_time_seconds": round(total_batch_time, 2)
         }
     except HTTPException:
         raise
@@ -372,6 +337,8 @@ def list_eval_results():
                         data["tier_order"] = tinfo["tier_order"]
                         data["candidate_email"] = tinfo["resolved_email"]
                         data["has_resume_pdf"] = find_resume_pdf(data.get("resume_name") or fname) is not None
+                        # Results of a pipeline run are shown on the website but never deleted from it
+                        data["read_only"] = folder != EVALUATION_JSON_DIR
                         evaluations.append(data)
                 except Exception as e:
                     print(f"Warning: Failed to parse evaluation file {fpath}: {e}", file=sys.stderr)
@@ -440,15 +407,45 @@ def get_eval_resume_json(filename: str):
 @router.get("/eval_results/{filename}/resume_markdown")
 def get_eval_resume_markdown(filename: str):
     """Developer view: the markdown text extracted from the resume PDF, served inline as plain text."""
-    data = _load_eval_result(filename)
-    resume_path = find_source_resume_path(data)
+    md_path = _find_extraction_markdown(filename, _load_eval_result(filename))
+    if not md_path:
+        raise HTTPException(status_code=404, detail="No extraction markdown is stored for this candidate.")
+    return FileResponse(md_path, media_type="text/plain; charset=utf-8", content_disposition_type="inline")
+
+
+def _find_extraction_markdown(filename: str, report: dict) -> Optional[str]:
+    """The extraction markdown behind an evaluation, from the run folder that extracted the resume, or None."""
+    resume_path = find_source_resume_path(report)
+    run_dir = run_dir_of_extraction(resume_path, run_dir_of_evaluation(find_eval_file(filename)))
     names = [os.path.basename(resume_path)] if resume_path else []
-    names.append(data.get("resume_name") or filename)
+    names.append(report.get("resume_name") or filename)
     for name in names:
-        md_path = os.path.join(EXTRACTION_MARKDOWN_DIR, os.path.splitext(os.path.basename(name))[0] + ".md")
+        md_path = extraction_markdown_path(run_dir, name)
         if os.path.isfile(md_path):
-            return FileResponse(md_path, media_type="text/plain; charset=utf-8", content_disposition_type="inline")
-    raise HTTPException(status_code=404, detail="No extraction markdown is stored for this candidate.")
+            return md_path
+    return None
+
+
+@router.get("/eval_results/{filename}/dev_details")
+def get_eval_dev_details(filename: str):
+    """
+    Developer view: everything stored for one evaluated resume in its run folder (extraction markdown and JSON,
+    the evaluation JSON, every prompt log and its token usage). Run-wide logs are left out.
+    """
+    fpath = find_eval_file(filename)
+    if not fpath:
+        raise HTTPException(status_code=404, detail="Evaluation result file not found.")
+    report = _load_eval_result(filename)
+    run_dir = run_dir_of_evaluation(fpath)
+    resume_path = find_source_resume_path(report)
+    return resume_dev_details(
+        run_dir,
+        run_dir_of_extraction(resume_path, run_dir),
+        report.get("resume_name") or filename,
+        report,
+        resume_path,
+        _find_extraction_markdown(filename, report)
+    )
 
 
 @router.get("/eval_results/{filename}/report_pdf")
@@ -472,12 +469,21 @@ def get_eval_report_pdf(filename: str):
 
 @router.delete("/eval_results/{filename}")
 def delete_eval_result(filename: str):
-    """Deletes an evaluation result file from EVAL_RESULTS_DIR or EVALUATION_JSON_DIR."""
+    """
+    Deletes an evaluation made on the website, with its evaluation prompt logs and token usage (the extraction
+    stays). A pipeline run's evaluations are read-only here.
+    """
     fpath = find_eval_file(filename)
     if not fpath:
         raise HTTPException(status_code=404, detail="Evaluation file not found.")
+    if os.path.dirname(fpath) != EVALUATION_JSON_DIR:
+        raise HTTPException(status_code=403, detail="This evaluation comes from a pipeline run and cannot be deleted from the website.")
+    resume_name = _load_eval_result(filename).get("resume_name")
     try:
-        os.remove(fpath)
+        if resume_name:
+            clear_resume_evaluation(resume_name)
+        if os.path.isfile(fpath):
+            os.remove(fpath)
         return {"success": True, "message": f"Deleted {os.path.basename(fpath)}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

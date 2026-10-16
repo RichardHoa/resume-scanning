@@ -8,10 +8,11 @@ import time
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 
-from src.core.config import APPROVED_DIR, OUTPUT_DIR
+from src.core.config import EXTRACTION_JSON_DIR, RESUME_JSON_DIRS
 from src.core.state import state
 from src.core.durations import record_duration
 from src.core.resume_pdfs import store_resume_pdf
+from src.core.run_files import clear_resume
 from src.core.evaluation_order import load_evaluation_order, get_candidate_tier
 from src.pipelines.evaluator_utils import is_missing_position, is_scanned_resume
 
@@ -32,7 +33,9 @@ async def extract_resume(file: UploadFile = File(...), language: str = Form("vie
             buffer.write(content)
             
         print(f"Received file: {safe_filename}, processing extraction (language: {language})...", file=sys.stderr)
-        
+
+        # Extracting a resume again starts it over: its old extraction, evaluation and every log go first
+        clear_resume(safe_filename)
         start_time = time.time()
         formatted_json_str = state.extractor.extract(temp_file_path, language=language)
         elapsed_time = time.time() - start_time
@@ -46,10 +49,9 @@ async def extract_resume(file: UploadFile = File(...), language: str = Form("vie
             if isinstance(extracted_data, dict) and "error" in extracted_data and not scanned:
                 return JSONResponse(content=extracted_data, status_code=400, headers=headers)
 
-            output_dir = OUTPUT_DIR
-            os.makedirs(output_dir, exist_ok=True)
+            os.makedirs(EXTRACTION_JSON_DIR, exist_ok=True)
             base_name = os.path.splitext(safe_filename)[0]
-            with open(os.path.join(output_dir, f"{base_name}.json"), "w", encoding="utf-8") as f:
+            with open(os.path.join(EXTRACTION_JSON_DIR, f"{base_name}.json"), "w", encoding="utf-8") as f:
                 json.dump(extracted_data, f, ensure_ascii=False, indent=2)
             store_resume_pdf(temp_file_path, base_name)
             if scanned:
@@ -79,17 +81,12 @@ async def extract_resume(file: UploadFile = File(...), language: str = Form("vie
 
 @router.get("/scanned_resumes")
 def get_scanned_resumes():
-    """Lists all scanned/extracted JSON resumes available in approved_jsons and output_jsons, sorted by secret evaluation_order."""
+    """Lists all scanned/extracted JSON resumes in approved_jsons and the run folders read, sorted by secret evaluation_order."""
     order_data = load_evaluation_order()
-    search_dirs = [
-        APPROVED_DIR,
-        OUTPUT_DIR
-    ]
-    
     resumes = []
     seen_names = set()
 
-    for sdir in search_dirs:
+    for sdir in RESUME_JSON_DIRS:
         if not os.path.exists(sdir):
             continue
         for fname in sorted(os.listdir(sdir)):

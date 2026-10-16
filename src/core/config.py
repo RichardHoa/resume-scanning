@@ -11,24 +11,74 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.dirname(SCRIPT_DIR)
 ROOT_DIR = os.path.dirname(SRC_DIR)
 
-LOGGING_DIR = os.path.join(ROOT_DIR, "logging")
-BROKEN_JSON_DIR = os.path.join(ROOT_DIR, "broken-json")
-# One JSON line per vLLM request (step, prompt/completion tokens, finish reason); summarized by scripts/token_stats.py
-TOKEN_USAGE_FILE = os.path.join(LOGGING_DIR, "token_usage.jsonl")
-EVAL_RESULTS_DIR = os.path.join(ROOT_DIR, "eval_results")
-EVALUATION_JSON_DIR = os.path.join(ROOT_DIR, "evaluation_json")
+# Durable inputs and state, never wiped by a run
 SCHEMAS_DIR = os.path.join(ROOT_DIR, "schemas")
 RAG_DIR = os.path.join(ROOT_DIR, "rag")
 APPROVED_DIR = os.path.join(ROOT_DIR, "approved_jsons")
-OUTPUT_DIR = os.path.join(ROOT_DIR, "output_jsons")
 PDF_DIR = os.path.join(ROOT_DIR, "pdfs")
-# Original resume PDFs kept at extraction, named like their extraction JSON, so HR can view them next to the evaluation
-RESUME_PDF_DIR = os.path.join(ROOT_DIR, "resumes_pdf")
-EXTRACTION_MARKDOWN_DIR = os.path.join(ROOT_DIR, "extraction_markdown")
 SERVER_STATE_DIR = os.path.join(ROOT_DIR, "server_state")
 
+# Run folders (docs/adr/0010-run-folders.md): every output of one source of work lives in one folder under runs/.
+# A pipeline job wipes its folder before it starts; the website's folder is never wiped. The scripts in scripts/
+# repeat these folder and subfolder names
+RUNS_DIR = os.path.join(ROOT_DIR, "runs")
+DEFAULT_RUN_FOLDER = "full-cnb"
+# Each website run folder and the pipeline run folder of the same resume set, which the website also reads, read-only
+WEB_TO_PIPELINE_RUN_FOLDER = {"full-web-cnb": "full-cnb", "full-web-tech": "full-tech"}
+RUN_FOLDER_NAMES = ("full-cnb", "full-tech", *WEB_TO_PIPELINE_RUN_FOLDER)
+
+LOGS_SUBDIR = "logs"
+PROMPT_LOGS_SUBDIR = "prompt_logs"
+EXTRACTION_MARKDOWN_SUBDIR = "extraction_markdown"
+EXTRACTION_JSON_SUBDIR = "extraction_json"
+EVALUATION_JSON_SUBDIR = "evaluation_json"
+RESUME_PDF_SUBDIR = "resumes_pdf"
+TOKEN_USAGE_FILENAME = "token_usage.jsonl"
+
+
+def _resolve_run_dir() -> str:
+    """
+    The active run folder from RUN_DIR (an absolute path, a path from the repo root, or a bare folder name under
+    runs/), or runs/full-cnb when unset.
+    """
+    raw = os.environ.get("RUN_DIR") or DEFAULT_RUN_FOLDER
+    if os.path.isabs(raw):
+        path = raw
+    elif os.sep in raw:
+        path = os.path.join(ROOT_DIR, raw)
+    else:
+        path = os.path.join(RUNS_DIR, raw)
+    path = os.path.abspath(path)
+    # realpath: the scripts' PROJECT_ROOT may reach the repo through a symlink
+    if os.path.realpath(os.path.dirname(path)) != os.path.realpath(RUNS_DIR) or os.path.basename(path) not in RUN_FOLDER_NAMES:
+        raise RuntimeError(f"RUN_DIR must be one of {', '.join(RUN_FOLDER_NAMES)} under {RUNS_DIR}, not '{raw}'")
+    return os.path.join(RUNS_DIR, os.path.basename(path))
+
+
+# The run folder this process writes to
+RUN_DIR = _resolve_run_dir()
+RUN_LOGS_DIR = os.path.join(RUN_DIR, LOGS_SUBDIR)
+# Every LLM prompt and response: prompt_logs/<resume>/<category>/N.txt, unparsable ones under <resume>/broken_json/
+PROMPT_LOGS_DIR = os.path.join(RUN_DIR, PROMPT_LOGS_SUBDIR)
+EXTRACTION_MARKDOWN_DIR = os.path.join(RUN_DIR, EXTRACTION_MARKDOWN_SUBDIR)
+EXTRACTION_JSON_DIR = os.path.join(RUN_DIR, EXTRACTION_JSON_SUBDIR)
+EVALUATION_JSON_DIR = os.path.join(RUN_DIR, EVALUATION_JSON_SUBDIR)
+# Original resume PDFs kept at extraction, named like their extraction JSON, so HR can view them next to the evaluation
+RESUME_PDF_DIR = os.path.join(RUN_DIR, RESUME_PDF_SUBDIR)
+# One JSON line per vLLM request (step, resume, prompt/completion tokens, finish reason); summarized by scripts/token_stats.py
+TOKEN_USAGE_FILE = os.path.join(RUN_LOGS_DIR, TOKEN_USAGE_FILENAME)
+
+# Run folders read from, the active one first so its copy of a resume wins: a website folder also reads its
+# resume set's pipeline folder, so a batch run can be browsed on the website
+_pipeline_run_folder = WEB_TO_PIPELINE_RUN_FOLDER.get(os.path.basename(RUN_DIR))
+SOURCE_RUN_DIRS = [RUN_DIR] + ([os.path.join(RUNS_DIR, _pipeline_run_folder)] if _pipeline_run_folder else [])
+# Extracted resume JSONs, most trusted first: HR's ground truth, then each run folder's extractions
+RESUME_JSON_DIRS = [APPROVED_DIR] + [os.path.join(d, EXTRACTION_JSON_SUBDIR) for d in SOURCE_RUN_DIRS]
+EVALUATION_JSON_DIRS = [os.path.join(d, EVALUATION_JSON_SUBDIR) for d in SOURCE_RUN_DIRS]
+
 # Ensure required directories exist
-for d in [LOGGING_DIR, BROKEN_JSON_DIR, EVAL_RESULTS_DIR, EVALUATION_JSON_DIR, RAG_DIR, EXTRACTION_MARKDOWN_DIR, APPROVED_DIR, SERVER_STATE_DIR, RESUME_PDF_DIR]:
+for d in [RAG_DIR, APPROVED_DIR, SERVER_STATE_DIR, RUN_LOGS_DIR, PROMPT_LOGS_DIR, EXTRACTION_MARKDOWN_DIR,
+          EXTRACTION_JSON_DIR, EVALUATION_JSON_DIR, RESUME_PDF_DIR]:
     os.makedirs(d, exist_ok=True)
 
 # Weight distribution for 5 evaluation dimensions

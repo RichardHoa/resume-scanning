@@ -10,7 +10,7 @@ if _PROJECT_ROOT not in sys.path:
 
 import json
 import argparse
-from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, DSPY_MAX_TOKENS
+from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, DSPY_MAX_TOKENS, EXTRACTION_JSON_DIR, EVALUATION_JSON_DIR
 from src.optimization.dspy_evaluator import (
     load_candidate_ground_truth,
     calculate_category_metric,
@@ -27,10 +27,10 @@ def parse_args():
                         help="LLM model name or HF repository")
     parser.add_argument("--vllm-url", type=str, default=DEFAULT_VLLM_URL,
                         help="vLLM server endpoint URL")
-    parser.add_argument("--output-jsons", type=str, default=os.path.join(_PROJECT_ROOT, "output_jsons"),
-                        help="Path to extracted candidate resume JSONs directory (default: output_jsons)")
-    parser.add_argument("--eval-dir", type=str, default=os.path.join(_PROJECT_ROOT, "evaluation_results"),
-                        help="Path to candidate evaluation reports directory for scoring (default: evaluation_results)")
+    parser.add_argument("--output-jsons", type=str, default=EXTRACTION_JSON_DIR,
+                        help="Path to extracted candidate resume JSONs directory (default: the run folder's extraction_json)")
+    parser.add_argument("--eval-dir", type=str, default=EVALUATION_JSON_DIR,
+                        help="Path to candidate evaluation reports directory for scoring (default: the run folder's evaluation_json)")
     parser.add_argument("--output-prompt", type=str, default=os.path.join(_PROJECT_ROOT, "prompts", "dspy_compiled_prompt.json"),
                         help="Output path for compiled DSPy prompt artifact")
     parser.add_argument("--mode", type=str, choices=["train", "eval-dataset", "summary", "view-prompt"], default="summary",

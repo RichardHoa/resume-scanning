@@ -13,6 +13,15 @@ import { CATEGORY_NAMES, MUST_HAVE } from './criteria-editor.js';
 const FAILED_EVALUATION_LABEL = 'Lỗi – cần chạy lại';
 const FEEDBACK_TITLE = 'Nhận xét của hội đồng đánh giá';
 const FEEDBACK_FAILED_LABEL = 'Không thể tạo nhận xét';
+const DEV_DETAILS_TITLE = 'Chi tiết cho nhà phát triển';
+
+// Pipeline steps the developer panel groups prompt logs by (keys match dev_details.prompt_logs[].step)
+const DEV_STEP_NAMES = {
+    extraction: 'Trích xuất',
+    evaluation: 'Đánh giá theo mục',
+    review_panel: 'Hội đồng đánh giá',
+    other: 'Khác'
+};
 
 // Review Panel Panelists, in display order (keys match candidate_feedback.panelist_views)
 const PANELIST_NAMES = {
@@ -616,7 +625,7 @@ export class CandidatePoolController {
             ${feedbackHtml}
             ${this.renderHrCheckItems(cand.hr_check_items)}
             <div class="modal-dim-grid">${dimCardsHtml}</div>
-            ${this.renderDevFileLinks(cand)}
+            ${this.renderDevDetails(cand)}
         `;
         this.showModalEvaluation();
 
@@ -666,22 +675,150 @@ export class CandidatePoolController {
     }
 
     /**
-     * Small links to the raw files behind the evaluation, for developers; HR never needs them.
+     * The collapsed developer panel at the bottom of the evaluation: everything the run folder holds for this
+     * resume, loaded only when opened. HR never needs it.
      * @param {Object} cand - Candidate evaluation data object.
-     * @returns {string} HTML for the link row, or '' without a result file name.
+     * @returns {string} HTML for the panel, or '' without a result file name.
      */
-    renderDevFileLinks(cand) {
+    renderDevDetails(cand) {
         if (!cand.filename) return '';
-        const urls = API.devFileUrls(cand.filename);
-        const link = (href, label, title) => `<a class="modal-dev-link" href="${href}" target="_blank" rel="noopener" title="${title}">${label}</a>`;
         return `
-            <div class="modal-dev-links" aria-label="Tệp dành cho nhà phát triển">
-                <span>Dev:</span>
-                ${link(urls.resumeJson, 'JSON', 'JSON trích xuất từ CV')}
-                ${link(urls.resumeMarkdown, 'MD', 'Markdown trích xuất từ PDF')}
-                ${link(urls.evalJson, 'Eval JSON', 'JSON kết quả đánh giá')}
+            <details class="modal-dev-details" id="modal-dev-details">
+                <summary>${DEV_DETAILS_TITLE}</summary>
+                <div class="modal-dev-body" id="modal-dev-body"><div class="loading-state">Đang tải…</div></div>
+            </details>
+        `;
+    }
+
+    /**
+     * Loads the developer panel's contents the first time it is opened.
+     */
+    bindDevDetails() {
+        const details = this.modalCandBody.querySelector('#modal-dev-details');
+        const cand = this.currentModalCandidate;
+        if (!details || !cand) return;
+        details.addEventListener('toggle', async () => {
+            if (!details.open || details.dataset.loaded) return;
+            details.dataset.loaded = 'true';
+            const body = details.querySelector('#modal-dev-body');
+            try {
+                const dev = await API.getDevDetails(cand.filename);
+                // The modal may have moved on to another candidate while loading
+                if (this.currentModalCandidate !== cand) return;
+                body.innerHTML = this.renderDevDetailsContent(dev, cand.filename);
+                this.bindDevDetailsContent(body);
+            } catch (err) {
+                delete details.dataset.loaded;
+                body.innerHTML = `<div class="error-state">${this.escapeHtml(err.message)}</div>`;
+            }
+        });
+    }
+
+    /**
+     * The developer panel's tabs: extraction markdown, extraction JSON, evaluation JSON, prompt logs and token usage.
+     * @param {Object} dev - The dev_details response.
+     * @param {string} filename - Evaluation result file name, for the raw-file links.
+     * @returns {string} HTML for the tab bar and panels.
+     */
+    renderDevDetailsContent(dev, filename) {
+        const urls = API.devFileUrls(filename);
+        const json = (value) => value == null ? null : (typeof value === 'string' ? value : JSON.stringify(value, null, 2));
+        const tokenLines = (dev.token_usage || []).map(r => JSON.stringify(r)).join('\n');
+        const tabs = [
+            { key: 'markdown', label: 'Markdown', html: this.renderDevPre(dev.extraction_markdown, 'Không có markdown trích xuất.', urls.resumeMarkdown) },
+            { key: 'extraction', label: 'JSON trích xuất', html: this.renderDevPre(json(dev.extraction_json), 'Không có JSON trích xuất.', urls.resumeJson) },
+            { key: 'evaluation', label: 'JSON đánh giá', html: this.renderDevPre(json(dev.evaluation_json), 'Không có JSON đánh giá.', urls.evalJson) },
+            { key: 'prompts', label: 'Prompt', html: this.renderDevPromptLogs(dev.prompt_logs || []) },
+            { key: 'tokens', label: 'Token', html: this.renderDevPre(tokenLines || null, 'Không có bản ghi token.') }
+        ];
+        const tabButtons = tabs.map((t, i) => `
+            <button class="modal-dev-tab" type="button" role="tab" data-dev-tab="${t.key}" aria-selected="${i === 0}">${t.label}</button>
+        `).join('');
+        const panels = tabs.map((t, i) => `
+            <div class="modal-dev-panel" role="tabpanel" data-dev-panel="${t.key}" ${i === 0 ? '' : 'hidden'}>${t.html}</div>
+        `).join('');
+        return `
+            <div class="modal-dev-meta">Thư mục chạy: <code>${this.escapeHtml(dev.run_folder)}</code> • Hồ sơ: <code>${this.escapeHtml(dev.resume_name)}</code></div>
+            <div class="modal-dev-tabs" role="tablist">${tabButtons}</div>
+            ${panels}
+        `;
+    }
+
+    /**
+     * A block of raw text with a copy button, and a link to open the raw file when it has one.
+     * @param {?string} text - The text, or null when there is none.
+     * @param {string} emptyMessage - Shown instead when there is no text.
+     * @param {string} [rawUrl] - URL of the raw file.
+     * @returns {string} HTML for the block.
+     */
+    renderDevPre(text, emptyMessage, rawUrl = '') {
+        if (text == null || text === '') return `<div class="modal-dev-empty">${emptyMessage}</div>`;
+        return `
+            <div class="modal-dev-block">
+                <div class="modal-dev-block-actions">
+                    ${rawUrl ? `<a class="modal-dev-link" href="${rawUrl}" target="_blank" rel="noopener">Mở tệp ↗</a>` : ''}
+                    <button class="modal-dev-link" type="button" data-dev-copy>Sao chép</button>
+                </div>
+                <pre class="modal-dev-pre">${this.escapeHtml(text)}</pre>
             </div>
         `;
+    }
+
+    /**
+     * The resume's prompt logs grouped by pipeline step, then category, each log file collapsed.
+     * @param {Array<Object>} groups - dev_details.prompt_logs.
+     * @returns {string} HTML for the prompt logs tab.
+     */
+    renderDevPromptLogs(groups) {
+        if (!groups.length) return '<div class="modal-dev-empty">Không có prompt nào được ghi lại.</div>';
+        return groups.map(group => {
+            const categories = group.categories.map(c => {
+                const name = (CATEGORY_NAMES[c.category] || c.category) + (c.broken ? ' — JSON lỗi' : '');
+                const files = c.files.map(f => `
+                    <details class="modal-dev-log">
+                        <summary>${this.escapeHtml(f.name)}</summary>
+                        ${this.renderDevPre(f.content, 'Tệp trống.')}
+                    </details>
+                `).join('');
+                return `
+                    <div class="modal-dev-category${c.broken ? ' is-broken' : ''}">
+                        <div class="modal-dev-category-title">${this.escapeHtml(name)} <span class="modal-dev-count">(${c.files.length})</span></div>
+                        ${files}
+                    </div>
+                `;
+            }).join('');
+            return `
+                <section class="modal-dev-step">
+                    <h4 class="modal-dev-step-title">${DEV_STEP_NAMES[group.step] || this.escapeHtml(group.step)}</h4>
+                    ${categories}
+                </section>
+            `;
+        }).join('');
+    }
+
+    /**
+     * Wires the developer panel's tab switching and copy buttons.
+     * @param {HTMLElement} body - The panel body holding the rendered content.
+     */
+    bindDevDetailsContent(body) {
+        body.querySelectorAll('[data-dev-tab]').forEach(tab => {
+            tab.addEventListener('click', () => {
+                body.querySelectorAll('[data-dev-tab]').forEach(t => t.setAttribute('aria-selected', String(t === tab)));
+                body.querySelectorAll('[data-dev-panel]').forEach(p => { p.hidden = p.dataset.devPanel !== tab.dataset.devTab; });
+            });
+        });
+        body.querySelectorAll('[data-dev-copy]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const pre = btn.closest('.modal-dev-block').querySelector('.modal-dev-pre');
+                try {
+                    await navigator.clipboard.writeText(pre.textContent);
+                    btn.textContent = 'Đã chép';
+                } catch {
+                    btn.textContent = 'Không chép được';
+                }
+                setTimeout(() => { btn.textContent = 'Sao chép'; }, 1500);
+            });
+        });
     }
 
     /**
@@ -733,6 +870,7 @@ export class CandidatePoolController {
         this.modalShowingResume = false;
         this.modalCandBody.classList.remove('modal-body-resume');
         this.modalCandBody.innerHTML = this.modalEvaluationHtml || '';
+        this.bindDevDetails();
         this.modalCandBody.scrollTop = 0;
         if (this.modalBtnResume) this.modalBtnResume.textContent = 'Xem CV';
     }

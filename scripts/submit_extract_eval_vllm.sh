@@ -13,10 +13,12 @@
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script for Combined Extraction & Evaluation with vLLM
 #
-# Resets workspace folders to simulate starting from a completely blank state,
-# spins up a vLLM server instance, runs batch extraction (Step 1), and then
-# runs batch evaluation (Step 2) using the active vLLM server.
-# Log outputs are captured in dedicated log files under logs/.
+# Usage: sbatch scripts/submit_extract_eval_vllm.sh [pdf_dir] [model] [--tech]
+#
+# Wipes the run folder (runs/full-cnb, or runs/full-tech with --tech), spins up a vLLM server instance, runs batch
+# extraction (Step 1), and then runs batch evaluation (Step 2) using the active vLLM server. Every output of the
+# job goes into the run folder: its logs, prompt logs, extraction markdown and JSON, evaluation JSON and resume
+# PDFs (docs/adr/0010-run-folders.md). SLURM's own .out/.err files stay in logging/.
 #
 # Evaluation uses the HR RAG as HR set it on the website's RAG page, and never builds,
 # changes or clears it: set the HR RAG for the job before submitting, or the job stops
@@ -26,7 +28,7 @@
 # arguments) for Vietnamese-dataset/Tech; the HR RAG must then hold the Tech job's
 # requirements (hr-requirement-tech.txt). An explicit PDF dir argument still overrides.
 # The Tech resumes are old, so --tech also sets the Reference Date (the date the prompts treat as today)
-# to June 2015.
+# to December 2015.
 # -----------------------------------------------------------------------------
 
 DATASET="CnB"
@@ -40,15 +42,13 @@ done
 set -- "${POSITIONAL_ARGS[@]}"
 
 if [ "$DATASET" = "Tech" ]; then
-  REFERENCE_DATE="2015-06-30"
+  REFERENCE_DATE="2015-12-31"
 else
   REFERENCE_DATE=""
 fi
 
 RAW_PDF_DIR="$1"
 RAW_MODEL="$2"
-RAW_OUTPUT_DIR="$3"
-RAW_EVAL_DIR="$4"
 INITIAL_CWD="$(pwd)"
 
 # -----------------------------------------------------------------------------
@@ -146,31 +146,7 @@ fi
 # Target model: a profile key or HuggingFace model ID (default: the DEFAULT_MODEL_KEY profile)
 resolve_model_arg "$RAW_MODEL" || exit 1
 
-# Target Extraction Output Directory (Default: output_jsons inside project root)
-if [ -n "$RAW_OUTPUT_DIR" ]; then
-  if [[ "$RAW_OUTPUT_DIR" = /* ]]; then
-    OUTPUT_DIR="$RAW_OUTPUT_DIR"
-  elif [ -d "$INITIAL_CWD/$RAW_OUTPUT_DIR" ]; then
-    OUTPUT_DIR="$(cd "$INITIAL_CWD/$RAW_OUTPUT_DIR" && pwd)"
-  else
-    OUTPUT_DIR="$PROJECT_ROOT/$RAW_OUTPUT_DIR"
-  fi
-else
-  OUTPUT_DIR="$PROJECT_ROOT/output_jsons"
-fi
-
-# Target Evaluation JSON Directory (Default: evaluation_json inside project root)
-if [ -n "$RAW_EVAL_DIR" ]; then
-  if [[ "$RAW_EVAL_DIR" = /* ]]; then
-    EVAL_DIR="$RAW_EVAL_DIR"
-  elif [ -d "$INITIAL_CWD/$RAW_EVAL_DIR" ]; then
-    EVAL_DIR="$(cd "$INITIAL_CWD/$RAW_EVAL_DIR" && pwd)"
-  else
-    EVAL_DIR="$PROJECT_ROOT/$RAW_EVAL_DIR"
-  fi
-else
-  EVAL_DIR="$PROJECT_ROOT/evaluation_json"
-fi
+use_pipeline_run_dir "$DATASET"
 
 if [ ! -d "$PDF_DIR" ]; then
   echo "[ERROR] PDF directory '$PDF_DIR' does not exist." >&2
@@ -180,38 +156,23 @@ fi
 require_hr_rag || exit 1
 
 # -----------------------------------------------------------------------------
-# STEP 4: Reset Workspace to Blank State & Create Target Directories
+# STEP 4: Wipe the Run Folder
 # -----------------------------------------------------------------------------
 echo "====================================================================="
-echo "[$(date +'%Y-%m-%d %H:%M:%S')] STEP 4: Resetting workspace to blank state..."
-echo "Clearing extraction markdowns, output JSONs and evaluation JSONs (the HR RAG is kept)."
+echo "[$(date +'%Y-%m-%d %H:%M:%S')] STEP 4: Wiping run folder '$RUN_DIR'..."
+echo "Every output of the previous pass goes (the HR RAG and approved_jsons are kept)."
 echo "====================================================================="
 
-mkdir -p "$PROJECT_ROOT/logs" \
-         "$PROJECT_ROOT/logging" \
-         "$PROJECT_ROOT/pdfs" \
-         "$PROJECT_ROOT/extraction_markdown" \
-         "$PROJECT_ROOT/eval_results" \
-         "$PROJECT_ROOT/broken-json" \
-         "$PROJECT_ROOT/approved_jsons" \
-         "$OUTPUT_DIR" \
-         "$EVAL_DIR"
-
-rm -rf "${OUTPUT_DIR:?}"/*
-rm -rf "${EVAL_DIR:?}"/*
-rm -rf "$PROJECT_ROOT/extraction_markdown"/*
-rm -rf "$PROJECT_ROOT/eval_results"/*
-rm -rf "$PROJECT_ROOT/broken-json"/*
-rm -rf "$PROJECT_ROOT/approved_jsons"/*
-rm -f "$PROJECT_ROOT/logging/token_usage.jsonl"
+mkdir -p "$PROJECT_ROOT/logging"
+reset_run_dir || exit 1
 
 # -----------------------------------------------------------------------------
 # STEP 5: Logging Setup & Server Startup
 # -----------------------------------------------------------------------------
-JOB_LOG="$PROJECT_ROOT/logs/extract_eval_job.log"
-EXTRACT_LOG="$PROJECT_ROOT/logs/extract_step1.log"
-EVAL_LOG="$PROJECT_ROOT/logs/eval_step2.log"
-VLLM_LOG="$PROJECT_ROOT/logs/vllm_extract_eval.log"
+JOB_LOG="$RUN_LOGS_DIR/job.log"
+EXTRACT_LOG="$RUN_LOGS_DIR/extract.log"
+EVAL_LOG="$RUN_LOGS_DIR/eval.log"
+VLLM_LOG="$RUN_LOGS_DIR/vllm.log"
 
 echo "[$(date +'%Y-%m-%d %H:%M:%S')] Combined Extract & Eval Job Started" > "$JOB_LOG"
 
@@ -226,8 +187,7 @@ echo "[$(date +'%H:%M:%S')] Project Root: $PROJECT_ROOT" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Dataset: $DATASET" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Reference Date: ${REFERENCE_DATE:-today}" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Target PDF Directory: $PDF_DIR" | tee -a "$JOB_LOG"
-echo "[$(date +'%H:%M:%S')] Target Output Directory: $OUTPUT_DIR" | tee -a "$JOB_LOG"
-echo "[$(date +'%H:%M:%S')] Target Evaluation Directory: $EVAL_DIR" | tee -a "$JOB_LOG"
+echo "[$(date +'%H:%M:%S')] Run Folder: $RUN_DIR" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Server Log File: $VLLM_LOG" | tee -a "$JOB_LOG"
@@ -242,13 +202,13 @@ start_vllm_server "$MODEL" "$PORT" "$VLLM_LOG" || exit 1
 # -----------------------------------------------------------------------------
 echo "=====================================================================" | tee -a "$JOB_LOG"
 echo "[$(date +'%Y-%m-%d %H:%M:%S')] === [Step 1/2] Starting Batch Extraction (vLLM) ===" | tee -a "$JOB_LOG"
-echo "Processing PDFs from '$PDF_DIR' -> JSONs to '$OUTPUT_DIR' using model '$MODEL'" | tee -a "$JOB_LOG"
+echo "Processing PDFs from '$PDF_DIR' -> JSONs to '$EXTRACTION_JSON_DIR' using model '$MODEL'" | tee -a "$JOB_LOG"
 echo "Detailed extraction log: $EXTRACT_LOG" | tee -a "$JOB_LOG"
 echo "=====================================================================" | tee -a "$JOB_LOG"
 
 python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
   --dir "$PDF_DIR" \
-  --output "$OUTPUT_DIR" \
+  --output "$EXTRACTION_JSON_DIR" \
   --model-name "$MODEL" \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --workers 6 \
@@ -266,15 +226,15 @@ fi
 # -----------------------------------------------------------------------------
 echo "=====================================================================" | tee -a "$JOB_LOG"
 echo "[$(date +'%Y-%m-%d %H:%M:%S')] === [Step 2/2] Starting High-Precision Batch Evaluation (vLLM) ===" | tee -a "$JOB_LOG"
-echo "Evaluating JSONs from '$OUTPUT_DIR' -> Results to '$EVAL_DIR' using model '$MODEL'" | tee -a "$JOB_LOG"
+echo "Evaluating JSONs from '$EXTRACTION_JSON_DIR' -> Results to '$EVALUATION_JSON_DIR' using model '$MODEL'" | tee -a "$JOB_LOG"
 echo "Detailed evaluation log: $EVAL_LOG" | tee -a "$JOB_LOG"
 echo "=====================================================================" | tee -a "$JOB_LOG"
 
 python3 -u "$PROJECT_ROOT/src/step_2_evaluate.py" \
   --model-name "$MODEL" \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
-  --dir "$OUTPUT_DIR" \
-  --output "$EVAL_DIR" \
+  --dir "$EXTRACTION_JSON_DIR" \
+  --output "$EVALUATION_JSON_DIR" \
   --reference-date "$REFERENCE_DATE" 2>&1 | tee "$EVAL_LOG" | tee -a "$JOB_LOG"
 
 EVAL_STATUS=${PIPESTATUS[0]}

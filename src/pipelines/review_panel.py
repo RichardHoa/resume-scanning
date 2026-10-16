@@ -197,7 +197,7 @@ class ReviewPanel:
                     raise
                 usage = response.usage_details or {}
                 max_tokens = REVIEW_PANEL_COORDINATOR_MAX_TOKENS if category == COORDINATOR_LOG_CATEGORY else REVIEW_PANEL_PANELIST_MAX_TOKENS
-                record_usage(category, usage.get("input_token_count"), usage.get("output_token_count"), response.finish_reason, max_tokens)
+                record_usage(category, usage.get("input_token_count"), usage.get("output_token_count"), response.finish_reason, max_tokens, resume_name)
                 text = response.text.strip()
                 log_llm_call(full_prompt, text, category, resume_name, log_dir=log_dir)
                 if not text:

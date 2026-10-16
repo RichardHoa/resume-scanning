@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description="Structured JSON Accuracy Evaluator for Resume Extraction")
     parser.add_argument("--gt-dir", type=str, default="approved_jsons",
                         help="Path to directory containing ground truth JSON files")
-    parser.add_argument("--pred-dir", type=str, default="output_jsons",
+    parser.add_argument("--pred-dir", type=str, default="runs/full-cnb/extraction_json",
                         help="Path to directory containing generated predicted JSON files")
     parser.add_argument("--model-name", type=str, default="AITeamVN/Vietnamese_Embedding",
                         help="Hugging Face embedding model or local directory path")

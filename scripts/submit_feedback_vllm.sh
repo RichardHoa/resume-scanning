@@ -14,7 +14,7 @@
 # SLURM Batch Job Script: backfill Candidate Feedback into existing evaluation reports
 #
 # Usage: sbatch scripts/submit_feedback_vllm.sh [REPORT_DIR] [MODEL]
-#   REPORT_DIR  directory of evaluation reports (default: evaluation_json)
+#   REPORT_DIR  directory of evaluation reports (default: runs/full-cnb/evaluation_json)
 #   MODEL       model profile key or HuggingFace model ID (default: the default profile)
 #
 # Runs the Review Panel only on reports whose Candidate Feedback is missing, skipped or failed, and
@@ -22,7 +22,7 @@
 # are skipped and listed at the end. Rerunning on a finished directory makes no LLM calls.
 # -----------------------------------------------------------------------------
 
-REPORT_DIR="${1:-evaluation_json}"
+REPORT_DIR="${1:-runs/full-cnb/evaluation_json}"
 RAW_MODEL="$2"
 INITIAL_CWD="$(pwd)"
 
@@ -81,8 +81,11 @@ cd "$PROJECT_ROOT" || exit 1
 # Setup optimization & threading environment variables
 setup_vllm_env
 
-# Ensure output & log directories exist at project root
-mkdir -p "$PROJECT_ROOT/logs" "$PROJECT_ROOT/evaluation_json" "$PROJECT_ROOT/logging" "$PROJECT_ROOT/output_jsons" "$PROJECT_ROOT/pdfs"
+# Review Panel prompt logs go to the run folder the reports are in (docs/adr/0010-run-folders.md)
+case "$(basename "$(dirname "$REPORT_DIR")")" in
+  full-cnb|full-tech|full-web-cnb|full-web-tech) export RUN_DIR="$(dirname "$REPORT_DIR")" ;;
+esac
+mkdir -p "$PROJECT_ROOT/logs" "$PROJECT_ROOT/logging"
 
 # Load cluster modules (miniconda3)
 echo "[$(date +'%H:%M:%S')] STEP 1: Loading system environment modules..."

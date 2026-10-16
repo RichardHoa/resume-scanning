@@ -12,7 +12,29 @@
 
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script for High-Speed vLLM Resume Evaluation Server
+#
+# Usage: sbatch scripts/submit_eval_vllm.sh [model] [--tech]
+#
+# Evaluates the extractions already in the run folder (runs/full-cnb, or runs/full-tech with --tech). Only the
+# folder's evaluations are wiped first (their JSONs, prompt logs, token usage and logs); the extractions stay
+# (docs/adr/0010-run-folders.md). With no extractions yet, the dataset's PDFs are extracted first.
 # -----------------------------------------------------------------------------
+
+DATASET="CnB"
+POSITIONAL_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --tech) DATASET="Tech" ;;
+    *) POSITIONAL_ARGS+=("$arg") ;;
+  esac
+done
+set -- "${POSITIONAL_ARGS[@]}"
+
+if [ "$DATASET" = "Tech" ]; then
+  REFERENCE_DATE="2015-12-31"
+else
+  REFERENCE_DATE=""
+fi
 
 RAW_MODEL="$1"
 INITIAL_CWD="$(pwd)"
@@ -67,8 +89,8 @@ cd "$PROJECT_ROOT" || exit 1
 # Setup optimization & threading environment variables
 setup_vllm_env
 
-# Ensure output & log directories exist at project root
-mkdir -p "$PROJECT_ROOT/logs" "$PROJECT_ROOT/evaluation_json" "$PROJECT_ROOT/logging" "$PROJECT_ROOT/output_jsons" "$PROJECT_ROOT/pdfs"
+use_pipeline_run_dir "$DATASET"
+mkdir -p "$PROJECT_ROOT/logging"
 
 # Load cluster modules (miniconda3)
 echo "[$(date +'%H:%M:%S')] STEP 1: Loading system environment modules..."
@@ -101,30 +123,38 @@ PORT=$(find_free_port)
 resolve_model_arg "$RAW_MODEL" || exit 1
 
 echo "[$(date +'%H:%M:%S')] Project Root: $PROJECT_ROOT"
+echo "[$(date +'%H:%M:%S')] Dataset: $DATASET"
+echo "[$(date +'%H:%M:%S')] Reference Date: ${REFERENCE_DATE:-today}"
+echo "[$(date +'%H:%M:%S')] Run Folder: $RUN_DIR"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT"
 echo "[$(date +'%H:%M:%S')] HF Cache Path: ${HF_HOME:-default}"
 
-start_vllm_server "$MODEL" "$PORT" "$PROJECT_ROOT/logs/vllm_batch.log" || exit 1
+echo "[$(date +'%H:%M:%S')] Wiping the evaluations in '$RUN_DIR' (extractions are kept)..."
+reset_run_dir_evaluations || exit 1
+
+start_vllm_server "$MODEL" "$PORT" "$RUN_LOGS_DIR/vllm_eval.log" || exit 1
 
 echo "=== vLLM Server Ready! ==="
 
-JSON_COUNT=$(find "$PROJECT_ROOT/output_jsons/" -maxdepth 1 -name "*.json" 2>/dev/null | wc -l | tr -d ' ')
+JSON_COUNT=$(find "$EXTRACTION_JSON_DIR/" -maxdepth 1 -name "*.json" 2>/dev/null | wc -l | tr -d ' ')
 if [ "$JSON_COUNT" -eq 0 ]; then
-  echo "=== [Step 1 Auto-Run] 'output_jsons/' is empty. Extracting PDF resumes from 'pdfs/' first... ==="
+  echo "=== [Step 1 Auto-Run] '$EXTRACTION_JSON_DIR' is empty. Extracting PDF resumes from 'Vietnamese-dataset/$DATASET' first... ==="
   python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
-    --dir pdfs \
-    --output output_jsons \
+    --dir "$PROJECT_ROOT/Vietnamese-dataset/$DATASET" \
+    --output "$EXTRACTION_JSON_DIR" \
     --model-name "$MODEL" \
-    --vllm-url "http://127.0.0.1:$PORT/v1"
+    --vllm-url "http://127.0.0.1:$PORT/v1" \
+    --reference-date "$REFERENCE_DATE" 2>&1 | tee "$RUN_LOGS_DIR/extract.log"
 fi
 
 echo "=== Starting Step 2 High-Precision vLLM Batch Evaluation ==="
 python3 -u "$PROJECT_ROOT/src/step_2_evaluate.py" \
   --model-name "$MODEL" \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
-  --dir output_jsons \
-  --output evaluation_json
+  --dir "$EXTRACTION_JSON_DIR" \
+  --output "$EVALUATION_JSON_DIR" \
+  --reference-date "$REFERENCE_DATE" 2>&1 | tee "$RUN_LOGS_DIR/eval.log"
 
 stop_vllm_server
 echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Batch Evaluation Job Finished ==="

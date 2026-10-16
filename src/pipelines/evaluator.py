@@ -19,7 +19,7 @@ from src.core.config import (
     DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, FALLBACK_ERROR_SCORE, MAX_NEW_TOKENS,
     CATEGORY_EVAL_MAX_TOKENS, CATEGORY_EVAL_RETRY_TEMPERATURE, SCRUTINY_MAX_QUESTIONS_PER_FIELD, HR_CHECK_ITEMS_KEY
 )
-from src.core.logger import log_llm_call, log_broken_json
+from src.core.logger import log_llm_call, log_broken_json, HR_RAG_LOG_NAME
 from src.core.json_utils import clean_and_parse_json
 from src.providers.rag_engine import LocalCriteriaRAG
 from src.prompts.evaluator_prompts import (
@@ -115,7 +115,9 @@ class ResumeEvaluator:
             {"role": "user", "content": prompt}
         ]
 
-        reply = self._call_vllm_backend(messages, temperature=temperature, json_schema=json_schema, max_tokens=max_tokens, step=category)
+        reply = self._call_vllm_backend(
+            messages, temperature=temperature, json_schema=json_schema, max_tokens=max_tokens, step=category, resume_name=resume_name
+        )
 
         log_llm_call(full_prompt, reply.text, category, resume_name, run_index=run_index, log_dir=log_dir)
         return reply
@@ -126,15 +128,18 @@ class ResumeEvaluator:
         temperature: float = 0.0,
         json_schema: Optional[Dict[str, Any]] = None,
         max_tokens: int = MAX_NEW_TOKENS,
-        step: str = "unlabeled"
+        step: str = "unlabeled",
+        resume_name: Optional[str] = None
     ) -> LLMReply:
-        return call_vllm_backend(self, messages, temperature=temperature, json_schema=json_schema, max_tokens=max_tokens, step=step)
+        return call_vllm_backend(
+            self, messages, temperature=temperature, json_schema=json_schema, max_tokens=max_tokens, step=step, resume_name=resume_name
+        )
 
     def _decompose_requirements_with_llm(
         self,
         standard_req: str,
         hidden_req: str,
-        resume_name: str = "job_requirements",
+        resume_name: str = HR_RAG_LOG_NAME,
         log_dir: Optional[str] = None
     ) -> Optional[Dict[str, List[Any]]]:
         return decompose_requirements_with_llm(self, standard_req, hidden_req, resume_name, log_dir=log_dir)
@@ -143,7 +148,7 @@ class ResumeEvaluator:
         self,
         standard_req: str,
         hidden_req: str,
-        resume_name: str = "hr_requirements",
+        resume_name: str = HR_RAG_LOG_NAME,
         log_dir: Optional[str] = None
     ) -> Dict[str, Any]:
         """
@@ -159,7 +164,7 @@ class ResumeEvaluator:
         self,
         standard_req: str,
         hidden_req: str,
-        resume_name: str = "hr_requirements",
+        resume_name: str = HR_RAG_LOG_NAME,
         language: Optional[str] = None,
         log_dir: Optional[str] = None
     ) -> Dict[str, List[Dict[str, str]]]:

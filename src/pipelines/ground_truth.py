@@ -14,7 +14,7 @@ if _PROJECT_ROOT not in sys.path:
 import re
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from src.core.config import PDF_DIR, OUTPUT_DIR as JSON_DIR, APPROVED_DIR, ROOT_DIR as WORKSPACE_DIR
+from src.core.config import PDF_DIR, EXTRACTION_JSON_DIR as JSON_DIR, APPROVED_DIR, ROOT_DIR as WORKSPACE_DIR
 
 PORT = 8000
 

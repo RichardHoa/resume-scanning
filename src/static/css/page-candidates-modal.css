@@ -361,24 +361,148 @@
     color: var(--text-secondary);
 }
 
-/* Developer-only links to the raw files behind an evaluation; kept small and quiet for HR */
-.modal-dev-links {
+/* Developer panel: everything the run folder holds for one resume; collapsed and quiet for HR */
+.modal-dev-details {
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.modal-dev-details > summary {
+    cursor: pointer;
+    padding-block: 0.5rem;
+    padding-inline: 0.85rem;
+    font-weight: 600;
+}
+
+.modal-dev-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding-block: 0 0.85rem;
+    padding-inline: 0.85rem;
+    min-width: 0;
+}
+
+.modal-dev-meta code {
+    font-family: var(--font-mono);
+    color: var(--text-main);
+}
+
+.modal-dev-tabs {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
+    gap: 0.35rem;
+    border-block-end: 1px solid var(--border);
+    padding-block-end: 0.4rem;
+}
+
+.modal-dev-tab {
+    padding-block: 0.25rem;
+    padding-inline: 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font: inherit;
+    cursor: pointer;
+}
+
+.modal-dev-tab[aria-selected="true"] {
+    border-color: var(--brand-azure);
+    color: var(--text-main);
+    font-weight: 700;
+}
+
+.modal-dev-tab:focus-visible {
+    outline: 2px solid var(--brand-azure);
+    outline-offset: 2px;
+}
+
+.modal-dev-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.modal-dev-block-actions {
+    display: flex;
     justify-content: flex-end;
-    gap: 6px;
-    font-size: 0.7rem;
-    color: var(--text-dim);
+    gap: 0.4rem;
+}
+
+.modal-dev-pre {
+    margin: 0;
+    max-block-size: 60vh;
+    overflow: auto;
+    padding: 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-editor);
+    color: var(--text-main);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.modal-dev-empty {
+    font-style: italic;
+}
+
+.modal-dev-step {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.modal-dev-step-title {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-main);
+}
+
+.modal-dev-category {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding-inline-start: 0.6rem;
+    border-inline-start: 3px solid var(--border);
+}
+
+.modal-dev-category.is-broken {
+    border-inline-start-color: var(--danger);
+}
+
+.modal-dev-category-title {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.modal-dev-count {
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.modal-dev-log > summary {
+    cursor: pointer;
+    font-family: var(--font-mono);
 }
 
 .modal-dev-link {
-    padding: 2px 8px;
+    padding-block: 2px;
+    padding-inline: 8px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
+    background: var(--bg-card);
     color: var(--text-muted);
     font-family: var(--font-mono);
+    font-size: 0.7rem;
     text-decoration: none;
+    cursor: pointer;
 }
 
 .modal-dev-link:hover,

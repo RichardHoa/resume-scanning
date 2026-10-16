@@ -11,7 +11,7 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from src.core.config import LOGGING_DIR, EVAL_RESULTS_DIR, DIMENSION_WEIGHTS
+from src.core.config import PROMPT_LOGS_DIR, EVALUATION_JSON_DIR, DIMENSION_WEIGHTS
 from src.core.logger import log_llm_call
 from src.core.json_utils import clean_and_parse_json as _clean_and_parse_json
 from src.providers.rag_engine import LocalCriteriaRAG

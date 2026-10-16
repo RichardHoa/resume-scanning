@@ -33,7 +33,7 @@ A requirement HR wrote, in the Standard or Hidden Requirements, that no ordinary
 _Avoid_: unverifiable criterion, manual check, note (alone)
 
 **Reference Date**:
-The date treated as "today" when reading and judging a resume set, e.g. for turning "2013 – present" into years of experience. It is the real current date unless the resume set is old: the Tech resume set uses June 2015.
+The date treated as "today" when reading and judging a resume set, e.g. for turning "2013 – present" into years of experience. It is the real current date unless the resume set is old: the Tech resume set uses December 2015.
 _Avoid_: current date (alone), now
 
 **Criterion**:

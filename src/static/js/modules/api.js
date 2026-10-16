@@ -279,6 +279,18 @@ export const API = {
     },
 
     /**
+     * Developer details of one evaluated resume: everything its run folder holds for it.
+     * @param {string} filename - Evaluation result file name.
+     * @returns {Promise<Object>} run_folder, extraction_markdown, extraction_json, evaluation_json,
+     *          prompt_logs (grouped by step, then category) and token_usage.
+     */
+    async getDevDetails(filename) {
+        const res = await fetch(`/api/eval_results/${encodeURIComponent(filename)}/dev_details`);
+        if (!res.ok) throw new Error('Không tải được chi tiết cho nhà phát triển.');
+        return await res.json();
+    },
+
+    /**
      * Builds the evaluation report PDF (with the resume PDF appended when stored).
      * @param {string} filename - Evaluation report filename.
      * @returns {Promise<Blob>} The PDF file.

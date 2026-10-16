@@ -18,7 +18,9 @@
 #   ./scripts/server.sh --help          -> Shows detailed usage information
 #
 # Add --tech (anywhere among the arguments) to a start action to serve the Tech resume set: the web server ranks
-# candidates by evaluation_order_tech.txt and reads resumes as of the set's Reference Date (June 2015).
+# candidates by evaluation_order_tech.txt and reads resumes as of the set's Reference Date (December 2015).
+# The website writes everything to runs/full-web-cnb (runs/full-web-tech with --tech), never wiped, and also
+# shows the results of the matching pipeline run folder (runs/full-cnb or runs/full-tech), read-only.
 # -----------------------------------------------------------------------------
 
 TECH_ARGS=()
@@ -46,7 +48,13 @@ VLLM_PORT_FILE="logs/vllm.port"
 VLLM_LOG_FILE="logs/vllm_server.log"
 
 WEB_PID_FILE="logs/web.pid"
-WEB_LOG_FILE="logs/web_server.log"
+# The website's run folder (docs/adr/0010-run-folders.md), never wiped; src/server.py picks the same one from --tech
+if [ ${#TECH_ARGS[@]} -gt 0 ]; then
+  WEB_RUN_DIR="runs/full-web-tech"
+else
+  WEB_RUN_DIR="runs/full-web-cnb"
+fi
+WEB_LOG_FILE="$WEB_RUN_DIR/logs/web_server.log"
 
 DAEMON_PID_FILE="logs/server.pid"
 DAEMON_LOG_FILE="logs/server.txt"
@@ -55,7 +63,7 @@ DAEMON_LOG_FILE="logs/server.txt"
 setup_environment() {
   setup_vllm_env
   export DISABLE_PROMPT_LOGGING=0
-  mkdir -p logs temp_uploads static
+  mkdir -p logs "$WEB_RUN_DIR/logs" temp_uploads static
 
   module load miniconda3 2>/dev/null || true
   module load cuda 2>/dev/null || module load cuda13.0 2>/dev/null || true
@@ -232,6 +240,7 @@ start_web() {
   echo "  ├─ Connecting to vLLM: http://127.0.0.1:$PORT/v1"
   echo "  ├─ Web Port:  $WEB_PORT"
   echo "  ├─ Tech Mode: $([ ${#TECH_ARGS[@]} -gt 0 ] && echo yes || echo no)"
+  echo "  ├─ Run Folder: $WEB_RUN_DIR"
   echo "  └─ Log:       $WEB_LOG_FILE"
   echo "====================================================================="
 
@@ -302,7 +311,7 @@ show_help() {
   echo "  --stop-web, stop-web           Stop ONLY the FastAPI Web Server"
   echo "  --status, status               Show current running status of all services"
   echo "  --help, -h                     Show this help message"
-  echo "  --tech                         With a start action: serve the Tech resume set (evaluation_order_tech.txt, June 2015)"
+  echo "  --tech                         With a start action: serve the Tech resume set (evaluation_order_tech.txt, December 2015)"
   echo ""
 }
 

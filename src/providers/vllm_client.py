@@ -2,6 +2,7 @@
 Client for a vLLM OpenAI-compatible server, shared by the extraction and evaluation pipelines.
 """
 import json
+import os
 import sys
 import threading
 from datetime import datetime
@@ -13,6 +14,10 @@ from src.core.config import (
     MAX_NEW_TOKENS, VLLM_REQUEST_TIMEOUT, VLLM_ENABLE_THINKING, VLLM_REASONING_STRENGTH,
     VLLM_MAX_CONCURRENT_REQUESTS, TOKEN_USAGE_FILE
 )
+from src.core.logger import safe_log_name
+
+# Token usage step of the extraction call; every other step of a resume belongs to its evaluation
+EXTRACTION_STEP = "extraction"
 
 # On HTTP 400, these fields are dropped one at a time and the request retried, since the server/model
 # may not support them
@@ -74,12 +79,17 @@ def _with_reasoning_strength(messages: List[Dict[str, str]]) -> List[Dict[str, s
 
 
 def record_usage(
-    step: str, prompt_tokens: Optional[int], completion_tokens: Optional[int], finish_reason: Optional[str], max_tokens: int
+    step: str, prompt_tokens: Optional[int], completion_tokens: Optional[int], finish_reason: Optional[str], max_tokens: int,
+    resume_name: Optional[str] = None
 ) -> None:
-    """Appends one request's token counts to TOKEN_USAGE_FILE. Never fails the request it describes."""
+    """
+    Appends one request's token counts to TOKEN_USAGE_FILE, with the resume it was made for (None for calls made
+    for no resume). Never fails the request it describes.
+    """
     record = {
         "timestamp": datetime.now().isoformat(),
         "step": step,
+        "resume_name": resume_name,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "max_tokens": max_tokens,
@@ -90,6 +100,43 @@ def record_usage(
             f.write(json.dumps(record) + "\n")
     except OSError as e:
         print(f"[Token Usage] Failed to record usage to {TOKEN_USAGE_FILE}: {e}", file=sys.stderr)
+
+
+def _is_resume_record(record: Any, resume_name: str) -> bool:
+    return isinstance(record, dict) and safe_log_name(record.get("resume_name") or "") == safe_log_name(resume_name)
+
+
+def _read_usage_records(usage_file: str) -> List[Any]:
+    if not os.path.isfile(usage_file):
+        return []
+    records = []
+    with open(usage_file, encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    return records
+
+
+def read_resume_usage(usage_file: str, resume_name: str) -> List[Dict[str, Any]]:
+    """One resume's token usage records from a token usage file, oldest first."""
+    return [r for r in _read_usage_records(usage_file) if _is_resume_record(r, resume_name)]
+
+
+def forget_resume_usage(resume_name: str, keep_steps: tuple = ()) -> None:
+    """Drops one resume's records from TOKEN_USAGE_FILE, except those of `keep_steps`, when its work is redone."""
+    with _usage_lock:
+        try:
+            records = _read_usage_records(TOKEN_USAGE_FILE)
+            kept = [r for r in records if not _is_resume_record(r, resume_name) or r.get("step") in keep_steps]
+            if len(kept) == len(records):
+                return
+            with open(TOKEN_USAGE_FILE, "w", encoding="utf-8") as f:
+                f.writelines(json.dumps(r) + "\n" for r in kept)
+        except OSError as e:
+            print(f"[Token Usage] Failed to drop usage of '{resume_name}' from {TOKEN_USAGE_FILE}: {e}", file=sys.stderr)
 
 
 def _post_chat_completion(vllm_url: str, payload: Dict[str, Any], timeout: int) -> Dict[str, Any]:
@@ -132,12 +179,13 @@ def chat(
     timeout: int = VLLM_REQUEST_TIMEOUT,
     max_tokens: int = MAX_NEW_TOKENS,
     step: str = "unlabeled",
-    enable_thinking: Optional[bool] = None
+    enable_thinking: Optional[bool] = None,
+    resume_name: Optional[str] = None
 ) -> ChatResult:
     """
     Sends a chat completion constrained to JSON output: to `json_schema` when given, else any JSON object.
-    Reasoning in the result is empty unless the model profile lets the model think. `step` labels the
-    request's token usage record. `enable_thinking` overrides the model profile's thinking setting for this
+    Reasoning in the result is empty unless the model profile lets the model think. `step` and `resume_name`
+    label the request's token usage record. `enable_thinking` overrides the model profile's thinking setting for this
     request. A message's content may be a list of OpenAI content parts (text and image_url) for vision models.
     """
     payload: Dict[str, Any] = {
@@ -162,7 +210,7 @@ def chat(
     choice = body["choices"][0]
     message = choice["message"]
     usage = body.get("usage") or {}
-    record_usage(step, usage.get("prompt_tokens"), usage.get("completion_tokens"), choice.get("finish_reason"), max_tokens)
+    record_usage(step, usage.get("prompt_tokens"), usage.get("completion_tokens"), choice.get("finish_reason"), max_tokens, resume_name)
     return ChatResult(
         content=message.get("content") or "",
         reasoning=message.get("reasoning") or "",

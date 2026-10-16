@@ -12,11 +12,32 @@
 
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script for High-Speed vLLM Resume Batch Extraction
+#
+# Usage: sbatch scripts/submit_extract_vllm.sh [pdf_dir] [model] [--tech]
+#
+# Wipes the run folder (runs/full-cnb, or runs/full-tech with --tech) and extracts every PDF into it
+# (docs/adr/0010-run-folders.md). --tech reads Vietnamese-dataset/Tech as of its Reference Date (December 2015);
+# an explicit PDF dir argument still overrides the dataset folder.
 # -----------------------------------------------------------------------------
+
+DATASET="CnB"
+POSITIONAL_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --tech) DATASET="Tech" ;;
+    *) POSITIONAL_ARGS+=("$arg") ;;
+  esac
+done
+set -- "${POSITIONAL_ARGS[@]}"
+
+if [ "$DATASET" = "Tech" ]; then
+  REFERENCE_DATE="2015-12-31"
+else
+  REFERENCE_DATE=""
+fi
 
 RAW_PDF_DIR="$1"
 RAW_MODEL="$2"
-RAW_OUTPUT_DIR="$3"
 INITIAL_CWD="$(pwd)"
 
 # -----------------------------------------------------------------------------
@@ -69,7 +90,7 @@ cd "$PROJECT_ROOT" || exit 1
 # Setup optimization & threading environment variables
 setup_vllm_env
 
-# Resolve PDF input directory (Default: Vietnamese-dataset/CnB inside project root)
+# Resolve PDF input directory (Default: Vietnamese-dataset/$DATASET inside project root)
 if [ -n "$RAW_PDF_DIR" ]; then
   if [[ "$RAW_PDF_DIR" = /* ]]; then
     PDF_DIR="$RAW_PDF_DIR"
@@ -79,27 +100,14 @@ if [ -n "$RAW_PDF_DIR" ]; then
     PDF_DIR="$PROJECT_ROOT/$RAW_PDF_DIR"
   fi
 else
-  PDF_DIR="$PROJECT_ROOT/Vietnamese-dataset/CnB"
+  PDF_DIR="$PROJECT_ROOT/Vietnamese-dataset/$DATASET"
 fi
 
 # Target model: a profile key or HuggingFace model ID (default: the DEFAULT_MODEL_KEY profile)
 resolve_model_arg "$RAW_MODEL" || exit 1
 
-# Target Output Directory (Default: output_jsons inside project root)
-if [ -n "$RAW_OUTPUT_DIR" ]; then
-  if [[ "$RAW_OUTPUT_DIR" = /* ]]; then
-    OUTPUT_DIR="$RAW_OUTPUT_DIR"
-  elif [ -d "$INITIAL_CWD/$RAW_OUTPUT_DIR" ]; then
-    OUTPUT_DIR="$(cd "$INITIAL_CWD/$RAW_OUTPUT_DIR" && pwd)"
-  else
-    OUTPUT_DIR="$PROJECT_ROOT/$RAW_OUTPUT_DIR"
-  fi
-else
-  OUTPUT_DIR="$PROJECT_ROOT/output_jsons"
-fi
-
-# Ensure output & log directories exist at project root
-mkdir -p "$PROJECT_ROOT/logs" "$PROJECT_ROOT/evaluation_json" "$PROJECT_ROOT/logging" "$PROJECT_ROOT/output_jsons" "$PROJECT_ROOT/pdfs" "$OUTPUT_DIR"
+use_pipeline_run_dir "$DATASET"
+mkdir -p "$PROJECT_ROOT/logging"
 
 # Load cluster modules (miniconda3)
 echo "[$(date +'%H:%M:%S')] STEP 1: Loading system environment modules..."
@@ -131,7 +139,9 @@ PORT=$(find_free_port)
 
 echo "[$(date +'%H:%M:%S')] Project Root: $PROJECT_ROOT"
 echo "[$(date +'%H:%M:%S')] Target PDF Directory: $PDF_DIR"
-echo "[$(date +'%H:%M:%S')] Target Output Directory: $OUTPUT_DIR"
+echo "[$(date +'%H:%M:%S')] Dataset: $DATASET"
+echo "[$(date +'%H:%M:%S')] Reference Date: ${REFERENCE_DATE:-today}"
+echo "[$(date +'%H:%M:%S')] Run Folder: $RUN_DIR"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT"
 echo "[$(date +'%H:%M:%S')] HF Cache Path: ${HF_HOME:-default}"
@@ -141,17 +151,21 @@ if [ ! -d "$PDF_DIR" ]; then
   exit 1
 fi
 
-start_vllm_server "$MODEL" "$PORT" "$PROJECT_ROOT/logs/vllm_extract.log" || exit 1
+echo "[$(date +'%H:%M:%S')] Wiping run folder '$RUN_DIR' (the HR RAG and approved_jsons are kept)..."
+reset_run_dir || exit 1
+
+start_vllm_server "$MODEL" "$PORT" "$RUN_LOGS_DIR/vllm.log" || exit 1
 
 echo "=== vLLM Server Ready! Starting Batch Extraction ==="
-echo "Processing PDFs from '$PDF_DIR' -> JSONs to '$OUTPUT_DIR' using model '$MODEL'"
+echo "Processing PDFs from '$PDF_DIR' -> JSONs to '$EXTRACTION_JSON_DIR' using model '$MODEL'"
 
 python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
   --dir "$PDF_DIR" \
-  --output "$OUTPUT_DIR" \
+  --output "$EXTRACTION_JSON_DIR" \
   --model-name "$MODEL" \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
-  --workers 6
+  --workers 6 \
+  --reference-date "$REFERENCE_DATE" 2>&1 | tee "$RUN_LOGS_DIR/extract.log"
 
 stop_vllm_server
 echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Batch Extraction Job Finished ==="

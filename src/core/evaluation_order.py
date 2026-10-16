@@ -7,7 +7,7 @@ import json
 import re
 from typing import Dict, List, Optional, Any, Set
 
-from src.core.config import ROOT_DIR, EVAL_RESULTS_DIR, EVALUATION_JSON_DIR, APPROVED_DIR, OUTPUT_DIR
+from src.core.config import ROOT_DIR, RESUME_JSON_DIRS, EVALUATION_JSON_DIRS
 
 SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -260,17 +260,17 @@ def get_candidate_tier(data: dict, fname: str, order_data: dict) -> dict:
 def _source_resume_paths(report: dict) -> List[str]:
     """
     Where the extracted resume behind an evaluation report may be, most likely first: the report's
-    resume_path, then its resume_name in approved_jsons/ and output_jsons/.
+    resume_path, then its resume_name in approved_jsons/ and the run folders' extraction JSONs.
     """
     candidates: List[str] = []
     resume_path = report.get("resume_path")
     if isinstance(resume_path, str) and resume_path:
         candidates.append(resume_path)
-        candidates += [os.path.join(d, os.path.basename(resume_path)) for d in (APPROVED_DIR, OUTPUT_DIR)]
+        candidates += [os.path.join(d, os.path.basename(resume_path)) for d in RESUME_JSON_DIRS]
     resume_name = report.get("resume_name")
     if isinstance(resume_name, str) and resume_name:
         json_name = os.path.splitext(os.path.basename(resume_name))[0] + ".json"
-        candidates += [os.path.join(d, json_name) for d in (APPROVED_DIR, OUTPUT_DIR)]
+        candidates += [os.path.join(d, json_name) for d in RESUME_JSON_DIRS]
     return candidates
 
 
@@ -311,20 +311,8 @@ def get_report_tier(report: dict, fname: str, order_data: dict) -> dict:
 
 
 def get_eval_search_dirs() -> List[str]:
-    """Returns valid directories where evaluation JSON result files are stored."""
-    dirs = [
-        EVAL_RESULTS_DIR,
-        EVALUATION_JSON_DIR,
-        os.path.join(ROOT_DIR, "eval_results"),
-        os.path.join(ROOT_DIR, "evaluation_json"),
-        os.path.join(os.getcwd(), "eval_results"),
-        os.path.join(os.getcwd(), "evaluation_json")
-    ]
-    valid_dirs: List[str] = []
-    for d in dirs:
-        if d and os.path.isdir(d) and d not in valid_dirs:
-            valid_dirs.append(d)
-    return valid_dirs
+    """Directories of the evaluation JSON files read, the active run folder's first so its copy wins."""
+    return [d for d in EVALUATION_JSON_DIRS if os.path.isdir(d)]
 
 
 def find_eval_file(filename: str) -> Optional[str]:

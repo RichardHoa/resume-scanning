@@ -32,6 +32,10 @@ PARENT_DIR = os.path.dirname(SCRIPT_DIR)
 if PARENT_DIR not in sys.path:
     sys.path.insert(0, PARENT_DIR)
 
+# The website writes only to its own run folder, one per resume set (docs/adr/0010-run-folders.md). Set before
+# any src import, since src.core.config builds every path from it when first imported
+os.environ["RUN_DIR"] = "full-web-tech" if "--tech" in sys.argv[1:] else "full-web-cnb"
+
 from step_1_extractor import ResumeExtractor
 from step_2_evaluate import ResumeEvaluator
 from src.core.state import state
@@ -57,7 +61,7 @@ parser.add_argument("--tech", action="store_true",
 # Use parse_known_args so that uvicorn flags like --reload do not crash our parser
 args, unknown_args = parser.parse_known_args()
 
-# Before any prompt is built: the Tech resume set is ranked by its own secret file and read as of June 2015
+# Before any prompt is built: the Tech resume set is ranked by its own secret file and read as of December 2015
 set_tech_mode(args.tech)
 if args.tech:
     set_reference_date(TECH_REFERENCE_DATE)

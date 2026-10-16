@@ -12,7 +12,7 @@ from src.core.config import (
     REQUIREMENTS_DECOMPOSITION_MAX_TOKENS, HR_CHECK_ITEMS_KEY,
     SCRUTINY_TEMPERATURE, SCRUTINY_MAX_QUESTIONS_PER_FIELD
 )
-from src.core.logger import log_broken_json
+from src.core.logger import log_broken_json, HR_RAG_LOG_NAME
 from src.core.json_utils import clean_and_parse_json
 from src.core.importance import split_criterion_item
 from src.providers import vllm_client
@@ -47,12 +47,13 @@ def call_vllm_backend(
     temperature: float = 0.0,
     json_schema: Optional[Dict[str, Any]] = None,
     max_tokens: int = MAX_NEW_TOKENS,
-    step: str = "unlabeled"
+    step: str = "unlabeled",
+    resume_name: Optional[str] = None
 ) -> LLMReply:
     """Helper to call vLLM HTTP server backend."""
     result = vllm_client.chat(
         evaluator_inst.vllm_url, evaluator_inst.model_name, messages,
-        temperature=temperature, top_p=0.95, json_schema=json_schema, max_tokens=max_tokens, step=step
+        temperature=temperature, top_p=0.95, json_schema=json_schema, max_tokens=max_tokens, step=step, resume_name=resume_name
     )
     text = result.content.strip()
     if result.reasoning.strip():
@@ -64,7 +65,7 @@ def decompose_requirements_with_llm(
     evaluator_inst: Any,
     standard_req: str,
     hidden_req: str,
-    resume_name: str = "job_requirements",
+    resume_name: str = HR_RAG_LOG_NAME,
     log_dir: Optional[str] = None
 ) -> Optional[Dict[str, List[Any]]]:
     """
@@ -155,7 +156,7 @@ def scrutinize_requirements_with_llm(
     evaluator_inst: Any,
     standard_req: str,
     hidden_req: str,
-    resume_name: str = "hr_requirements",
+    resume_name: str = HR_RAG_LOG_NAME,
     language: Optional[str] = None,
     max_questions: int = SCRUTINY_MAX_QUESTIONS_PER_FIELD,
     max_retries: int = 5,

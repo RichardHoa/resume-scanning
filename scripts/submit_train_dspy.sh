@@ -107,11 +107,12 @@ echo "[$(date +'%H:%M:%S')] Target Model: $MODEL"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT"
 echo "[$(date +'%H:%M:%S')] HF Cache Path: ${HF_HOME:-default}"
 
-# Check presence of extracted candidate resumes in output_jsons
-JSON_COUNT=$(find "$PROJECT_ROOT/output_jsons" -maxdepth 1 -name "*.json" 2>/dev/null | wc -l)
-echo "[$(date +'%H:%M:%S')] Found $JSON_COUNT candidate JSON extractions in $PROJECT_ROOT/output_jsons"
+# Check presence of extracted candidate resumes in the CnB run folder, which training reads by default
+EXTRACTION_JSON_DIR="$PROJECT_ROOT/runs/full-cnb/extraction_json"
+JSON_COUNT=$(find "$EXTRACTION_JSON_DIR" -maxdepth 1 -name "*.json" 2>/dev/null | wc -l)
+echo "[$(date +'%H:%M:%S')] Found $JSON_COUNT candidate JSON extractions in $EXTRACTION_JSON_DIR"
 if [ "$JSON_COUNT" -eq 0 ]; then
-  echo "[WARNING] No extracted resume JSONs found in output_jsons/. Candidate ground truth examples will use fallback text."
+  echo "[WARNING] No extracted resume JSONs found in $EXTRACTION_JSON_DIR. Candidate ground truth examples will use fallback text."
   echo "[WARNING] For best prompt optimization results, run step 1 extraction first."
 fi
 

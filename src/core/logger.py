@@ -1,6 +1,6 @@
 """
 Prompt & LLM Context Logging Utility
-Dumps raw prompt contexts and model responses to logging/*.txt files.
+Dumps raw prompt contexts and model responses to the run folder's prompt_logs/<resume>/<category>/N.txt files.
 """
 import os
 import sys
@@ -12,10 +12,19 @@ if _PROJECT_ROOT not in sys.path:
 
 import re
 from datetime import datetime
-from src.core.config import LOGGING_DIR, BROKEN_JSON_DIR
-
-
 from typing import Optional
+from src.core.config import PROMPT_LOGS_DIR
+
+# Log category of the extraction LLM call; every other category of a resume belongs to its evaluation
+EXTRACTION_LOG_CATEGORY = "step_1_extraction"
+# Log folder of the LLM calls made once per HR RAG (scrutiny, decomposition), which belong to no resume
+HR_RAG_LOG_NAME = "_hr_rag"
+BROKEN_JSON_LOG_SUBDIR = "broken_json"
+
+
+def safe_log_name(name: Optional[str], default: str = "resume") -> str:
+    """A resume name or log category as used in prompt log folder names (and evaluation report file names)."""
+    return re.sub(r'[^a-zA-Z0-9_-]', '_', name or default)
 
 
 def log_llm_call(
@@ -27,26 +36,22 @@ def log_llm_call(
     log_dir: Optional[str] = None
 ) -> str:
     """
-    Dumps the full raw context prompt and model output to a .txt file in logging/<resume_name>/<category>/
-    or a custom structured log directory.
+    Dumps the full raw context prompt and model output to a .txt file in prompt_logs/<resume_name>/<category>/,
+    or under a custom log directory instead.
     """
     if os.getenv("DISABLE_PROMPT_LOGGING", "0").lower() in ("1", "true", "yes"):
         return ""
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    safe_resume_name = re.sub(r'[^a-zA-Z0-9_-]', '_', resume_name or "resume")
-    safe_category = re.sub(r'[^a-zA-Z0-9_-]', '_', category or "general")
+    safe_resume_name = safe_log_name(resume_name)
+    safe_category = safe_log_name(category, "general")
 
-    target_dirs = []
-    if log_dir:
-        if os.path.basename(os.path.normpath(log_dir)) == safe_resume_name:
-            target_dirs.append(os.path.join(log_dir, safe_category))
-        else:
-            target_dirs.append(os.path.join(log_dir, safe_resume_name, safe_category))
-
-    default_cat_dir = os.path.join(LOGGING_DIR, safe_resume_name, safe_category)
-    if default_cat_dir not in target_dirs:
-        target_dirs.append(default_cat_dir)
+    if not log_dir:
+        candidate_cat_dir = os.path.join(PROMPT_LOGS_DIR, safe_resume_name, safe_category)
+    elif os.path.basename(os.path.normpath(log_dir)) == safe_resume_name:
+        candidate_cat_dir = os.path.join(log_dir, safe_category)
+    else:
+        candidate_cat_dir = os.path.join(log_dir, safe_resume_name, safe_category)
 
     log_content = "\n".join([
         "=" * 80,
@@ -63,27 +68,22 @@ def log_llm_call(
         "\n" + "=" * 80 + "\n"
     ])
 
-    primary_filepath = ""
-    for candidate_cat_dir in target_dirs:
-        os.makedirs(candidate_cat_dir, exist_ok=True)
-        if run_index is not None:
-            filename = f"{run_index}.txt"
-        else:
-            existing_files = [f for f in os.listdir(candidate_cat_dir) if f.endswith('.txt')]
-            filename = f"{len(existing_files) + 1}.txt"
+    os.makedirs(candidate_cat_dir, exist_ok=True)
+    if run_index is not None:
+        filename = f"{run_index}.txt"
+    else:
+        existing_files = [f for f in os.listdir(candidate_cat_dir) if f.endswith('.txt')]
+        filename = f"{len(existing_files) + 1}.txt"
 
-        filepath = os.path.join(candidate_cat_dir, filename)
-        if not primary_filepath:
-            primary_filepath = filepath
+    filepath = os.path.join(candidate_cat_dir, filename)
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(log_content)
+        print(f"[Logging] Saved model prompt context to {filepath}", file=sys.stderr)
+    except Exception as e:
+        print(f"[Logging Error] Failed to write log file {filepath}: {e}", file=sys.stderr)
 
-        try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(log_content)
-            print(f"[Logging] Saved model prompt context to {filepath}", file=sys.stderr)
-        except Exception as e:
-            print(f"[Logging Error] Failed to write log file {filepath}: {e}", file=sys.stderr)
-
-    return primary_filepath
+    return filepath
 
 
 def log_broken_json(
@@ -99,20 +99,19 @@ def log_broken_json(
     log_dir: Optional[str] = None
 ) -> str:
     """
-    Specifically dumps raw prompt contexts and unparsable model responses to broken-json/<resume_name>/<category>/
-    or structured log directory for error tracking and dataset improvement.
+    Specifically dumps raw prompt contexts and unparsable model responses to prompt_logs/<resume_name>/broken_json/<category>/
+    (or under a custom log directory instead) for error tracking and dataset improvement.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    safe_resume_name = re.sub(r'[^a-zA-Z0-9_-]', '_', resume_name or "resume")
-    safe_category = re.sub(r'[^a-zA-Z0-9_-]', '_', category or "general")
+    safe_resume_name = safe_log_name(resume_name)
+    safe_category = safe_log_name(category, "general")
 
-    if log_dir:
-        if os.path.basename(os.path.normpath(log_dir)) == safe_resume_name:
-            candidate_cat_dir = os.path.join(log_dir, "broken_json", safe_category)
-        else:
-            candidate_cat_dir = os.path.join(log_dir, safe_resume_name, "broken_json", safe_category)
+    if not log_dir:
+        candidate_cat_dir = os.path.join(PROMPT_LOGS_DIR, safe_resume_name, BROKEN_JSON_LOG_SUBDIR, safe_category)
+    elif os.path.basename(os.path.normpath(log_dir)) == safe_resume_name:
+        candidate_cat_dir = os.path.join(log_dir, BROKEN_JSON_LOG_SUBDIR, safe_category)
     else:
-        candidate_cat_dir = os.path.join(BROKEN_JSON_DIR, safe_resume_name, safe_category)
+        candidate_cat_dir = os.path.join(log_dir, safe_resume_name, BROKEN_JSON_LOG_SUBDIR, safe_category)
 
     os.makedirs(candidate_cat_dir, exist_ok=True)
 

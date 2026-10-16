@@ -15,12 +15,10 @@ if _PROJECT_ROOT not in sys.path:
 
 import argparse
 import json
-import re
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 
-from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, LOGGING_DIR, VLLM_MAX_CONCURRENT_REQUESTS
+from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, VLLM_MAX_CONCURRENT_REQUESTS
 from src.pipelines.review_panel import create_review_panel
 
 
@@ -106,18 +104,15 @@ def main():
     results = {"ok": 0, "failed": 0}
     if to_review:
         panel = create_review_panel(args.mock, args.vllm_url, args.model_name)
-        log_root = os.path.join(LOGGING_DIR, "feedback_backfill", f"batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
 
         def _review(item):
             path, report, resume = item
             resume_name = report.get("resume_name") or os.path.splitext(os.path.basename(path))[0]
-            log_dir = os.path.join(log_root, re.sub(r'[^a-zA-Z0-9_-]', '_', resume_name))
-            os.makedirs(log_dir, exist_ok=True)
             # Reports older than Criterion Importance have no Missing Must-Haves; the panel reads that as none
             panel_report = {**report, "missing_must_haves": report.get("missing_must_haves") or []}
             feedback = panel.review(
                 panel_report, resume, report["standard_requirements"], report["hidden_requirements"],
-                language=report.get("language") or args.language, resume_name=resume_name, log_dir=log_dir
+                language=report.get("language") or args.language, resume_name=resume_name
             )
             # Only candidate_feedback changes; every score stays exactly as the evaluator wrote it
             report["candidate_feedback"] = feedback

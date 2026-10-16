@@ -15,9 +15,9 @@ import re
 import unicodedata
 from typing import Optional
 from src.core.config import DEFAULT_VLLM_URL, EXTRACTION_MARKDOWN_DIR
-from src.core.logger import log_broken_json
+from src.core.logger import log_llm_call, log_broken_json, EXTRACTION_LOG_CATEGORY
 from src.core.json_utils import extract_json_substring, repair_truncated_json, clean_and_parse_json
-from src.providers.llm_backend import run_vllm_inference, run_mock_extraction
+from src.providers.llm_backend import extraction_messages, run_vllm_inference, run_mock_extraction
 from src.providers import vllm_client
 from src.pipelines.evaluator_utils import SCANNED_RESUME_KEY
 
@@ -236,21 +236,24 @@ class ResumeExtractor:
     def extract_single_pass(self, resume_text: str, pdf_path: str, language: str = "vietnamese", max_retries: int = 5) -> tuple[Optional[dict], str]:
         """Runs a single LLM extraction pass with retry logic for invalid JSON."""
         last_raw_result = ""
+        # Named like the extraction JSON and the evaluation, so all of one resume's logs sit together
+        resume_name = os.path.splitext(os.path.basename(pdf_path))[0] if pdf_path else "resume"
+        full_prompt = "\n\n".join(f"--- {m['role'].upper()} PROMPT ---\n{m['content']}" for m in extraction_messages(resume_text, language))
 
         for attempt in range(1, max_retries + 1):
             if self.mock:
                 result = run_mock_extraction(resume_text, language=language)
             else:
-                result = run_vllm_inference(resume_text, self.model_name, self.vllm_url, language=language)
+                result = run_vllm_inference(resume_text, self.model_name, self.vllm_url, language=language, resume_name=resume_name)
 
             last_raw_result = result
+            log_llm_call(full_prompt, result, EXTRACTION_LOG_CATEGORY, resume_name, run_index=attempt)
             parsed_dict = clean_and_parse_json(result)
             if parsed_dict is not None and isinstance(parsed_dict, dict) and len(parsed_dict) > 0:
                 return parsed_dict, last_raw_result
 
             print(f"[Extract Retry] Attempt {attempt}/{max_retries} failed to produce valid JSON. Retrying LLM call...", file=sys.stderr)
-            pdf_name = os.path.basename(pdf_path) if pdf_path else "resume"
-            log_broken_json("Resume Extraction Prompt", result, "step_1_extraction", pdf_name, attempt=attempt, error_reason="Step 1 extraction JSON parse failed")
+            log_broken_json(full_prompt, result, EXTRACTION_LOG_CATEGORY, resume_name, attempt=attempt, error_reason="Step 1 extraction JSON parse failed")
 
         return None, last_raw_result
 

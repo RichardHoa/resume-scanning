@@ -1,14 +1,14 @@
 """
 Reference Date: the date prompts treat as "today" when reading and judging a resume set.
 
-It is the real current date unless a run sets an older one (the Tech resume set is from June 2015), so
+It is the real current date unless a run sets an older one (the Tech resume set is from December 2015), so
 "2013 - present" in an old resume is counted up to that date instead of the real one.
 """
 from datetime import date, datetime
 from typing import Optional
 
 # Reference Date of the Tech resume set, passed by --tech runs
-TECH_REFERENCE_DATE = "2015-06-30"
+TECH_REFERENCE_DATE = "2015-12-31"
 
 _reference_date: Optional[date] = None
 

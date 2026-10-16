@@ -13,7 +13,9 @@ import json
 import argparse
 import time
 import re
-from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, VLLM_MAX_CONCURRENT_REQUESTS, HR_CHECK_ITEMS_KEY
+from src.core.config import (
+    DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, VLLM_MAX_CONCURRENT_REQUESTS, HR_CHECK_ITEMS_KEY, EXTRACTION_JSON_DIR, EVALUATION_JSON_DIR
+)
 from src.core.reference_date import set_reference_date
 from src.pipelines.evaluator import ResumeEvaluator
 
@@ -58,17 +60,9 @@ def main():
     input_dir = args.dir
     single_file = args.resume_json
 
-    # Default fallback to output_jsons if neither --resume-json nor --dir is passed
+    # Default to the run folder's extractions if neither --resume-json nor --dir is passed
     if not single_file and not input_dir:
-        cwd_output = os.path.join(os.getcwd(), "output_jsons")
-        root_output = os.path.join(_PROJECT_ROOT, "output_jsons")
-        if os.path.isdir(cwd_output):
-            input_dir = cwd_output
-        elif os.path.isdir(root_output):
-            input_dir = root_output
-        else:
-            print("Error: You must specify either --resume-json or --dir.", file=sys.stderr)
-            sys.exit(1)
+        input_dir = EXTRACTION_JSON_DIR
 
     if single_file and input_dir:
         print("Error: You cannot specify both --resume-json and --dir. Please choose one.", file=sys.stderr)
@@ -88,7 +82,7 @@ def main():
             print(f"Error: Directory not found: {input_dir}", file=sys.stderr)
             sys.exit(1)
 
-        output_dir = args.output or "evaluation_json"
+        output_dir = args.output or EVALUATION_JSON_DIR
         os.makedirs(output_dir, exist_ok=True)
 
         json_files = [f for f in os.listdir(input_dir) if f.lower().endswith('.json')]

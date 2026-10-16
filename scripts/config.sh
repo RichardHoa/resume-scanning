@@ -32,3 +32,43 @@ require_hr_rag() {
   echo "[ERROR] No HR RAG is stored in '$PROJECT_ROOT/rag'. Set the HR requirements on the website's RAG page (decompose them and review the Criteria) before running an evaluation." >&2
   return 1
 }
+
+# Run folders (docs/adr/0010-run-folders.md): every output of one pipeline job lives in runs/full-cnb, or
+# runs/full-tech for the Tech resume set. Exports RUN_DIR (which src/core/config.py builds every path from) and
+# the folder's subfolders. Call with the dataset, "CnB" or "Tech"
+use_pipeline_run_dir() {
+  if [ "$1" = "Tech" ]; then
+    export RUN_DIR="$PROJECT_ROOT/runs/full-tech"
+  else
+    export RUN_DIR="$PROJECT_ROOT/runs/full-cnb"
+  fi
+  RUN_LOGS_DIR="$RUN_DIR/logs"
+  PROMPT_LOGS_DIR="$RUN_DIR/prompt_logs"
+  EXTRACTION_JSON_DIR="$RUN_DIR/extraction_json"
+  EVALUATION_JSON_DIR="$RUN_DIR/evaluation_json"
+}
+
+# Refuses any folder but the two pipeline run folders, so a wrong or empty RUN_DIR never reaches rm -rf
+_require_pipeline_run_dir() {
+  case "$RUN_DIR" in
+    "$PROJECT_ROOT/runs/full-cnb"|"$PROJECT_ROOT/runs/full-tech") return 0 ;;
+  esac
+  echo "[CRITICAL ERROR] Refusing to wipe '$RUN_DIR': not runs/full-cnb or runs/full-tech under $PROJECT_ROOT." >&2
+  return 1
+}
+
+# Empties the whole run folder, so it holds exactly one pass
+reset_run_dir() {
+  _require_pipeline_run_dir || return 1
+  rm -rf "${RUN_DIR:?}"
+  mkdir -p "$RUN_LOGS_DIR" "$PROMPT_LOGS_DIR" "$EXTRACTION_JSON_DIR" "$EVALUATION_JSON_DIR"
+}
+
+# Empties only the run folder's evaluations (their JSONs, prompt logs, token usage and the eval logs), keeping the
+# extractions they are made from
+reset_run_dir_evaluations() {
+  _require_pipeline_run_dir || return 1
+  mkdir -p "$RUN_LOGS_DIR" "$PROMPT_LOGS_DIR" "$EXTRACTION_JSON_DIR" "$EVALUATION_JSON_DIR"
+  python3 -m src.core.run_files --clear-evaluations || return 1
+  rm -f "$RUN_LOGS_DIR/eval.log" "$RUN_LOGS_DIR/eval_job.log" "$RUN_LOGS_DIR/vllm_eval.log"
+}
