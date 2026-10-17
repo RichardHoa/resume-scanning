@@ -2,18 +2,18 @@
 #SBATCH --job-name=extract_eval_vllm
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=132
 #SBATCH --mem=32G
 #SBATCH --partition=student9696
 #SBATCH --gres=gpu:nvidia_rtx_pro_6000_blackwell_server_edition_4g.96gb:1
-#SBATCH --time=3:00:00
+#SBATCH --time=6:00:00
 #SBATCH --output=logging/slurm_extract_eval_%j.out
 #SBATCH --error=logging/slurm_extract_eval_%j.err
 
 # -----------------------------------------------------------------------------
-# SLURM Batch Job Script for Combined Extraction & Evaluation with vLLM
+# SLURM Batch Job Script for Extraction & Evaluation in One Job with vLLM
 #
-# Usage: sbatch scripts/submit_extract_eval_vllm.sh [pdf_dir] [model] [--tech]
+# Usage: sbatch scripts/submit_extract_eval_vllm.sh [pdf_dir] [model] [--tech] [--combined]
 #
 # Wipes the run folder (runs/full-cnb, or runs/full-tech with --tech), spins up a vLLM server instance, runs batch
 # extraction (Step 1), and then runs batch evaluation (Step 2) using the active vLLM server. Every output of the
@@ -29,13 +29,18 @@
 # requirements (hr-requirement-tech.txt). An explicit PDF dir argument still overrides.
 # The Tech resumes are old, so --tech also sets the Reference Date (the date the prompts treat as today)
 # to December 2015.
+#
+# --combined runs Combined Extraction: vLLM is served with vision on and the extractor also sees each page's image,
+# for layout only (values still come from the PDF text). It needs a profile that can see images (VLLM_VISION=1).
 # -----------------------------------------------------------------------------
 
 DATASET="CnB"
+COMBINED=0
 POSITIONAL_ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --tech) DATASET="Tech" ;;
+    --combined) COMBINED=1 ;;
     *) POSITIONAL_ARGS+=("$arg") ;;
   esac
 done
@@ -146,6 +151,14 @@ fi
 # Target model: a profile key or HuggingFace model ID (default: the DEFAULT_MODEL_KEY profile)
 resolve_model_arg "$RAW_MODEL" || exit 1
 
+# Combined Extraction: refuse a model that cannot see images before anything is wiped, then serve vision on
+COMBINED_ARGS=()
+if [ "$COMBINED" -eq 1 ]; then
+  require_vision_profile || exit 1
+  serve_vision_on "$COMBINED_MAX_PAGES"
+  COMBINED_ARGS=(--combined)
+fi
+
 use_pipeline_run_dir "$DATASET"
 
 if [ ! -d "$PDF_DIR" ]; then
@@ -174,7 +187,7 @@ EXTRACT_LOG="$RUN_LOGS_DIR/extract.log"
 EVAL_LOG="$RUN_LOGS_DIR/eval.log"
 VLLM_LOG="$RUN_LOGS_DIR/vllm.log"
 
-echo "[$(date +'%Y-%m-%d %H:%M:%S')] Combined Extract & Eval Job Started" > "$JOB_LOG"
+echo "[$(date +'%Y-%m-%d %H:%M:%S')] Extract & Eval Job Started" > "$JOB_LOG"
 
 echo "=====================================================================" | tee -a "$JOB_LOG"
 echo "[$(date +'%Y-%m-%d %H:%M:%S')] STEP 5: Inspecting GPU hardware allocation..." | tee -a "$JOB_LOG"
@@ -189,6 +202,7 @@ echo "[$(date +'%H:%M:%S')] Reference Date: ${REFERENCE_DATE:-today}" | tee -a "
 echo "[$(date +'%H:%M:%S')] Target PDF Directory: $PDF_DIR" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Run Folder: $RUN_DIR" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL" | tee -a "$JOB_LOG"
+echo "[$(date +'%H:%M:%S')] Combined Extraction: $([ "$COMBINED" -eq 1 ] && echo on || echo off)" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Server Log File: $VLLM_LOG" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Extractor Log File: $EXTRACT_LOG" | tee -a "$JOB_LOG"
@@ -212,7 +226,8 @@ python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
   --model-name "$MODEL" \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --workers 6 \
-  --reference-date "$REFERENCE_DATE" 2>&1 | tee "$EXTRACT_LOG" | tee -a "$JOB_LOG"
+  --reference-date "$REFERENCE_DATE" \
+  "${COMBINED_ARGS[@]}" 2>&1 | tee "$EXTRACT_LOG" | tee -a "$JOB_LOG"
 
 EXTRACT_STATUS=${PIPESTATUS[0]}
 if [ "$EXTRACT_STATUS" -ne 0 ]; then
@@ -247,5 +262,5 @@ fi
 stop_vllm_server
 python3 "$PROJECT_ROOT/scripts/token_stats.py" 2>&1 | tee -a "$JOB_LOG"
 echo "=====================================================================" | tee -a "$JOB_LOG"
-echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Combined Extract & Eval Job Finished Successfully ===" | tee -a "$JOB_LOG"
+echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Extract & Eval Job Finished Successfully ===" | tee -a "$JOB_LOG"
 echo "=====================================================================" | tee -a "$JOB_LOG"

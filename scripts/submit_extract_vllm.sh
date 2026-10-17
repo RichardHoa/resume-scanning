@@ -13,18 +13,22 @@
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script for High-Speed vLLM Resume Batch Extraction
 #
-# Usage: sbatch scripts/submit_extract_vllm.sh [pdf_dir] [model] [--tech]
+# Usage: sbatch scripts/submit_extract_vllm.sh [pdf_dir] [model] [--tech] [--combined]
 #
 # Wipes the run folder (runs/full-cnb, or runs/full-tech with --tech) and extracts every PDF into it
 # (docs/adr/0010-run-folders.md). --tech reads Vietnamese-dataset/Tech as of its Reference Date (December 2015);
 # an explicit PDF dir argument still overrides the dataset folder.
+# --combined runs Combined Extraction: vLLM is served with vision on and the extractor also sees each page's image,
+# for layout only (values still come from the PDF text). It needs a profile that can see images (VLLM_VISION=1).
 # -----------------------------------------------------------------------------
 
 DATASET="CnB"
+COMBINED=0
 POSITIONAL_ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --tech) DATASET="Tech" ;;
+    --combined) COMBINED=1 ;;
     *) POSITIONAL_ARGS+=("$arg") ;;
   esac
 done
@@ -106,6 +110,14 @@ fi
 # Target model: a profile key or HuggingFace model ID (default: the DEFAULT_MODEL_KEY profile)
 resolve_model_arg "$RAW_MODEL" || exit 1
 
+# Combined Extraction: refuse a model that cannot see images before anything is wiped, then serve vision on
+COMBINED_ARGS=()
+if [ "$COMBINED" -eq 1 ]; then
+  require_vision_profile || exit 1
+  serve_vision_on "$COMBINED_MAX_PAGES"
+  COMBINED_ARGS=(--combined)
+fi
+
 use_pipeline_run_dir "$DATASET"
 mkdir -p "$PROJECT_ROOT/logging"
 
@@ -143,6 +155,7 @@ echo "[$(date +'%H:%M:%S')] Dataset: $DATASET"
 echo "[$(date +'%H:%M:%S')] Reference Date: ${REFERENCE_DATE:-today}"
 echo "[$(date +'%H:%M:%S')] Run Folder: $RUN_DIR"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL"
+echo "[$(date +'%H:%M:%S')] Combined Extraction: $([ "$COMBINED" -eq 1 ] && echo on || echo off)"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT"
 echo "[$(date +'%H:%M:%S')] HF Cache Path: ${HF_HOME:-default}"
 
@@ -165,7 +178,8 @@ python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
   --model-name "$MODEL" \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --workers 6 \
-  --reference-date "$REFERENCE_DATE" 2>&1 | tee "$RUN_LOGS_DIR/extract.log"
+  --reference-date "$REFERENCE_DATE" \
+  "${COMBINED_ARGS[@]}" 2>&1 | tee "$RUN_LOGS_DIR/extract.log"
 
 stop_vllm_server
 echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Batch Extraction Job Finished ==="

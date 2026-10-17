@@ -100,21 +100,7 @@ CONCURRENCY=$PROOFREAD_CONCURRENCY
 export CONCURRENCY
 
 # Vision on: drop the profile's text-only and image-limit flags, then allow this job's images
-SERVE_ARGS=()
-skip_next=0
-for arg in "${VLLM_EXTRA_ARGS[@]}"; do
-  if [ $skip_next -eq 1 ]; then
-    skip_next=0
-    continue
-  fi
-  case "$arg" in
-    --language-model-only) ;;
-    --limit-mm-per-prompt*=*) ;;
-    --limit-mm-per-prompt*) skip_next=1 ;;
-    *) SERVE_ARGS+=("$arg") ;;
-  esac
-done
-VLLM_EXTRA_ARGS=("${SERVE_ARGS[@]}" --limit-mm-per-prompt.image "$MAX_IMAGES_PER_PROMPT" --limit-mm-per-prompt.video 0)
+serve_vision_on "$MAX_IMAGES_PER_PROMPT"
 
 if [ -z "$PROJECT_ROOT" ]; then
   echo "[CRITICAL ERROR] PROJECT_ROOT is not set after sourcing config.sh!" >&2

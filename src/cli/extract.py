@@ -39,6 +39,9 @@ def parse_args():
                         help="Number of concurrent worker threads for batch extraction (vLLM recommended: 4-8)")
     parser.add_argument("--reference-date", type=str, default="",
                         help="Date (YYYY-MM-DD) the prompts treat as today, for old resume sets (default: the real date)")
+    parser.add_argument("--combined", action="store_true",
+                        help="Combined Extraction: also show the model the page images, for layout only "
+                             "(needs a vision model served with images allowed)")
     return parser.parse_args()
 
 
@@ -53,7 +56,7 @@ def main():
         print("Error: You cannot specify both --pdf and --dir. Please choose one.", file=sys.stderr)
         sys.exit(1)
 
-    extractor = ResumeExtractor(model_name=args.model_name, mock=args.mock, vllm_url=args.vllm_url)
+    extractor = ResumeExtractor(model_name=args.model_name, mock=args.mock, vllm_url=args.vllm_url, combined=args.combined)
 
     if args.pdf:
         if args.approved:

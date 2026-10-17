@@ -139,6 +139,11 @@ REQUIREMENTS_DECOMPOSITION_MAX_TOKENS = 4096
 PROOFREAD_PAGE_MAX_TOKENS = 4096
 PROOFREAD_NOTE_MAX_TOKENS = 16384
 PROOFREAD_RETRY_TEMPERATURE = 0.3
+# Combined Extraction (--combined): the extractor sees page images next to the PyMuPDF text, for layout only.
+# At most COMBINED_MAX_PAGES pages are shown; keep it equal to COMBINED_MAX_PAGES in scripts/model_profiles.sh,
+# which sets vLLM's per-prompt image limit
+COMBINED_IMAGE_DPI = 150
+COMBINED_MAX_PAGES = 6
 
 # Requirement-scrutiny step (web-only; surfaces Implicit Assumptions as Clarification Questions
 # before decomposition). Uses a non-zero temperature deliberately — see docs/adr/0001-nondeterministic-temperature-for-scrutiny-step.md

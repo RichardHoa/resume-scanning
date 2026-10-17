@@ -11,6 +11,8 @@
 #   VLLM_ENABLE_THINKING       1 = let the model think (chat_template_kwargs), 0 = off
 #   VLLM_REASONING_STRENGTH    System-prompt effort level for models that always reason ("" = unset)
 #   VLLM_EXTRA_ARGS            Bash array of extra `vllm serve` flags
+#   VLLM_VISION                1 = the checkpoint can see images (default 0). Profiles still serve text only;
+#                              a job that needs images turns vision on with `serve_vision_on`
 #
 # To add a model: add a case branch below and its key to MODEL_PROFILE_KEYS.
 # -----------------------------------------------------------------------------
@@ -27,10 +29,12 @@ load_model_profile() {
   VLLM_ENABLE_THINKING=0
   VLLM_REASONING_STRENGTH=""
   VLLM_EXTRA_ARGS=()
+  VLLM_VISION=0
 
   case "$key" in
     qwen3.5-35b-a3b)
       MODEL="Qwen/Qwen3.5-35B-A3B"
+      VLLM_VISION=1
       CONCURRENCY=100
       ;;
     qwen2.5-32b)
@@ -42,6 +46,7 @@ load_model_profile() {
     gemma4-26b-a4b)
       # Multimodal checkpoint: disable image/audio inputs to skip encoder memory reservation
       MODEL="google/gemma-4-26B-A4B-it"
+      VLLM_VISION=1
       CONCURRENCY=100
       VLLM_EXTRA_ARGS=(
         --limit-mm-per-prompt.image 0
@@ -60,6 +65,7 @@ load_model_profile() {
     qwen3.6-35b-a3b)
       # Vision-language checkpoint: --language-model-only skips the vision encoder
       MODEL="Qwen/Qwen3.6-35B-A3B"
+      VLLM_VISION=1
       CONCURRENCY=100
       VLLM_EXTRA_ARGS=(
         --language-model-only
@@ -69,6 +75,7 @@ load_model_profile() {
     qwen3.8-27b)
       # Dense 27B vision-language checkpoint; thinks by default, VLLM_ENABLE_THINKING=0 turns it off
       MODEL="Qwen/Qwen3.8-27B"
+      VLLM_VISION=1
       CONCURRENCY=80
       VLLM_EXTRA_ARGS=(
         --language-model-only
@@ -78,6 +85,7 @@ load_model_profile() {
     gemma4-31b)
       # Dense 31B multimodal checkpoint: disable image/audio inputs to skip encoder memory reservation
       MODEL="google/gemma-4-31B-it"
+      VLLM_VISION=1
       CONCURRENCY=20
       VLLM_EXTRA_ARGS=(
         --limit-mm-per-prompt.image 0
@@ -89,6 +97,7 @@ load_model_profile() {
       # Dense 30B vision-language checkpoint (vLLM >= 0.28). Reasoning cannot be turned off, only set to
       # low/medium/high/xhigh; the reasoning and tool parsers share the channel framing, so run both
       MODEL="meta-models/Muse-Glimmer-30B"
+      VLLM_VISION=1
       CONCURRENCY=200
       VLLM_REASONING_STRENGTH="low"
       VLLM_EXTRA_ARGS=(
@@ -101,6 +110,7 @@ load_model_profile() {
     sea-lion-v4.5-27b)
       # Dense 27B Qwen3.6 fine-tune (vision-language): --language-model-only skips the vision encoder
       MODEL="aisingapore/Qwen-SEA-LION-v4.5-27B-IT"
+      VLLM_VISION=1
       CONCURRENCY=40
       VLLM_EXTRA_ARGS=(
         --language-model-only
@@ -119,7 +129,7 @@ load_model_profile() {
   fi
 
   MODEL_KEY="$key"
-  export MODEL MODEL_KEY CONCURRENCY MAX_EVAL_PER_SHUFFLE_KIND VLLM_ENABLE_THINKING VLLM_REASONING_STRENGTH
+  export MODEL MODEL_KEY CONCURRENCY MAX_EVAL_PER_SHUFFLE_KIND VLLM_ENABLE_THINKING VLLM_REASONING_STRENGTH VLLM_VISION
   return 0
 }
 
@@ -132,6 +142,44 @@ resolve_model_arg() {
     return $?
   fi
   MODEL="$arg"
-  export MODEL
+  VLLM_VISION=0  # no profile says the model can see images
+  export MODEL VLLM_VISION
   return 0
+}
+
+# Combined Extraction shows at most this many page images per resume (COMBINED_MAX_PAGES in src/core/config.py)
+COMBINED_MAX_PAGES=6
+
+# `require_vision_profile`: fails, naming the profiles that can see images, unless the loaded profile can
+require_vision_profile() {
+  if [[ "${VLLM_VISION:-0}" == "1" ]]; then
+    return 0
+  fi
+  local vision_keys=() key
+  for key in $MODEL_PROFILE_KEYS; do
+    ( load_model_profile "$key" >/dev/null 2>&1 && [[ "$VLLM_VISION" == "1" ]] ) && vision_keys+=("$key")
+  done
+  echo "[ERROR] '$MODEL' cannot see images, so it cannot run Combined Extraction (--combined)." >&2
+  echo "[ERROR] Profiles that can: ${vision_keys[*]}" >&2
+  return 1
+}
+
+# `serve_vision_on <max_images>`: drops the profile's text-only and image-limit flags from VLLM_EXTRA_ARGS, then
+# allows up to <max_images> images (and no video) per prompt
+serve_vision_on() {
+  local max_images="$1" arg skip_next=0
+  local serve_args=()
+  for arg in "${VLLM_EXTRA_ARGS[@]}"; do
+    if [ $skip_next -eq 1 ]; then
+      skip_next=0
+      continue
+    fi
+    case "$arg" in
+      --language-model-only) ;;
+      --limit-mm-per-prompt*=*) ;;
+      --limit-mm-per-prompt*) skip_next=1 ;;
+      *) serve_args+=("$arg") ;;
+    esac
+  done
+  VLLM_EXTRA_ARGS=("${serve_args[@]}" --limit-mm-per-prompt.image "$max_images" --limit-mm-per-prompt.video 0)
 }

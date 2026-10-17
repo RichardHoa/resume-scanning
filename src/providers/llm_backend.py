@@ -10,28 +10,58 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 import json
-from typing import Optional
+from typing import NamedTuple, Optional
 from src.providers import vllm_client
 from src.core.json_utils import load_extraction_json_schema
 from src.prompts.extractor_prompts import get_system_prompt
 
 
-def extraction_messages(resume_text: str, language: str = "vietnamese") -> list:
-    """The chat messages of the extraction call: the system prompt, then the resume's markdown."""
+class PageImage(NamedTuple):
+    """One PDF page shown to the extractor in Combined Extraction: its 1-based number and its JPEG as a data URL."""
+    page: int
+    data_url: str
+
+
+def extraction_messages(resume_text: str, language: str = "vietnamese", page_images: Optional[list[PageImage]] = None) -> list:
+    """
+    The chat messages of the extraction call: the system prompt, then the resume's markdown. With page images
+    (Combined Extraction), the user message shows each page's image first, then the same markdown.
+    """
+    resume_prompt = f"Below is the extracted markdown text from the candidate's resume:\n\n{resume_text}"
+    if not page_images:
+        return [
+            {"role": "system", "content": get_system_prompt(language)},
+            {"role": "user", "content": resume_prompt}
+        ]
+    content = []
+    for image in page_images:
+        content.append({"type": "text", "text": f"PDF page {image.page}:"})
+        content.append({"type": "image_url", "image_url": {"url": image.data_url}})
+    content.append({"type": "text", "text": resume_prompt})
     return [
-        {"role": "system", "content": get_system_prompt(language)},
-        {"role": "user", "content": f"Below is the extracted markdown text from the candidate's resume:\n\n{resume_text}"}
+        {"role": "system", "content": get_system_prompt(language, combined=True)},
+        {"role": "user", "content": content}
     ]
 
 
+def prompt_log_text(messages: list) -> str:
+    """The extraction messages as prompt-log text, each page image written as a placeholder instead of its bytes."""
+    def content_text(content) -> str:
+        if isinstance(content, str):
+            return content
+        return "\n".join(part["text"] if part["type"] == "text" else "[page image]" for part in content)
+    return "\n\n".join(f"--- {m['role'].upper()} PROMPT ---\n{content_text(m['content'])}" for m in messages)
+
+
 def run_vllm_inference(
-    resume_text: str, model_name: str, vllm_url: str, language: str = "vietnamese", resume_name: Optional[str] = None
+    resume_text: str, model_name: str, vllm_url: str, language: str = "vietnamese", resume_name: Optional[str] = None,
+    page_images: Optional[list[PageImage]] = None
 ) -> str:
-    """Run text-based extraction via a running vLLM server."""
+    """Run extraction via a running vLLM server, from the resume text alone or with its page images (Combined Extraction)."""
     print("Generating structured output (vLLM)...", file=sys.stderr)
     return vllm_client.chat(
-        vllm_url, model_name, extraction_messages(resume_text, language), json_schema=load_extraction_json_schema(),
-        timeout=600, step=vllm_client.EXTRACTION_STEP, resume_name=resume_name
+        vllm_url, model_name, extraction_messages(resume_text, language, page_images),
+        json_schema=load_extraction_json_schema(), timeout=600, step=vllm_client.EXTRACTION_STEP, resume_name=resume_name
     ).content
 
 

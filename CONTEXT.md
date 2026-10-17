@@ -84,6 +84,10 @@ _Avoid_: partial evaluation, partial failure
 A resume PDF in which no page has text the system can read, only pictures of text. It is rejected before extraction: never extracted, evaluated or ranked, because resumes can be in any language and the system does not read text from images. It still appears in the results list, unranked and marked as scanned, so HR can ask the candidate for a PDF with selectable text. Distinct from a Failed Evaluation, which a rerun can fix; a Scanned Resume needs a new file from the candidate. A resume where only some pages lack text (e.g. a scanned certificate attached) is not a Scanned Resume: its text pages are read and HR is warned to check the others by hand.
 _Avoid_: OCR resume, image PDF, unreadable resume
 
+**Combined Extraction**:
+Extraction in which the model sees each page's image as well as the PyMuPDF text, turned on with `--combined`. The images show only the layout (columns, table rows, which entry a date or company belongs to); every value is still copied from the PDF's text, and the fidelity check rejects anything read only from an image. It needs a model that can see images, and never applies to a Scanned Resume.
+_Avoid_: vision extraction, OCR extraction
+
 **Missing Position**:
 A flag on a resume that states no position the candidate is applying for. The resume is still evaluated, ranked and given Candidate Feedback like any other, as if applying for the job the HR requirement describes (every resume in a run is assumed to be for that one job); the flag only tells HR, on the website, that the position was missing. Having no stated position is not evidence against the candidate.
 _Avoid_: no position, error, unevaluated

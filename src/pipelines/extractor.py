@@ -9,15 +9,18 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+import base64
 import html
 import json
 import re
 import unicodedata
 from typing import Optional
-from src.core.config import DEFAULT_VLLM_URL, EXTRACTION_MARKDOWN_DIR
+from src.core.config import DEFAULT_VLLM_URL, EXTRACTION_MARKDOWN_DIR, COMBINED_IMAGE_DPI, COMBINED_MAX_PAGES
 from src.core.logger import log_llm_call, log_broken_json, EXTRACTION_LOG_CATEGORY
 from src.core.json_utils import extract_json_substring, repair_truncated_json, clean_and_parse_json
-from src.providers.llm_backend import extraction_messages, run_vllm_inference, run_mock_extraction
+from src.providers.llm_backend import (
+    PageImage, extraction_messages, prompt_log_text, run_vllm_inference, run_mock_extraction
+)
 from src.providers import vllm_client
 from src.pipelines.evaluator_utils import SCANNED_RESUME_KEY
 
@@ -179,6 +182,26 @@ def find_textless_pages(pdf_path: str) -> tuple[list[int], int]:
         return textless, doc.page_count
 
 
+def render_page_images(pdf_path: str) -> tuple[list[PageImage], list[int]]:
+    """
+    Renders a PDF's text pages as JPEG page images for Combined Extraction, at most COMBINED_MAX_PAGES in page order.
+    Returns the images and the 1-based numbers of the text pages left out past that cap. A page without text is
+    never shown: nothing could check what the model read from it (ADR 0007).
+    """
+    import pymupdf
+    images, left_out = [], []
+    with pymupdf.open(pdf_path) as doc:
+        for page in doc:
+            if not _has_text(page.get_text()):
+                continue
+            if len(images) >= COMBINED_MAX_PAGES:
+                left_out.append(page.number + 1)
+                continue
+            jpeg = page.get_pixmap(dpi=COMBINED_IMAGE_DPI).tobytes("jpeg")
+            images.append(PageImage(page.number + 1, "data:image/jpeg;base64," + base64.b64encode(jpeg).decode("ascii")))
+    return images, left_out
+
+
 def extract_text_from_pdf(pdf_path: str) -> tuple[str, list[str]]:
     """Converts a PDF resume to Markdown with PyMuPDF4LLM. Raises ScannedResumeError for a Scanned Resume (no page has text)."""
     if not os.path.exists(pdf_path):
@@ -222,29 +245,39 @@ def extract_text_from_pdf(pdf_path: str) -> tuple[str, list[str]]:
 
 
 class ResumeExtractor:
-    """Extracts a resume PDF into the schema JSON through a vLLM server (or the mock)."""
+    """
+    Extracts a resume PDF into the schema JSON through a vLLM server (or the mock). `combined` turns on Combined
+    Extraction: the model also sees the page images, which needs a vision model served with images allowed.
+    """
 
-    def __init__(self, model_name: Optional[str] = None, mock: bool = False, vllm_url: str = DEFAULT_VLLM_URL):
+    def __init__(self, model_name: Optional[str] = None, mock: bool = False, vllm_url: str = DEFAULT_VLLM_URL, combined: bool = False):
         self.model_name = model_name
         self.mock = mock
         self.vllm_url = vllm_url
+        self.combined = combined
 
     def load_model(self):
         if not self.mock and not self.model_name:
             self.model_name = vllm_client.discover_model(self.vllm_url)
 
-    def extract_single_pass(self, resume_text: str, pdf_path: str, language: str = "vietnamese", max_retries: int = 5) -> tuple[Optional[dict], str]:
-        """Runs a single LLM extraction pass with retry logic for invalid JSON."""
+    def extract_single_pass(
+        self, resume_text: str, pdf_path: str, language: str = "vietnamese", max_retries: int = 5,
+        page_images: Optional[list[PageImage]] = None
+    ) -> tuple[Optional[dict], str]:
+        """Runs a single LLM extraction pass with retry logic for invalid JSON, with the page images when given."""
         last_raw_result = ""
         # Named like the extraction JSON and the evaluation, so all of one resume's logs sit together
         resume_name = os.path.splitext(os.path.basename(pdf_path))[0] if pdf_path else "resume"
-        full_prompt = "\n\n".join(f"--- {m['role'].upper()} PROMPT ---\n{m['content']}" for m in extraction_messages(resume_text, language))
+        full_prompt = prompt_log_text(extraction_messages(resume_text, language, page_images))
 
         for attempt in range(1, max_retries + 1):
             if self.mock:
                 result = run_mock_extraction(resume_text, language=language)
             else:
-                result = run_vllm_inference(resume_text, self.model_name, self.vllm_url, language=language, resume_name=resume_name)
+                result = run_vllm_inference(
+                    resume_text, self.model_name, self.vllm_url, language=language, resume_name=resume_name,
+                    page_images=page_images
+                )
 
             last_raw_result = result
             log_llm_call(full_prompt, result, EXTRACTION_LOG_CATEGORY, resume_name, run_index=attempt)
@@ -259,11 +292,21 @@ class ResumeExtractor:
 
     def extract(self, pdf_path: str, language: str = "vietnamese", max_retries: int = 5) -> str:
         pdf_warnings = []
+        page_images = None
         if self.mock:
+            # The mock has no server to send page images to, so --combined changes nothing here
             resume_text = "Mock resume content converted from PDF."
         else:
             try:
                 resume_text, pdf_warnings = extract_text_from_pdf(pdf_path)
+                if self.combined:
+                    page_images, left_out = render_page_images(pdf_path)
+                    if left_out:
+                        pages = ", ".join(str(n) for n in left_out)
+                        pdf_warnings.append(
+                            f"Pages not shown as images: page(s) {pages} were read from text only; "
+                            f"Combined Extraction shows at most {COMBINED_MAX_PAGES} pages."
+                        )
             except ScannedResumeError as e:
                 print(f"[Extractor Rejected] {pdf_path}: Scanned Resume (no page has text)", file=sys.stderr)
                 return json.dumps({"error": str(e), SCANNED_RESUME_KEY: True}, ensure_ascii=False, indent=2)
@@ -272,7 +315,9 @@ class ResumeExtractor:
                 print(f"[Extractor Rejected] {pdf_path}: {error_msg}", file=sys.stderr)
                 return json.dumps({"error": error_msg}, ensure_ascii=False, indent=2)
 
-        final_dict, raw_result = self.extract_single_pass(resume_text, pdf_path, language=language, max_retries=max_retries)
+        final_dict, raw_result = self.extract_single_pass(
+            resume_text, pdf_path, language=language, max_retries=max_retries, page_images=page_images
+        )
         if final_dict is None:
             # Fallback if every retry failed to produce clean JSON
             print("Warning: Extraction failed to produce clean JSON. Attempting auto-repair...", file=sys.stderr)
