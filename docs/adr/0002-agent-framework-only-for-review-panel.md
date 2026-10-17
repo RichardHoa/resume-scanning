@@ -1,5 +1,7 @@
 # Microsoft Agent Framework only for the Review Panel
 
+> **Narrowed by [ADR 0012](0012-sampled-evaluation-runs.md):** only run 1 of a Category's evaluation runs is at `temperature=0.0`; later runs sample.
+
 The Review Panel that writes Candidate Feedback is built on Microsoft Agent Framework (`agent-framework`). The extractor, requirement scrutiny, decomposition and Category evaluation all stay on the hand-rolled `src/providers/vllm_client.py`. The bias and consistency suites measure scoring through that exact call path: deterministic `temperature=0.0` and schema-enforced `structured_outputs`. Moving scoring onto a framework would change that path and gain nothing for scoring. The panel is the only multi-agent conversation in the pipeline (three Panelists, one Rebuttal Round, a Coordinator), so it is the one place an orchestration framework earns its keep. Do not "unify" the scoring calls onto Agent Framework without re-running both suites.
 
 ## Consequences

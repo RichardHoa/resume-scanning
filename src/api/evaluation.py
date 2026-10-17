@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from src.core.config import (
-    RESUME_JSON_DIRS, EVALUATION_JSON_DIR, EVAL_JOB_TTL_SECONDS, VLLM_MAX_CONCURRENT_REQUESTS
+    RESUME_JSON_DIRS, EVALUATION_JSON_DIR, EVAL_JOB_TTL_SECONDS, VLLM_MAX_CONCURRENT_REQUESTS, DEFAULT_NUM_EVALUATIONS
 )
 from src.core.state import state
 from src.core.durations import record_duration
@@ -43,7 +43,7 @@ class EvaluationBatchRequest(BaseModel):
     standard_requirements: Optional[str] = Field(default="", description="Standard Job Requirements text")
     hidden_requirements: Optional[str] = Field(default="", description="Hidden Job Requirements text")
     resume_filenames: List[str] = Field(..., description="List of candidate resume JSON filenames to evaluate")
-    num_evaluations: Optional[int] = Field(default=1, ge=1, le=100, description="Number of evaluation iterations per category")
+    num_evaluations: Optional[int] = Field(default=DEFAULT_NUM_EVALUATIONS, ge=1, le=100, description="Number of evaluation iterations per category")
     language: Optional[str] = Field(default="vietnamese", description="Output language for evaluation reasoning, strengths, and gaps ('vietnamese' or 'english')")
     use_existing_rag: Optional[bool] = Field(default=False, description="Whether to use already verified and stored RAG criteria")
 
@@ -72,7 +72,7 @@ async def _run_batch_evaluation(
         standard_req = payload.standard_requirements or ""
         hidden_req = payload.hidden_requirements or ""
         filenames = payload.resume_filenames or []
-        num_evaluations = payload.num_evaluations or 1
+        num_evaluations = payload.num_evaluations or DEFAULT_NUM_EVALUATIONS
         eval_language = payload.language or "vietnamese"
         use_existing_rag = payload.use_existing_rag
 
