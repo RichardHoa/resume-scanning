@@ -189,7 +189,7 @@ textarea.form-control {
     border: 1px solid #FCD34D;
 }
 
-.rec-REJECT, .match-reject {
+.rec-REJECT, .rec-MUST_HAVE_REJECTED, .match-reject {
     background-color: #FEE2E2;
     color: #B91C1C;
     border: 1px solid #FCA5A5;

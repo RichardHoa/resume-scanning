@@ -30,6 +30,7 @@ CATEGORY_NAMES = {
 
 FAILED_EVALUATION_LABEL = "Lỗi – cần chạy lại"
 SCANNED_RESUME_LABEL = "CV bản scan – không đọc được"
+MUST_HAVE_REJECTION_LABEL = "Bị loại – thiếu tiêu chí bắt buộc"
 
 _env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=select_autoescape(["html"]))
 
@@ -60,6 +61,8 @@ def _match(report: Dict[str, Any], score: float) -> Dict[str, str]:
         return {"cls": "match-error", "text": FAILED_EVALUATION_LABEL}
     if report.get("status") == "scanned":
         return {"cls": "match-error", "text": SCANNED_RESUME_LABEL}
+    if report.get("match_recommendation") == "MUST_HAVE_REJECTED":
+        return {"cls": "match-reject", "text": MUST_HAVE_REJECTION_LABEL}
     rec = report.get("match_recommendation") or "POTENTIAL_MATCH"
     if rec == "STRONG_MATCH" or score >= 85:
         return {"cls": "match-strong", "text": "PHÙ HỢP CAO"}
@@ -130,10 +133,11 @@ def _view(report: Dict[str, Any]) -> Dict[str, Any]:
                 "gaps": dim.get("gaps") or []
             })
 
-    # Missing Must-Haves inform HR only; older reports have none
-    missing_must_haves = [] if unscored else [
+    # A Must-have Rejection keeps its scores for HR, but the candidate is out; reports from before the gate have none
+    rejected = not unscored and report.get("match_recommendation") == "MUST_HAVE_REJECTED"
+    must_have_rejection = [] if not rejected else [
         {"criterion": m.get("criterion", ""), "category": CATEGORY_NAMES.get(m.get("category"), "")}
-        for m in report.get("missing_must_haves") or [] if isinstance(m, dict)
+        for m in report.get("must_have_rejection") or [] if isinstance(m, dict)
     ]
 
     feedback = report.get("candidate_feedback") or {}
@@ -142,10 +146,11 @@ def _view(report: Dict[str, Any]) -> Dict[str, Any]:
         "email": email if basic_name else "",
         "failed": failed,
         "failed_categories": [CATEGORY_NAMES.get(k, k) for k in report.get("failed_categories") or []],
-        "missing_must_haves": missing_must_haves,
+        "must_have_rejection": must_have_rejection,
         "scanned": scanned,
         "score": "—" if unscored else f"{score:.1f}",
-        "score_color": "#64748B" if unscored else _score_color(score),
+        # A rejected candidate's score is greyed out: it is shown, but not ranked
+        "score_color": "#64748B" if unscored or rejected else _score_color(score),
         "match": _match(report, score),
         "evaluated_at": _evaluated_at(report.get("evaluated_at")),
         "feedback": feedback if not unscored and feedback.get("status") in ("ok", "failed") else None,

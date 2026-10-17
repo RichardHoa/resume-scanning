@@ -38,7 +38,8 @@ from src.pipelines.evaluator_utils import (
     extract_relevant_resume_field,
     is_missing_position,
     is_scanned_resume,
-    collect_missing_must_haves,
+    collect_must_have_rejection,
+    count_must_have_no_evidence,
     SCANNED_RESUME_KEY
 )
 from src.pipelines.evaluator_backend import (
@@ -216,7 +217,7 @@ class ResumeEvaluator:
 
             print(f"[Eval Retry] Attempt {attempt}/{max_retries} for category '{category}' failed. Retrying...", file=sys.stderr)
             log_broken_json(
-                prompt, reply.text, category, resume_name, attempt=attempt, error_reason="Invalid numeric score or JSON",
+                prompt, reply.text, category, resume_name, attempt=attempt, error_reason="Invalid numeric score or JSON, or no Verdict for a must-have Criterion",
                 run_index=run_index, finish_reason=reply.finish_reason, completion_tokens=reply.completion_tokens, log_dir=log_dir
             )
 
@@ -252,7 +253,8 @@ class ResumeEvaluator:
         t_cat_start = time.time()
         query_context = json.dumps(self._extract_relevant_resume_field(cat_key, resume_data), ensure_ascii=False)
         retrieved = self.rag.retrieve(cat_key, query_context, top_k=None)
-        importance_map = self.rag.get_importance_map(cat_key)
+        # Mock replies judge no Criteria, so mocks score without an Importance map and never apply the Must-have gate
+        importance_map = {} if self.mock else self.rag.get_importance_map(cat_key)
 
         if not retrieved:
             print(f"[Evaluation] Category '{cat_name}' has no criteria in RAG. Setting 0% weight (not applicable).", file=sys.stderr)
@@ -294,6 +296,8 @@ class ResumeEvaluator:
             median_idx = (len(sorted_runs) - 1) // 2
             
             cat_res = dict(sorted_runs[median_idx])
+            # The Must-have gate counts NO_EVIDENCE across every run, not just the median one shown to HR
+            cat_res["must_have_no_evidence_counts"] = count_must_have_no_evidence(eval_runs)
             cat_res["score"] = med_score
             cat_res["median_score"] = float(med_score)
             cat_res["all_scores"] = scores
@@ -447,7 +451,10 @@ class ResumeEvaluator:
         basic_info = basic_info if isinstance(basic_info, dict) else {}
         candidate_name = basic_info.get("full_name") or basic_info.get("name") or basic_info.get("email") or resume_name
 
-        # A Failed Evaluation keeps its partial scores for debugging, but is never ranked or shown as a result
+        # A Failed Evaluation keeps its partial scores for debugging, but is never ranked or shown as a result.
+        # The Must-have gate applies only to a fully scored evaluation: a Failed Evaluation needs a rerun first
+        must_have_rejection = [] if failed_categories else collect_must_have_rejection(dimension_results)
+
         evaluation_output = {
             "status": "error" if failed_categories else "ok",
             "resume_name": resume_name,
@@ -455,7 +462,9 @@ class ResumeEvaluator:
             # Copied from the extraction for display only; stripped from every LLM input
             "candidate_name": str(basic_info.get("full_name") or basic_info.get("name") or "").strip(),
             "overall_score": overall_score,
-            "match_recommendation": recommendation,
+            # A Must-have Rejection replaces the recommendation, so every consumer sees the candidate is out;
+            # the overall and Category scores stay as computed for HR to see
+            "match_recommendation": "MUST_HAVE_REJECTED" if must_have_rejection else recommendation,
             "evaluated_at": datetime.now().isoformat(),
             "execution_timings": {
                 "total_resume_evaluation_seconds": round(total_resume_time, 2),
@@ -465,8 +474,9 @@ class ResumeEvaluator:
             "hidden_requirements_assessment": dimension_results.get("hidden_culture", {}),
             # Not scored: HR checks these by hand. The Review Panel sees them only so it can leave them out
             HR_CHECK_ITEMS_KEY: self.rag.get_hr_check_items(),
-            # Missing Must-Haves: informs HR (and the Review Panel) only; the candidate is still ranked
-            "missing_must_haves": collect_missing_must_haves(dimension_results),
+            # Must-have Rejection: the must-have Criteria with NO_EVIDENCE. Any one rejects the candidate, who keeps
+            # every score for HR to see but is never ranked and gets no Candidate Feedback
+            "must_have_rejection": must_have_rejection,
             "summary": {
                 "total_strengths": sum([len(v["strengths"]) for v in dimension_results.values()]),
                 "total_gaps": sum([len(v["gaps"]) for v in dimension_results.values()])
@@ -483,9 +493,9 @@ class ResumeEvaluator:
         if "warning" in resume_data:
             evaluation_output["warning"] = resume_data["warning"]
 
-        # 5. Candidate Feedback, only for a fully scored evaluation. The panel returns a separate object and
-        # never touches the scores; a panel failure is recorded in it and the evaluation is still saved
-        if not failed_categories:
+        # 5. Candidate Feedback, only for a fully scored evaluation that passed the Must-have gate. The panel returns a
+        # separate object and never touches the scores; a panel failure is recorded in it and the evaluation is still saved
+        if not failed_categories and not must_have_rejection:
             if generate_feedback:
                 evaluation_output["candidate_feedback"] = self.review_panel.review(
                     evaluation_output, resume_data, standard_req, hidden_req,

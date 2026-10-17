@@ -23,7 +23,8 @@ const RECOMMENDATION_LABELS = {
     STRONG_MATCH: 'PHÙ HỢP CAO',
     POTENTIAL_MATCH: 'CÓ TIỀM NĂNG',
     LOW_MATCH: 'PHÙ HỢP THẤP',
-    REJECT: 'LOẠI'
+    REJECT: 'LOẠI',
+    MUST_HAVE_REJECTED: 'Bị loại – thiếu tiêu chí bắt buộc'
 };
 
 const FAILED_EVALUATION_LABEL = 'Lỗi – cần chạy lại';
@@ -66,6 +67,24 @@ function unscoredLabel(res) {
     if (isFailedEvaluation(res)) return FAILED_EVALUATION_LABEL;
     if (isScannedResume(res)) return SCANNED_RESUME_LABEL;
     return '';
+}
+
+const MUST_HAVE_REJECTION_LABEL = RECOMMENDATION_LABELS.MUST_HAVE_REJECTED;
+
+/**
+ * A Must-have Rejection: the evaluator set its recommendation to MUST_HAVE_REJECTED. The scores are kept for HR to
+ * see, but the candidate is never ranked and gets no Candidate Feedback.
+ */
+function isMustHaveRejection(res) {
+    return !unscoredLabel(res) && res.match_recommendation === 'MUST_HAVE_REJECTED';
+}
+
+/**
+ * The must-have Criteria a Must-have Rejection judged NO_EVIDENCE.
+ * @returns {Array<{category: string, criterion: string}>}
+ */
+function mustHaveRejection(res) {
+    return isMustHaveRejection(res) && Array.isArray(res.must_have_rejection) ? res.must_have_rejection : [];
 }
 
 /**
@@ -770,7 +789,8 @@ export class EvaluatorController {
 
         // Update KPI summary stats
         const totalCount = results.length;
-        const scored = results.filter(r => !unscoredLabel(r));
+        // Must-have Rejections are scored but out, so they count as neither a match nor in the average
+        const scored = results.filter(r => !unscoredLabel(r) && !isMustHaveRejection(r));
         const strongCount = scored.filter(r => r.match_recommendation === 'STRONG_MATCH').length;
         const potentialCount = scored.filter(r => r.match_recommendation === 'POTENTIAL_MATCH').length;
         const avgScore = scored.length > 0 ? (scored.reduce((acc, curr) => acc + (curr.overall_score || 0), 0) / scored.length).toFixed(1) : '0.0';
@@ -788,13 +808,18 @@ export class EvaluatorController {
             1: { title: 'Nhóm CV 1 (Ứng viên ưu tiên)', badgeClass: 'tier-badge-1', cardClass: 'tier-1-card', items: [] },
             2: { title: 'Nhóm CV 2 (Ứng viên thứ cấp)', badgeClass: 'tier-badge-2', cardClass: 'tier-2-card', items: [] },
             3: { title: 'Nhóm CV 3 (Ứng viên ngoài danh sách)', badgeClass: 'tier-badge-3', cardClass: 'tier-3-card', items: [] },
-            // Scanned Resumes are never ranked, so they leave their tier for a section of their own, last
+            // Must-have Rejections and Scanned Resumes are never ranked, so they leave their tier for sections of their own, last
+            rejected: { title: MUST_HAVE_REJECTION_LABEL, badge: 'Bị loại', badgeClass: 'tier-badge-3', cardClass: 'tier-3-card', items: [] },
             scanned: { title: 'CV bản scan – cần ứng viên gửi lại', badge: 'Bản scan', badgeClass: 'tier-badge-3', cardClass: 'tier-3-card', items: [] }
         };
 
         results.forEach(res => {
             if (isScannedResume(res)) {
                 tierGroups.scanned.items.push(res);
+                return;
+            }
+            if (isMustHaveRejection(res)) {
+                tierGroups.rejected.items.push(res);
                 return;
             }
             const t = res.tier || 3;
@@ -804,7 +829,7 @@ export class EvaluatorController {
 
         let inspectSet = false;
 
-        [1, 2, 3, 'scanned'].forEach(tNum => {
+        [1, 2, 3, 'rejected', 'scanned'].forEach(tNum => {
             const group = tierGroups[tNum];
             if (group.items.length === 0) return;
 
@@ -842,9 +867,10 @@ export class EvaluatorController {
                 const evalOrderNum = idx + 1;
                 const tr = document.createElement('tr');
                 const unscored = unscoredLabel(res);
+                const rejected = isMustHaveRejection(res);
 
                 tr.innerHTML = `
-                    <td>${isScannedResume(res) ? '—' : `<span class="rank-badge rank-${evalOrderNum}">${evalOrderNum}</span>`}</td>
+                    <td>${isScannedResume(res) || rejected ? '—' : `<span class="rank-badge rank-${evalOrderNum}">${evalOrderNum}</span>`}</td>
                     <td>
                         <strong style="color: var(--brand-legacy-blue); font-size: 0.95rem;">${this.escapeHtml(res.resume_name)}</strong><br>
                         <span style="font-size:0.78rem; color: var(--text-muted);">✉ ${this.escapeHtml(res.candidate_email || res.candidate_identifier || 'Không có')}</span>
@@ -852,7 +878,7 @@ export class EvaluatorController {
                     </td>
                     <td>${unscored
                         ? '<strong style="color: var(--text-muted); font-size:1.2rem; font-family:var(--font-mono);">—</strong>'
-                        : `<strong style="color: var(--brand-azure); font-size:1.2rem; font-family:var(--font-mono);">${res.overall_score || 0}</strong><span style="font-size:0.8rem; color:var(--text-muted);">/100</span>`}</td>
+                        : `<strong style="color: ${rejected ? 'var(--text-muted)' : 'var(--brand-azure)'}; font-size:1.2rem; font-family:var(--font-mono);">${res.overall_score || 0}</strong><span style="font-size:0.8rem; color:var(--text-muted);">/100</span>`}</td>
                     <td>${unscored
                         ? `<span class="badge-rec rec-ERROR">${unscored}</span>`
                         : `<span class="badge-rec rec-${res.match_recommendation}">${this.recommendationLabel(res.match_recommendation)}</span>`}</td>
@@ -896,6 +922,7 @@ export class EvaluatorController {
         const strengthsListEl = document.getElementById('det-cand-strengths-list');
         const gapsListEl = document.getElementById('det-cand-gaps-list');
         const unscored = unscoredLabel(cand);
+        const rejected = isMustHaveRejection(cand);
 
         if (nameEl) nameEl.textContent = cand.candidate_identifier || cand.resume_name;
         if (fileEl) fileEl.textContent = `${cand.resume_name}.json • Đánh giá lúc ${cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleTimeString('vi-VN') : 'vừa xong'}`;
@@ -914,6 +941,8 @@ export class EvaluatorController {
                 const failedNames = (cand.failed_categories || []).map(k => CATEGORY_NAMES[k] || k);
                 const what = failedNames.length > 0 ? `các mục: ${failedNames.join(', ')}` : 'một số mục đánh giá';
                 summaryEl.textContent = `Không thể chấm điểm ${what}. Kết quả này không được xếp hạng. Hãy chọn lại ứng viên này và bấm Đánh giá để chạy lại.`;
+            } else if (rejected) {
+                summaryEl.textContent = `Ứng viên bị loại vì CV không cho thấy bằng chứng cho tiêu chí bắt buộc: ${mustHaveRejection(cand).map(m => m.criterion).join('; ')}. Điểm vẫn được giữ để HR tham khảo nhưng không được xếp hạng.`;
             } else {
                 summaryEl.textContent = cand.summary?.executive_summary || `Ứng viên đạt ${cand.overall_score}/100 điểm, mức độ phù hợp: ${this.recommendationLabel(cand.match_recommendation)}. Được đánh giá theo 5 chiều vector RAG.`;
                 if (isMissingPosition(cand)) summaryEl.textContent = `⚠️ ${MISSING_POSITION_MESSAGE} ${summaryEl.textContent}`;

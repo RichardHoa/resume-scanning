@@ -41,9 +41,12 @@ _NO_THINKING = {"chat_template_kwargs": {"enable_thinking": False}}
 _REPORT_FIELDS_DROPPED = (
     "execution_timings", "evaluated_at", "standard_requirements", "hidden_requirements",
     "resume_path", "language", "hidden_requirements_assessment", "candidate_feedback",
-    "candidate_identifier", "candidate_name", "candidate_email", "resume_name"
+    "candidate_identifier", "candidate_name", "candidate_email", "resume_name",
+    # Only a candidate who passed the Must-have gate reaches the panel, so its Must-have Rejection is empty; reports
+    # from before the gate carry a "missing_must_haves" the decomposer's Importance produced, which HR never chose
+    "must_have_rejection", "missing_must_haves"
 )
-_DIMENSION_FIELDS_DROPPED = ("retrieved_criteria", "processing_time_seconds")
+_DIMENSION_FIELDS_DROPPED = ("retrieved_criteria", "processing_time_seconds", "must_have_no_evidence_counts")
 
 COORDINATOR_LOG_CATEGORY = "review_panel_coordinator"
 

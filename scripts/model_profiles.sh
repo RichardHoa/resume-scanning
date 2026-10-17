@@ -101,7 +101,7 @@ load_model_profile() {
     sea-lion-v4.5-27b)
       # Dense 27B Qwen3.6 fine-tune (vision-language): --language-model-only skips the vision encoder
       MODEL="aisingapore/Qwen-SEA-LION-v4.5-27B-IT"
-      CONCURRENCY=45
+      CONCURRENCY=40
       VLLM_EXTRA_ARGS=(
         --language-model-only
         --reasoning-parser qwen3

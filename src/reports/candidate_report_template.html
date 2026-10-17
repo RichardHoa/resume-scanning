@@ -113,11 +113,11 @@
     </div>
     {% endif %}
 
-    {% if missing_must_haves %}
+    {% if must_have_rejection %}
     <div class="alert must-have">
-        <strong>Thiếu yêu cầu bắt buộc: {{ missing_must_haves | length }} tiêu chí</strong>
-        CV không cho thấy bằng chứng cho các tiêu chí HR đánh dấu là bắt buộc dưới đây. Ứng viên không bị loại tự động và vẫn được xếp hạng; CV có thể bỏ sót thông tin, nên HR hãy kiểm tra lại với ứng viên.
-        <ul>{% for m in missing_must_haves %}<li>{{ m.criterion }}{% if m.category %} <span class="cat">({{ m.category }})</span>{% endif %}</li>{% endfor %}</ul>
+        <strong>{{ "Bị loại – thiếu tiêu chí bắt buộc" | upper }}: {{ must_have_rejection | length }} tiêu chí</strong>
+        CV không cho thấy bằng chứng cho các tiêu chí HR đánh dấu là bắt buộc dưới đây, nên ứng viên bị loại và không được xếp hạng. Điểm vẫn được giữ để HR tham khảo. Nếu CV chỉ bỏ sót thông tin, hãy đổi mức độ quan trọng của tiêu chí trong trang RAG rồi đánh giá lại ứng viên.
+        <ul>{% for m in must_have_rejection %}<li>{{ m.criterion }}{% if m.category %} <span class="cat">({{ m.category }})</span>{% endif %}</li>{% endfor %}</ul>
     </div>
     {% endif %}
 

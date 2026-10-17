@@ -2,8 +2,9 @@
  * ==============================================================================
  * Shared Criteria Editor (Verify step & RAG Workbench)
  * ==============================================================================
- * Description: Renders a collapsible guide to the Importance levels (always open
- *              on render), then a matrix: one row per Category, one column per
+ * Description: Renders a warning that a missing Must-have rejects the candidate, a
+ *              collapsible guide to the Importance levels (always open on render),
+ *              then a matrix: one row per Category, one column per
  *              Importance (Bắt buộc / Tiêu chuẩn / Ưu tiên), and a last row of HR
  *              Check Items (requirements no resume would show, never scored) that
  *              spans every column. Each item is a chip whose text is edited in place
@@ -18,7 +19,7 @@
  *              Items and its Importance levels (src/core/config.py is their only
  *              source), and read them back with getCategories()
  *              ({category_key: [{text, importance}]}) and getHrCheckItems() (strings).
- * Line Count: ~410 lines (Strict Limit: < 500 lines)
+ * Line Count: ~420 lines (Strict Limit: < 500 lines)
  */
 
 // Display names of the five Categories, in row order. Also used to label evaluation dimensions.
@@ -44,10 +45,13 @@ const LIST_NAMES = { ...CATEGORY_NAMES, [HR_CHECK_ITEMS_KEY]: HR_CHECK_ITEMS_NAM
 // What each Importance level means to HR, shown in the guide. Keyed like src/core/config.py;
 // a level missing here is listed with its label and weight only
 const IMPORTANCE_HELP = {
-    must_have: 'Ứng viên cần có. Nếu CV không cho thấy bằng chứng, ứng viên bị gắn cờ “Thiếu yêu cầu bắt buộc” — nhưng <strong>không bị loại tự động</strong> và vẫn được xếp hạng, vì CV có thể bỏ sót thông tin. HR là người quyết định.',
+    must_have: 'Ứng viên bắt buộc phải có. Nếu CV không cho thấy bằng chứng cho dù chỉ <strong>một</strong> tiêu chí Bắt buộc, ứng viên <strong>bị loại ngay</strong>. CV đáp ứng một phần thì không bị loại.',
     standard: 'Yêu cầu thông thường của vị trí. Đây là mức mặc định khi bạn không chọn mức nào khác.',
     nice_to_have: 'Điểm cộng. Ứng viên có thì được thêm điểm; không có thì chỉ mất ít điểm.'
 };
+
+// Always shown above the guide: a Must-have decides who is rejected, not just the score
+const MUST_HAVE_WARNING = '<strong>Cân nhắc kỹ trước khi đánh dấu “Bắt buộc”.</strong> Ứng viên thiếu bằng chứng cho <strong>bất kỳ một</strong> tiêu chí Bắt buộc nào sẽ <strong>bị loại ngay</strong>, dù các tiêu chí khác tốt đến đâu. Chỉ chọn mức này cho yêu cầu thật sự không thể thiếu; nếu không chắc, hãy chọn Tiêu chuẩn.';
 
 const HR_CHECK_HELP = 'Yêu cầu mà CV thông thường không thể hiện (vd: sẵn sàng tăng ca, thời gian nhận việc, mức lương mong muốn). Không chấm điểm ứng viên theo các mục này; HR tự kiểm tra khi phỏng vấn.';
 
@@ -129,10 +133,14 @@ export class CriteriaEditor {
         return `${level.label} ×${level.weight}`;
     }
 
-    /** Renders the guide (open again) and the matrix. */
+    /** Renders the Must-have warning, the guide (open again) and the matrix. */
     render() {
         if (!this.container) return;
         this.container.innerHTML = '';
+        const warning = document.createElement('p');
+        warning.className = 'criteria-must-have-warning';
+        warning.innerHTML = MUST_HAVE_WARNING;
+        this.container.appendChild(warning);
         this.container.appendChild(this.buildGuide());
         this.matrixEl = document.createElement('div');
         this.matrixEl.className = 'criteria-matrix';

@@ -261,8 +261,8 @@
     font-style: normal;
 }
 
-/* Missing Must-Haves: must-have Criteria without evidence; informs HR, never rejects */
-.modal-missing-must-have-banner {
+/* Must-have Rejection: must-have Criteria without evidence; any one rejects the candidate */
+.modal-must-have-rejection-banner {
     background: var(--danger-bg);
     border: 1px solid var(--danger);
     border-left: 4px solid var(--danger);
@@ -271,19 +271,19 @@
     margin-bottom: 1rem;
 }
 
-.modal-missing-must-have-banner strong {
+.modal-must-have-rejection-banner strong {
     color: var(--danger);
     font-size: 0.9rem;
 }
 
-.modal-missing-must-have-banner p {
+.modal-must-have-rejection-banner p {
     margin: 4px 0 6px;
     font-size: 0.82rem;
     line-height: 1.5;
     color: var(--text-secondary);
 }
 
-.modal-missing-must-have-cat {
+.modal-must-have-rejection-cat {
     font-weight: 500;
     color: var(--text-muted);
 }

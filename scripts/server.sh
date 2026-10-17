@@ -362,6 +362,8 @@ case "$1" in
     echo "====================================================================="
     echo "[server.sh] Launching Web Server with vLLM ($MODEL) in background..."
     echo "====================================================================="
+    # The daemon's log and PID file live in logs/, which setup_environment only creates later inside the daemon
+    mkdir -p logs
     nohup bash "$SCRIPT_DIR/server.sh" __internal_daemon "${TECH_ARGS[@]}" > "$DAEMON_LOG_FILE" 2>&1 &
     DAEMON_PID=$!
     echo "$DAEMON_PID" > "$DAEMON_PID_FILE"

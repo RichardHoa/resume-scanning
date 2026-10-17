@@ -67,11 +67,11 @@ def decompose_requirements_with_llm(
     hidden_req: str,
     resume_name: str = HR_RAG_LOG_NAME,
     log_dir: Optional[str] = None
-) -> Optional[Dict[str, List[Any]]]:
+) -> Optional[Dict[str, List[str]]]:
     """
     Helper to decompose HR standard & hidden requirements into 5 dimension categories, plus the HR Check Items.
-    Each Criterion comes back as {"text", "importance"} (the decomposer's proposal, which HR reviews);
-    HR Check Items stay plain strings.
+    Every item comes back as a plain string: the decomposer never proposes an Importance, so each Criterion reads as
+    Standard until HR sets it (a Must-have rejects candidates, so only HR may choose one).
     """
     categories = list(CATEGORY_LABELS.keys()) + [HR_CHECK_ITEMS_KEY]
     standard_req = (standard_req or "").strip()
@@ -91,16 +91,12 @@ def decompose_requirements_with_llm(
     parsed = clean_and_parse_json(raw_out)
 
     if parsed and isinstance(parsed, dict):
-        result: Dict[str, List[Any]] = {}
+        result: Dict[str, List[str]] = {}
         for cat in categories:
             raw = parsed.get(cat)
             raw_items = raw if isinstance(raw, list) else [raw] if raw else []
-            # Each item may be {"text", "importance"} or a plain string (read as Standard)
-            items = [split_criterion_item(x) for x in raw_items]
-            if cat == HR_CHECK_ITEMS_KEY:
-                result[cat] = [text for text, _ in items if text]
-            else:
-                result[cat] = [{"text": text, "importance": importance} for text, importance in items if text]
+            # An item the model still wrote as {"text", "importance"} keeps only its text
+            result[cat] = [text for text, _ in (split_criterion_item(x) for x in raw_items) if text]
         return result
 
     # Fallback text parsing for header-formatted responses
@@ -288,6 +284,8 @@ def aggregate_evaluation_results(
             "reasoning_summary": cat_res.get("reasoning_summary", ""),
             # Per-criterion verdicts with the resume quotes given for each, from the median run
             "criteria_evaluations": cat_res.get("criteria_evaluations", []),
+            # How many runs gave each must-have Criterion NO_EVIDENCE; a majority makes a Must-have Rejection
+            "must_have_no_evidence_counts": cat_res.get("must_have_no_evidence_counts", []),
             "retrieved_criteria": retrieved,
             "processing_time_seconds": round(elapsed_cat, 2),
             "evaluation_runs_count": num_evaluations,

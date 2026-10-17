@@ -3,7 +3,8 @@ CLI Entrypoint for backfilling Candidate Feedback into a directory of existing e
 
 Runs the Review Panel only where feedback is missing, skipped or failed. Scores are never re-computed or
 changed: the requirement text and the resume path come from each report, and only `candidate_feedback` is
-written back. Failed Evaluations are left untouched and listed at the end for a full re-evaluation.
+written back. Failed Evaluations are left untouched and listed at the end for a full re-evaluation; Must-have
+Rejections get no Candidate Feedback and are skipped.
 """
 import os
 import sys
@@ -71,6 +72,9 @@ def main():
         # A Scanned Resume was never evaluated and gets no Candidate Feedback
         if report.get("status") == "scanned":
             continue
+        # A Must-have Rejection gets no Candidate Feedback
+        if report.get("match_recommendation") == "MUST_HAVE_REJECTED":
+            continue
         feedback = report.get("candidate_feedback")
         if isinstance(feedback, dict) and feedback.get("status") == "ok":
             already_done += 1
@@ -108,10 +112,8 @@ def main():
         def _review(item):
             path, report, resume = item
             resume_name = report.get("resume_name") or os.path.splitext(os.path.basename(path))[0]
-            # Reports older than Criterion Importance have no Missing Must-Haves; the panel reads that as none
-            panel_report = {**report, "missing_must_haves": report.get("missing_must_haves") or []}
             feedback = panel.review(
-                panel_report, resume, report["standard_requirements"], report["hidden_requirements"],
+                report, resume, report["standard_requirements"], report["hidden_requirements"],
                 language=report.get("language") or args.language, resume_name=resume_name
             )
             # Only candidate_feedback changes; every score stays exactly as the evaluator wrote it

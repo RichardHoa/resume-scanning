@@ -8,6 +8,23 @@
     margin-bottom: 1.5rem;
 }
 
+/* Warning: a missing Must-have rejects the candidate, so HR must choose Must-haves carefully */
+.criteria-must-have-warning {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    background: var(--danger-bg);
+    border: 1px solid var(--danger);
+    border-left-width: 4px;
+    border-radius: var(--radius-md);
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: var(--text-main);
+}
+
+.criteria-must-have-warning strong {
+    color: var(--danger);
+}
+
 /* Guide: what each Importance level means (collapsible, open on render) */
 .criteria-guide {
     background: var(--brand-azure-mist);

@@ -427,21 +427,21 @@
     margin: 0;
 }
 
-/* Missing Must-Have: informs HR only; the candidate is still ranked */
-.badge-missing-must-have {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+/* Must-have Rejection: the must-have Criteria the resume shows no evidence for, which put the candidate out */
+.cand-must-have-rejection {
     background: var(--danger-bg);
-    color: var(--danger);
-    border: 1.5px solid var(--danger);
+    border: 1px solid var(--danger);
+    border-left: 4px solid var(--danger);
     border-radius: var(--radius-sm);
-    padding: 4px 10px;
-    font-size: 0.74rem;
-    font-weight: 800;
-    font-family: var(--font-mono);
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.cand-must-have-rejection strong {
+    color: var(--danger);
 }
 
 /* HR warning badges: OCR review, Missing Position */

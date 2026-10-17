@@ -90,13 +90,15 @@ DIMENSION_WEIGHTS = {
     "hidden_culture": 0.12
 }
 
-# Importance of one Criterion inside its Category, set by HR in the HR RAG. The Category score is the mean of
-# the Verdicts weighted by these, so an all-Standard Category scores as an unweighted mean. See docs/adr/0006.
-# The single source of the levels: the API, hr_rag.txt and the criteria editor (through the RAG summary) read them here
+# Importance of one Criterion inside its Category, set only by HR in the HR RAG. The Category score is the mean of
+# the Verdicts weighted by these, so an all-Standard Category scores as an unweighted mean. A Must-have weighs the
+# same as a Standard: what sets it apart is the Must-have Rejection (NO_EVIDENCE on any one rejects the candidate).
+# See docs/adr/0011. The single source of the levels: the API, hr_rag.txt and the criteria editor (through the RAG
+# summary) read them here
 MUST_HAVE = "must_have"
 DEFAULT_IMPORTANCE = "standard"
 IMPORTANCE_LEVELS = {
-    MUST_HAVE: {"label": "Bắt buộc", "weight": 3},
+    MUST_HAVE: {"label": "Bắt buộc", "weight": 2},
     DEFAULT_IMPORTANCE: {"label": "Tiêu chuẩn", "weight": 2},
     "nice_to_have": {"label": "Ưu tiên", "weight": 1}
 }
@@ -120,8 +122,8 @@ MATCH_THRESHOLDS = {
 VLLM_MAX_MODEL_LEN = 32768 # Total vLLM model context length limit (--max-model-len)
 MAX_NEW_TOKENS = 8192     # Output new tokens limit
 # A normal category evaluation is well under this; a model stuck repeating inside the schema runs to the cap,
-# so a lower cap makes that failed attempt end in a couple of minutes instead of ~7
-CATEGORY_EVAL_MAX_TOKENS = 4096
+# so a stuck attempt costs the full 8k tokens before it fails
+CATEGORY_EVAL_MAX_TOKENS = 8192
 # Retrying an identical prompt at temperature 0 reproduces the same failure, so retries after the first
 # attempt sample instead
 CATEGORY_EVAL_RETRY_TEMPERATURE = 0.5

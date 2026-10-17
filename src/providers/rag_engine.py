@@ -13,7 +13,7 @@ import json
 import threading
 from datetime import datetime
 from typing import Dict, List, Any, Optional
-from src.core.config import ROOT_DIR, RAG_DIR, DEFAULT_EMBEDDING_MODEL, HR_CHECK_ITEMS_KEY
+from src.core.config import ROOT_DIR, RAG_DIR, DEFAULT_EMBEDDING_MODEL, HR_CHECK_ITEMS_KEY, DEFAULT_IMPORTANCE
 from src.core.importance import normalize_importance, split_criterion_item
 from src.providers.rag_exporter import export_hr_rag_file, get_stored_rag_summary
 
@@ -22,6 +22,11 @@ NO_HR_RAG_MESSAGE = (
     "No HR RAG is stored. Set the HR requirements on the website's RAG page (decompose them and review the "
     "Criteria) before running an evaluation; evaluation never builds or changes the HR RAG."
 )
+
+
+# Set on every Criterion saved since only HR sets Importance. A saved Criterion without it has an Importance the
+# decomposer proposed, which HR may never have reviewed, and a Must-have now rejects candidates (docs/adr/0011)
+IMPORTANCE_SET_BY_HR_KEY = "importance_set_by_hr"
 
 
 def stored_criteria_count() -> int:
@@ -117,6 +122,7 @@ class LocalCriteriaRAG:
                         # HR Check Items are never scored, so they carry no Importance
                         if doc_obj["category"] != HR_CHECK_ITEMS_KEY:
                             doc_obj["importance"] = normalize_importance(meta.get("importance"))
+                            doc_obj[IMPORTANCE_SET_BY_HR_KEY] = meta.get(IMPORTANCE_SET_BY_HR_KEY) is True
                         if idx < len(embs) and embs[idx] is not None:
                             doc_obj["embedding"] = embs[idx]
                         self.documents.append(doc_obj)
@@ -124,6 +130,7 @@ class LocalCriteriaRAG:
                     self._compute_embeddings()
             except Exception as e:
                 print(f"[LocalRAG ChromaDB Error] Failed to load from collection: {e}", file=sys.stderr)
+            self._reset_proposed_importance()
         else:
             json_path = os.path.join(self.db_dir, "criteria_rag.json")
             if os.path.exists(json_path):
@@ -139,6 +146,30 @@ class LocalCriteriaRAG:
                         self._compute_embeddings()
                 except Exception as e:
                     print(f"[LocalRAG Error] Failed to load fallback JSON: {e}", file=sys.stderr)
+                self._reset_proposed_importance()
+
+    def _reset_proposed_importance(self):
+        """
+        Once per HR RAG saved before only HR set Importance: every Criterion goes back to Standard and the HR RAG is
+        saved again (with IMPORTANCE_SET_BY_HR_KEY), so a Must-have the decomposer proposed never rejects anyone.
+        HR then marks the real Must-haves on the RAG page.
+        """
+        legacy = any(
+            isinstance(doc, dict) and doc.get("category") != HR_CHECK_ITEMS_KEY
+            and doc.get(IMPORTANCE_SET_BY_HR_KEY) is not True
+            and doc.get("importance", DEFAULT_IMPORTANCE) != DEFAULT_IMPORTANCE
+            for doc in self.documents
+        )
+        if not legacy:
+            return
+        # Plain strings read as Standard; the category order is kept as stored
+        categories: Dict[str, List[Any]] = {}
+        for doc in self.documents:
+            if isinstance(doc, dict) and doc.get("text"):
+                categories.setdefault(doc.get("category"), []).append(doc["text"])
+        originals = self.load_original_requirements()
+        print("[LocalRAG] Resetting every Criterion's Importance to Standard: the stored HR RAG predates HR-only Importance.", file=sys.stderr)
+        self.ingest_decomposed_dict(categories, originals["standard_requirements"], originals["hidden_requirements"])
 
     def has_stored_rag(self) -> bool:
         """Returns True if ChromaDB or fallback storage contains stored requirement criteria."""
@@ -259,6 +290,8 @@ class LocalCriteriaRAG:
                             else:
                                 doc_obj["importance"] = importance
                                 meta["importance"] = importance
+                                doc_obj[IMPORTANCE_SET_BY_HR_KEY] = True
+                                meta[IMPORTANCE_SET_BY_HR_KEY] = True
                                 normalized[cat].append({"text": cleaned_item, "importance": importance})
                             self.documents.append(doc_obj)
                             

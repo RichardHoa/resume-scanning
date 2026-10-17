@@ -2,6 +2,7 @@
 Utility functions for data extraction, list deduplication, PII sanitization, and output validation in Resume Evaluator pipeline.
 """
 import re
+import sys
 import difflib
 from typing import Dict, List, Any, Optional
 
@@ -42,6 +43,8 @@ def match_criterion_importance(criterion: str, importance_map: Dict[str, str]) -
     """
     The Importance of the stored Criterion the LLM's echoed criterion text refers to: an exact match ignoring
     whitespace and case, else the closest text at IMPORTANCE_MATCH_MIN_RATIO or above, else Standard.
+    Only an exact match can make a Verdict a Must-have, since a Must-have decides a Must-have Rejection: a fuzzy
+    match to a Must-have reads as Standard, so a slip costs weight, never a rejection.
     Never by position, since the Criteria Permutation bias test reorders the Criteria.
     """
     target = _normalize_criterion_text(criterion)
@@ -55,7 +58,19 @@ def match_criterion_importance(criterion: str, importance_map: Dict[str, str]) -
         ratio = difflib.SequenceMatcher(None, target, key).ratio()
         if ratio > best_ratio:
             best_ratio, best_importance = ratio, importance
-    return normalize_importance(best_importance) if best_ratio >= IMPORTANCE_MATCH_MIN_RATIO else DEFAULT_IMPORTANCE
+    if best_ratio < IMPORTANCE_MATCH_MIN_RATIO:
+        return DEFAULT_IMPORTANCE
+    best_importance = normalize_importance(best_importance)
+    return DEFAULT_IMPORTANCE if best_importance == MUST_HAVE else best_importance
+
+
+def _unjudged_must_haves(importance_map: Optional[Dict[str, str]], echoed_criteria: List[str]) -> List[str]:
+    """The must-have Criteria in importance_map that no echoed criterion text matches exactly (ignoring whitespace and case)."""
+    echoed = {_normalize_criterion_text(c) for c in echoed_criteria}
+    return [
+        text for text, importance in (importance_map or {}).items()
+        if normalize_importance(importance) == MUST_HAVE and _normalize_criterion_text(text) not in echoed
+    ]
 
 
 def validate_category_evaluation(parsed: Any, importance_map: Optional[Dict[str, str]] = None) -> Optional[Dict[str, Any]]:
@@ -65,6 +80,8 @@ def validate_category_evaluation(parsed: Any, importance_map: Optional[Dict[str,
     the mean of the Verdicts weighted by each Criterion's Importance from importance_map ({criterion_text:
     importance}). Without a map every Criterion is Standard, i.e. a plain mean.
     Otherwise, validates the numeric score (0-100) and required output fields.
+    Invalid (None) when a must-have Criterion in importance_map got no exactly echoed Verdict: an unjudged Must-have
+    could hide a Must-have Rejection, so the run is retried like any other broken output.
     """
     if not isinstance(parsed, dict) or not parsed:
         return None
@@ -139,6 +156,11 @@ def validate_category_evaluation(parsed: Any, importance_map: Optional[Dict[str,
     if score is None or not (0 <= score <= 100):
         return None
 
+    unjudged = _unjudged_must_haves(importance_map, [c["criterion"] for c in cleaned_criteria])
+    if unjudged:
+        print(f"[Eval Validation] No Verdict for must-have Criteria: {unjudged}", file=sys.stderr)
+        return None
+
     strengths = clean_and_deduplicate_list(parsed.get("strengths", []), max_items=10)
     gaps = clean_and_deduplicate_list(parsed.get("gaps", []), max_items=8)
     quotes = clean_and_deduplicate_list(parsed.get("evidence_quotes", []), max_items=6)
@@ -159,19 +181,41 @@ def validate_category_evaluation(parsed: Any, importance_map: Optional[Dict[str,
     return result
 
 
-def collect_missing_must_haves(dimension_results: Dict[str, Any]) -> List[Dict[str, str]]:
+def count_must_have_no_evidence(eval_runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Every must-have Criterion that got NO_EVIDENCE in the reported (median-run) criteria_evaluations, as
-    [{"category", "criterion"}]. A Missing Must-Have only informs HR; it never rejects or caps the candidate.
+    For each must-have Criterion judged in a Category's runs, the number of runs that gave it NO_EVIDENCE, as
+    [{"criterion", "no_evidence_runs"}]. Criteria are matched across runs by exact text ignoring whitespace and case
+    (a Verdict is a Must-have only through an exact match); a run that echoes one twice counts once.
+    """
+    counts: Dict[str, Dict[str, Any]] = {}
+    for run in eval_runs:
+        no_evidence_in_run = set()
+        for crit in run.get("criteria_evaluations") or []:
+            if not isinstance(crit, dict) or crit.get("importance") != MUST_HAVE:
+                continue
+            key = _normalize_criterion_text(crit.get("criterion", ""))
+            entry = counts.setdefault(key, {"criterion": str(crit.get("criterion", "")).strip(), "no_evidence_runs": 0})
+            if str(crit.get("verdict", "")).upper() == "NO_EVIDENCE" and key not in no_evidence_in_run:
+                no_evidence_in_run.add(key)
+                entry["no_evidence_runs"] += 1
+    return list(counts.values())
+
+
+def collect_must_have_rejection(dimension_results: Dict[str, Any]) -> List[Dict[str, str]]:
+    """
+    Every must-have Criterion that got NO_EVIDENCE in a majority of its Category's runs (more than half; with one
+    run, that run), as [{"category", "criterion"}]. Reads each Category's must_have_no_evidence_counts and
+    evaluation_runs_count, not the reported median run, so rejection never hangs on which run sorts into the middle.
+    Any one makes a Must-have Rejection: the candidate is out (PARTIAL never counts).
     """
     missing: List[Dict[str, str]] = []
     for cat_key, dim in (dimension_results or {}).items():
         if not isinstance(dim, dict) or dim.get("not_applicable"):
             continue
-        for crit in dim.get("criteria_evaluations") or []:
-            if (isinstance(crit, dict) and crit.get("importance") == MUST_HAVE
-                    and str(crit.get("verdict", "")).upper() == "NO_EVIDENCE"):
-                missing.append({"category": cat_key, "criterion": str(crit.get("criterion", "")).strip()})
+        runs = dim.get("evaluation_runs_count") or 0
+        for entry in dim.get("must_have_no_evidence_counts") or []:
+            if entry.get("no_evidence_runs", 0) * 2 > runs:
+                missing.append({"category": cat_key, "criterion": entry.get("criterion", "")})
     return missing
 
 

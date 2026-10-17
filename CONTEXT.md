@@ -41,15 +41,15 @@ A single verbatim requirement string assigned to one Category during decompositi
 _Avoid_: requirement item
 
 **Importance**:
-How much one Criterion counts inside its Category: Must-have (weight 3), Standard (2) or Nice-to-have (1). The Category score is the mean of its Verdicts weighted by Importance, so a Category of only Standard Criteria scores as a plain mean. The decomposer proposes it from HR's wording (e.g. "bắt buộc" → Must-have, "ưu tiên" → Nice-to-have, otherwise Standard), and HR sets it per Criterion when reviewing the HR RAG. The evaluator LLM never sees it. HR Check Items have none. A Criterion stored without one reads as Standard.
+How much one Criterion counts inside its Category: Must-have (weight 2), Standard (2) or Nice-to-have (1). The Category score is the mean of its Verdicts weighted by Importance, so a Category of only Standard Criteria scores as a plain mean. A Must-have weighs the same as a Standard; what sets it apart is that lacking it makes a Must-have Rejection. Only HR sets it, per Criterion, when reviewing the HR RAG: the decomposer proposes none, so every Criterion starts as Standard. The evaluator LLM never sees it. HR Check Items have none. A Criterion stored without one reads as Standard.
 _Avoid_: priority, weight (alone)
 
-**Missing Must-Have**:
-A flag on an evaluation for each Must-have Criterion that got No Evidence. It is shown to HR and given to the Review Panel as a weakness, but it never rejects the candidate or caps the score: resumes leave things out, so HR decides. A Must-have with Partial evidence only costs weight and raises no flag.
-_Avoid_: dealbreaker, auto-reject
+**Must-have Rejection**:
+An evaluation in which at least one Must-have Criterion got No Evidence in most of its Category's runs; it names which ones, and its match recommendation is `MUST_HAVE_REJECTED`. The candidate is out: still scored in every Category so HR can see the scores, but never ranked and given no Candidate Feedback, and listed apart from the ranked candidates. A Must-have with Partial evidence never rejects. HR un-rejects a candidate only by changing that Criterion's Importance and re-evaluating. A Failed Evaluation is never a Must-have Rejection: it needs a rerun first.
+_Avoid_: Missing Must-Have, dealbreaker
 
 **HR RAG**:
-The stored set of Criteria (each with its Importance) and HR Check Items for one job, with HR's original requirement text. HR sets it on the website's RAG page (decompose, then review the Criteria and their Importance) before any evaluation. Evaluation only reads it: no run builds, changes or deletes it, and a run with no HR RAG stops with an error.
+The stored set of Criteria (each with its Importance) and HR Check Items for one job, with HR's original requirement text. HR sets it on the website's RAG page (decompose, then review the Criteria and their Importance) before any evaluation. Evaluation only reads it: no run builds, changes or deletes it, and a run with no HR RAG stops with an error. The one exception is a one-time reset: an HR RAG saved while the decomposer still proposed Importance has every Criterion set back to Standard the first time it is loaded.
 _Avoid_: RAG store (alone), vector DB
 
 **Verdict**:
@@ -73,7 +73,7 @@ The agent that merges the Panelists' final views into the Candidate Feedback. It
 _Avoid_: summarizer (alone), moderator
 
 **Candidate Feedback**:
-The Review Panel's output for one evaluated candidate: a short factual summary, exactly three strengths, exactly three weaknesses or missing skills, and each Panelist's final view (kept for developers, collapsed for HR). Written for the HR user and never sent to the candidate. It is produced only for an evaluation with no Failed Evaluation.
+The Review Panel's output for one evaluated candidate: a short factual summary, exactly three strengths, exactly three weaknesses or missing skills, and each Panelist's final view (kept for developers, collapsed for HR). Written for the HR user and never sent to the candidate. It is produced only for a fully scored evaluation that is not a Must-have Rejection.
 _Avoid_: resume feedback, summary (alone), report
 
 **Failed Evaluation**:

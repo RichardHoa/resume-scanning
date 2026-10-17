@@ -41,6 +41,7 @@ function isFailedEvaluation(cand) {
 const SCANNED_RESUME_LABEL = 'CV bản scan – không đọc được';
 const SCANNED_RESUME_MESSAGE = 'CV là bản scan (không có lớp văn bản), hệ thống không đọc được nên không chấm điểm hay xếp hạng. Vui lòng yêu cầu ứng viên gửi bản PDF có thể chọn chữ.';
 const SCANNED_SECTION_TITLE = 'CV bản scan – cần ứng viên gửi lại';
+const REJECTED_SECTION_TITLE = 'Bị loại – thiếu tiêu chí bắt buộc';
 
 /**
  * A Scanned Resume: no page of its PDF has text, so it was never evaluated. It is listed, unranked, in its own
@@ -61,17 +62,50 @@ function isMissingPosition(cand) {
     return cand.missing_position === true;
 }
 
-const MISSING_MUST_HAVE_LABEL = 'Thiếu yêu cầu bắt buộc';
-const MISSING_MUST_HAVE_MESSAGE = 'CV không cho thấy bằng chứng cho các tiêu chí HR đánh dấu là bắt buộc dưới đây. Ứng viên không bị loại tự động và vẫn được xếp hạng; CV có thể bỏ sót thông tin, nên HR hãy kiểm tra lại với ứng viên.';
+const MUST_HAVE_REJECTION_LABEL = 'Bị loại – thiếu tiêu chí bắt buộc';
+const MUST_HAVE_REJECTION_MESSAGE = 'CV không cho thấy bằng chứng cho các tiêu chí HR đánh dấu là bắt buộc dưới đây, nên ứng viên bị loại và không được xếp hạng. Điểm vẫn được giữ để HR tham khảo. Nếu CV chỉ bỏ sót thông tin, hãy đổi mức độ quan trọng của tiêu chí trong trang RAG rồi đánh giá lại ứng viên.';
 const MUST_HAVE_TAG = '<span class="modal-must-have-tag">Bắt buộc</span>';
 
 /**
- * Missing Must-Haves: must-have Criteria judged NO_EVIDENCE. They only inform HR; the candidate is still ranked.
- * Reports saved before Criterion Importance have none.
+ * A Must-have Rejection: the evaluator set its recommendation to MUST_HAVE_REJECTED. The candidate keeps their
+ * scores for HR to see, but is never ranked and gets no Candidate Feedback. Failed Evaluations, Scanned Resumes and
+ * reports saved before the gate are never one.
+ */
+function isMustHaveRejection(cand) {
+    return !unscoredLabel(cand) && cand.match_recommendation === 'MUST_HAVE_REJECTED';
+}
+
+/**
+ * The must-have Criteria a Must-have Rejection judged NO_EVIDENCE.
  * @returns {Array<{category: string, criterion: string}>}
  */
-function missingMustHaves(cand) {
-    return Array.isArray(cand.missing_must_haves) ? cand.missing_must_haves : [];
+function mustHaveRejection(cand) {
+    return isMustHaveRejection(cand) && Array.isArray(cand.must_have_rejection) ? cand.must_have_rejection : [];
+}
+
+/**
+ * Ranking group of a report when sorting by score: ranked candidates first, then Must-have Rejections (scored but
+ * out), then unscored reports.
+ */
+function rankGroup(cand) {
+    if (unscoredLabel(cand)) return 2;
+    return isMustHaveRejection(cand) ? 1 : 0;
+}
+
+/** The match pill for a scored report: its recommendation, or the Must-have Rejection that overrides it. */
+function matchPill(cand, numScore) {
+    if (isMustHaveRejection(cand)) return { recClass: 'match-reject', recText: MUST_HAVE_REJECTION_LABEL };
+    const rec = cand.match_recommendation || (numScore >= 85 ? 'STRONG_MATCH' : (numScore >= 70 ? 'POTENTIAL_MATCH' : (numScore >= 55 ? 'LOW_MATCH' : 'REJECT')));
+    if (rec === 'STRONG_MATCH' || numScore >= 85) return { recClass: 'match-strong', recText: 'PHÙ HỢP CAO' };
+    if (rec === 'POTENTIAL_MATCH' || numScore >= 70) return { recClass: 'match-potential', recText: 'CÓ TIỀM NĂNG' };
+    if (rec === 'LOW_MATCH' || numScore >= 55) return { recClass: 'match-low', recText: 'PHÙ HỢP THẤP' };
+    return { recClass: 'match-reject', recText: 'LOẠI' };
+}
+
+/** Score color by band; a Must-have Rejection's score is greyed out, since it is shown but not ranked. */
+function scoreColor(cand, numScore) {
+    if (isMustHaveRejection(cand)) return '#64748B';
+    return numScore >= 85 ? '#059669' : numScore >= 70 ? '#0284C7' : numScore >= 55 ? '#D97706' : '#DC2626';
 }
 
 /**
@@ -229,6 +263,8 @@ export class CandidatePoolController {
         let scoreSum = 0;
 
         scored.forEach(c => {
+            // A Must-have Rejection is out whatever its score, and stays out of the average
+            if (isMustHaveRejection(c)) { reject++; return; }
             const score = c.overall_score || 0;
             scoreSum += score;
             const rec = c.match_recommendation || '';
@@ -238,7 +274,8 @@ export class CandidatePoolController {
             else reject++;
         });
 
-        const avgScore = scored.length > 0 ? (scoreSum / scored.length).toFixed(1) : '0.0';
+        const ranked = scored.filter(c => !isMustHaveRejection(c));
+        const avgScore = ranked.length > 0 ? (scoreSum / ranked.length).toFixed(1) : '0.0';
 
         if (document.getElementById('cand-stat-total')) document.getElementById('cand-stat-total').textContent = total;
         if (document.getElementById('cand-stat-strong')) document.getElementById('cand-stat-strong').textContent = strong;
@@ -261,6 +298,8 @@ export class CandidatePoolController {
         let filtered = this.allCandidatesData.filter(cand => {
             if (statusFilter !== 'ALL') {
                 if (unscoredLabel(cand)) return false;
+                // A Must-have Rejection is listed only under "Loại"
+                if (isMustHaveRejection(cand)) return statusFilter === 'REJECT';
                 const rec = cand.match_recommendation || '';
                 const score = cand.overall_score || 0;
                 if (statusFilter === 'STRONG_MATCH' && rec !== 'STRONG_MATCH' && score < 85) return false;
@@ -279,10 +318,10 @@ export class CandidatePoolController {
         });
 
         filtered.sort((a, b) => {
-            // Unscored reports are unranked: they always sort after scored candidates by score
+            // Must-have Rejections and unscored reports are unranked: they always sort after ranked candidates by score
             if (sortBy === 'score_desc' || sortBy === 'score_asc') {
-                const unscoredDiff = !!unscoredLabel(a) - !!unscoredLabel(b);
-                if (unscoredDiff !== 0) return unscoredDiff;
+                const groupDiff = rankGroup(a) - rankGroup(b);
+                if (groupDiff !== 0) return groupDiff;
             }
             const scoreA = a.overall_score || 0;
             const scoreB = b.overall_score || 0;
@@ -339,7 +378,8 @@ export class CandidatePoolController {
                 tiers[t] = { title: labels.title, badge: labels.badge, badgeClass: `tier-badge-${t}`, blockClass: `tier-${t}-block`, items: [] };
             });
 
-            // Scanned Resumes are never ranked, so they leave their tier for a section of their own, last
+            // Must-have Rejections and Scanned Resumes are never ranked, so they leave their tier for sections of their own, last
+            tiers.rejected = { title: REJECTED_SECTION_TITLE, badge: 'Bị loại', badgeClass: 'tier-badge-3', blockClass: 'tier-3-block', items: [] };
             tiers.scanned = { title: SCANNED_SECTION_TITLE, badge: 'Bản scan', badgeClass: 'tier-badge-3', blockClass: 'tier-3-block', items: [] };
 
             candidates.forEach(c => {
@@ -347,12 +387,16 @@ export class CandidatePoolController {
                     tiers.scanned.items.push(c);
                     return;
                 }
+                if (isMustHaveRejection(c)) {
+                    tiers.rejected.items.push(c);
+                    return;
+                }
                 const t = c.tier || 3;
                 if (!tiers[t]) tiers[t] = tiers[3];
                 tiers[t].items.push(c);
             });
 
-            [1, 2, 3, 'scanned'].forEach(tNum => {
+            [1, 2, 3, 'rejected', 'scanned'].forEach(tNum => {
                 const group = tiers[tNum];
                 if (group.items.length === 0) return;
 
@@ -389,14 +433,7 @@ export class CandidatePoolController {
         const { name, email, contactEmail } = candidateIdentity(cand);
         const numScore = parseFloat(cand.overall_score !== undefined ? cand.overall_score : 0) || 0;
         const score = numScore.toFixed(1);
-        const rec = cand.match_recommendation || (numScore >= 85 ? 'STRONG_MATCH' : (numScore >= 70 ? 'POTENTIAL_MATCH' : (numScore >= 55 ? 'LOW_MATCH' : 'REJECT')));
-
-        let recClass = 'match-potential';
-        let recText = 'CÓ TIỀM NĂNG';
-        if (rec === 'STRONG_MATCH' || numScore >= 85) { recClass = 'match-strong'; recText = 'PHÙ HỢP CAO'; }
-        else if (rec === 'POTENTIAL_MATCH' || numScore >= 70) { recClass = 'match-potential'; recText = 'CÓ TIỀM NĂNG'; }
-        else if (rec === 'LOW_MATCH' || numScore >= 55) { recClass = 'match-low'; recText = 'PHÙ HỢP THẤP'; }
-        else { recClass = 'match-reject'; recText = 'LOẠI'; }
+        let { recClass, recText } = matchPill(cand, numScore);
 
         const unscored = unscoredLabel(cand);
         if (unscored) { recClass = 'match-error'; recText = unscored; }
@@ -447,9 +484,9 @@ export class CandidatePoolController {
 
         const scannedPillHtml = isScannedResume(cand) ? `<span class="badge-ocr-review" title="${SCANNED_RESUME_MESSAGE}">⚠️ Cần ứng viên gửi PDF có chữ</span>` : '';
         const missingPositionPillHtml = isMissingPosition(cand) ? `<span class="badge-ocr-review" title="${MISSING_POSITION_MESSAGE}">⚠️ ${MISSING_POSITION_LABEL}</span>` : '';
-        const missing = unscored ? [] : missingMustHaves(cand);
-        const missingMustHavePillHtml = missing.length
-            ? `<span class="badge-missing-must-have" title="${this.escapeHtml(`${MISSING_MUST_HAVE_LABEL}: ${missing.map(m => m.criterion).join('; ')}`)}">⚠️ ${MISSING_MUST_HAVE_LABEL} (${missing.length})</span>`
+        const missing = mustHaveRejection(cand);
+        const mustHaveRejectionHtml = missing.length
+            ? `<div class="cand-must-have-rejection"><strong>Thiếu tiêu chí bắt buộc:</strong> ${this.escapeHtml(missing.map(m => m.criterion).join('; '))}</div>`
             : '';
 
         const emailHtml = email ? `
@@ -465,7 +502,7 @@ export class CandidatePoolController {
                 <div class="cand-score-badge">
                     ${unscored
                         ? `<span class="cand-score-val" style="color: #64748B;">—</span>`
-                        : `<span class="cand-score-val" style="color: ${numScore >= 85 ? '#059669' : numScore >= 70 ? '#0284C7' : numScore >= 55 ? '#D97706' : '#DC2626'};">${score}</span>`}
+                        : `<span class="cand-score-val" style="color: ${scoreColor(cand, numScore)};">${score}</span>`}
                     <span class="cand-score-lbl">Điểm</span>
                 </div>
             </div>
@@ -476,8 +513,9 @@ export class CandidatePoolController {
                 <span class="tier-badge ${tierBadgeClass}">${tierLabel}</span>
                 ${scannedPillHtml}
                 ${missingPositionPillHtml}
-                ${missingMustHavePillHtml}
             </div>
+
+            ${mustHaveRejectionHtml}
 
             ${dimsBreakdownHtml ? `<div class="cand-dimensions-breakdown">${dimsBreakdownHtml}</div>` : ''}
 
@@ -511,14 +549,7 @@ export class CandidatePoolController {
         const { name, email } = candidateIdentity(cand);
         const numScore = parseFloat(cand.overall_score || 0);
         const score = numScore.toFixed(1);
-        const rec = cand.match_recommendation || 'POTENTIAL_MATCH';
-
-        let recClass = 'match-potential';
-        let recText = 'CÓ TIỀM NĂNG';
-        if (rec === 'STRONG_MATCH' || numScore >= 85) { recClass = 'match-strong'; recText = 'PHÙ HỢP CAO'; }
-        else if (rec === 'POTENTIAL_MATCH' || numScore >= 70) { recClass = 'match-potential'; recText = 'CÓ TIỀM NĂNG'; }
-        else if (rec === 'LOW_MATCH' || numScore >= 55) { recClass = 'match-low'; recText = 'PHÙ HỢP THẤP'; }
-        else { recClass = 'match-reject'; recText = 'LOẠI'; }
+        let { recClass, recText } = matchPill(cand, numScore);
 
         const unscored = unscoredLabel(cand);
         if (unscored) { recClass = 'match-error'; recText = unscored; }
@@ -537,7 +568,7 @@ export class CandidatePoolController {
             this.modalCandScore.innerHTML = `
                 ${unscored
                     ? `<span class="modal-score-number" style="color: #64748B;">—</span>`
-                    : `<span class="modal-score-number" style="color: ${numScore >= 85 ? '#059669' : numScore >= 70 ? '#0284C7' : numScore >= 55 ? '#D97706' : '#DC2626'};">${score}</span>`}
+                    : `<span class="modal-score-number" style="color: ${scoreColor(cand, numScore)};">${score}</span>`}
                 <span class="modal-score-label">Tổng điểm</span>
             `;
         }
@@ -615,10 +646,10 @@ export class CandidatePoolController {
         ` : '';
 
         const feedbackHtml = unscored ? '' : this.renderCandidateFeedback(cand.candidate_feedback);
-        const missingMustHaveBanner = unscored ? '' : this.renderMissingMustHaves(missingMustHaves(cand));
+        const mustHaveRejectionBanner = this.renderMustHaveRejection(mustHaveRejection(cand));
 
         this.modalEvaluationHtml = `
-            ${missingMustHaveBanner}
+            ${mustHaveRejectionBanner}
             ${missingPositionBanner}
             ${failedEvaluationBanner}
             ${scannedResumeBanner}
@@ -638,19 +669,19 @@ export class CandidatePoolController {
     }
 
     /**
-     * Renders the Missing Must-Haves banner: must-have Criteria the resume shows no evidence for.
-     * @param {Array<{category: string, criterion: string}>} items - The report's missing_must_haves.
-     * @returns {string} HTML for the banner, or '' when there are none.
+     * Renders the Must-have Rejection banner: the must-have Criteria the resume shows no evidence for.
+     * @param {Array<{category: string, criterion: string}>} items - The report's must_have_rejection.
+     * @returns {string} HTML for the banner, or '' when the candidate was not rejected.
      */
-    renderMissingMustHaves(items) {
+    renderMustHaveRejection(items) {
         if (!items.length) return '';
         const list = items.map(m => `
-            <li>${this.escapeHtml(m.criterion)}${CATEGORY_NAMES[m.category] ? ` <span class="modal-missing-must-have-cat">(${this.escapeHtml(CATEGORY_NAMES[m.category])})</span>` : ''}</li>
+            <li>${this.escapeHtml(m.criterion)}${CATEGORY_NAMES[m.category] ? ` <span class="modal-must-have-rejection-cat">(${this.escapeHtml(CATEGORY_NAMES[m.category])})</span>` : ''}</li>
         `).join('');
         return `
-            <div class="modal-missing-must-have-banner" role="note">
-                <strong>${MISSING_MUST_HAVE_LABEL}: ${items.length} tiêu chí</strong>
-                <p>${MISSING_MUST_HAVE_MESSAGE}</p>
+            <div class="modal-must-have-rejection-banner" role="note">
+                <strong>${MUST_HAVE_REJECTION_LABEL.toUpperCase()}: ${items.length} tiêu chí</strong>
+                <p>${MUST_HAVE_REJECTION_MESSAGE}</p>
                 <ul class="modal-bullets gaps">${list}</ul>
             </div>
         `;
