@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<!--
+  ==============================================================================
+  Vietnamese Resume Scanner - Shared page layout
+  ==============================================================================
+  Fonts, skip link, navigation rail, page header and the shared waiting screen.
+  Each page extends it; its route passes active_page, which marks the rail link
+  and names the page's controller in <body data-page>.
+-->
+{% set nav_pages = [
+    {"key": "extractor", "href": "/extractor", "label": "Bước 1: Trích xuất CV",
+     "icon": "M13 2L3 14h9l-1 8 10-12h-9l1-8z"},
+    {"key": "evaluator", "href": "/evaluator", "label": "Bước 2: Đánh giá ứng viên",
+     "icon": "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"},
+    {"key": "rag", "href": "/rag", "label": "Kho tri thức RAG",
+     "icon": "M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 12v1a2 2 0 0 0 2 2h2v4.93zm4.9-3.24a9.96 9.96 0 0 0 1.9-4.69H16v-1a2 2 0 0 0-2-2h-3v-2a1 1 0 0 1 1-1h3.5a.5.5 0 0 0 .5-.5V5.1A9.97 9.97 0 0 1 17.9 16.69z"},
+    {"key": "candidates", "href": "/candidates", "label": "Kho ứng viên",
+     "icon": "M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"}
+] %}
+{% set current = nav_pages | selectattr("key", "equalto", active_page) | first %}
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quét CV Tiếng Việt | {% block title %}{% endblock %}</title>
+    <!-- Google Fonts: Be Vietnam Pro, Noto Sans, JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&family=Noto+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Main Combined Stylesheet -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body data-page="{{ active_page }}">
+    <a href="#main-content" class="sr-only focus-not-sr-only">Chuyển đến nội dung chính</a>
+    <div class="app-workbench">
+        <!-- Persistent Left Command Rail -->
+        <aside class="command-rail" role="navigation" aria-label="Điều hướng chính">
+            <div class="rail-brand">
+                <div class="rail-brand-logo">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.78c0-2.33 4.67-3.5 7-3.5s7 1.17 7 3.5V19z"/></svg>
+                </div>
+                <div class="rail-brand-title">
+                    <span class="brand-heading">Fulbright Candidate Matrix</span>
+                    <span class="subtitle">Bộ máy bố cục & RAG</span>
+                </div>
+            </div>
+
+            <nav class="rail-nav-menu">
+                <span class="rail-section-label">KHÔNG GIAN LÀM VIỆC</span>
+                {% for page in nav_pages %}
+                <a href="{{ page.href }}" class="nav-link{% if page.key == active_page %} active{% endif %}"{% if page.key == active_page %} aria-current="page"{% endif %}>
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="{{ page.icon }}"/></svg></span> {{ page.label }}
+                </a>
+                {% endfor %}
+            </nav>
+
+            <div class="rail-telemetry">
+                <div class="telemetry-row">
+                    <span>BỘ MÁY</span>
+                    <span class="status-indicator"><span class="status-dot"></span> SẴN SÀNG</span>
+                </div>
+                <div class="telemetry-row">
+                    <span>KHO VECTOR</span>
+                    <span class="telemetry-value">ChromaDB</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Workbench Stage -->
+        <main class="workbench-stage" id="main-content">
+            <div class="workbench-header">
+                <div class="workbench-title-group">
+                    <h1><svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="{{ current.icon }}"/></svg> {% block heading %}{% endblock %}</h1>
+                    <p>{% block description %}{% endblock %}</p>
+                </div>
+            </div>
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- Shared waiting screen; WaitingScreen sets its title and description on every wait -->
+    <div class="loader-overlay" id="loader-overlay" hidden>
+        <div class="loader-card">
+            <div class="spinner-ring">
+                <div></div><div></div><div></div><div></div>
+            </div>
+            <h3 id="loader-title"></h3>
+            <p id="loader-desc"></p>
+            <div class="loader-progress-bar">
+                <div class="loader-progress-fill" id="loader-progress"></div>
+            </div>
+            <p class="loader-count" id="loader-count" hidden></p>
+            <p class="loader-time" id="loader-time"></p>
+        </div>
+    </div>
+
+    <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

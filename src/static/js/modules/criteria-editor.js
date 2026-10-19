@@ -18,11 +18,10 @@
  *              as HR moves it. A Category whose Criteria are all Nice-to-have, or that has
  *              one text twice, is flagged and blocks saving (callers check confirmSavable()).
  *              Callers pass in the RAG summary's categories ({category_key:
- *              [criterion]}, each a string or {text, importance}), its HR Check
- *              Items and its Importance levels (src/core/config.py is their only
- *              source), and read them back with getCategories()
- *              ({category_key: [{text, importance}]}) and getHrCheckItems() (strings).
- * Line Count: ~470 lines (Strict Limit: < 500 lines)
+ *              [{text, importance}]}), its HR Check Items (strings) and its
+ *              Importance levels (src/core/config.py is their only source), and
+ *              read them back with getCategories() ({category_key: [{text,
+ *              importance}]}) and getHrCheckItems() (strings).
  */
 
 import { maxPointsLabel } from './criterion-points.js';
@@ -89,25 +88,21 @@ export class CriteriaEditor {
     }
 
     /**
-     * Replaces the edited set. Accepts items as plain strings (read as Standard) or as
-     * {text, importance} objects (the shape returned by the RAG info endpoint).
-     * Every list is held as [{text, importance}]; the HR Check Items' importance is unused.
-     * @param {Object} rawCats - {category_key: [criterion]} for the five Categories.
-     * @param {Array} [hrCheckItems=[]] - The HR Check Items.
+     * Replaces the edited set with the RAG summary's. Every list is held as [{text, importance}];
+     * the HR Check Items' importance is unused.
+     * @param {Object} rawCats - {category_key: [{text, importance}]} for the five Categories.
+     * @param {Array<string>} hrCheckItems - The HR Check Items.
      * @param {Object} importanceLevels - {key: {label, weight}} from the RAG summary, in column order.
      * @param {string} defaultImportance - The level of a Criterion that has none (the RAG summary's).
      */
-    setCategories(rawCats, hrCheckItems = [], importanceLevels = {}, defaultImportance = '') {
-        this.importanceLevels = importanceLevels || {};
+    setCategories(rawCats, hrCheckItems, importanceLevels, defaultImportance) {
+        this.importanceLevels = importanceLevels;
         this.defaultImportance = defaultImportance;
         this.categories = CriteriaEditor.emptyCategories();
-        const toItem = it => (typeof it === 'object' && it !== null
-            ? { text: String(it.text || ''), importance: this.normalizeImportance(it.importance) }
-            : { text: String(it), importance: this.defaultImportance });
         Object.keys(CATEGORY_NAMES).forEach(k => {
-            this.categories[k] = ((rawCats && rawCats[k]) || []).map(toItem);
+            this.categories[k] = rawCats[k].map(it => ({ text: it.text, importance: this.normalizeImportance(it.importance) }));
         });
-        this.categories[HR_CHECK_ITEMS_KEY] = (hrCheckItems || []).map(it => ({ ...toItem(it), importance: this.defaultImportance }));
+        this.categories[HR_CHECK_ITEMS_KEY] = hrCheckItems.map(text => ({ text, importance: this.defaultImportance }));
         this.render();
     }
 

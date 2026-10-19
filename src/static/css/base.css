@@ -42,6 +42,11 @@ body {
     outline-offset: 2px;
 }
 
+/* The hidden attribute always hides, whatever display a component rule sets */
+[hidden] {
+    display: none !important;
+}
+
 /* Screen Reader Only Utility */
 .sr-only {
     position: absolute;
@@ -84,11 +89,6 @@ body {
     vertical-align: -0.2em;
     fill: currentColor;
     flex-shrink: 0;
-}
-
-.icon-svg-lg {
-    width: 1.75em;
-    height: 1.75em;
 }
 
 /* Custom Scrollbars */
@@ -138,7 +138,7 @@ body {
     border-bottom: 1px solid var(--border);
 }
 
-.workbench-title-group h2 {
+.workbench-title-group h1 {
     font-size: 1.45rem;
     font-weight: 800;
     color: var(--color-primary);
@@ -191,18 +191,6 @@ hr.divider {
     color: var(--text-muted);
 }
 
-.text-success {
-    color: var(--success);
-}
-
-.text-danger {
-    color: var(--danger);
-}
-
-.text-accent {
-    color: var(--color-secondary);
-}
-
 /* States & Notifications */
 .loading-state, .empty-state, .error-state {
     padding: 2.5rem 1.5rem;
@@ -234,6 +222,37 @@ hr.divider {
 
 @keyframes spin {
     to { transform: rotate(360deg); }
+}
+
+/* A short empty note inside a list */
+.empty-state--compact {
+    padding: 1.25rem 0;
+    font-size: 0.85rem;
+}
+
+/* A row of action buttons */
+.action-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.action-row--end {
+    justify-content: flex-end;
+}
+
+.action-row--split {
+    justify-content: space-between;
+}
+
+.action-row--spaced {
+    margin-top: 1.5rem;
+}
+
+/* Closes a panel: ruled off from the content above */
+.action-row--footer {
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
 }
 
 .empty-icon {

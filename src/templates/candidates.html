@@ -1,0 +1,83 @@
+{# Candidate Pool Workbench; the candidate report modal is built by CandidateReportView #}
+{% extends "base.html" %}
+{% block title %}Kho ứng viên{% endblock %}
+{% block heading %}Kho kết quả đánh giá ứng viên{% endblock %}
+{% block description %}Duyệt các báo cáo đánh giá lưu trong <code>eval_results/</code>. Tìm kiếm, lọc theo mức độ phù hợp, sắp xếp và xem chi tiết ứng viên.{% endblock %}
+{% block content %}
+            <div class="page-view active" id="page-candidates">
+                <div class="panel">
+                    <div class="panel-header-split">
+                        <div>
+                            <h2>Hồ sơ đánh giá ứng viên</h2>
+                            <p>Thống kê và phân bố điểm theo thời gian thực.</p>
+                        </div>
+                        <button class="btn btn-secondary" id="btn-refresh-candidates" type="button">
+                            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Làm mới danh sách
+                        </button>
+                    </div>
+
+                    <!-- Statistics Summary Grid -->
+                    <div class="cand-stats-grid">
+                        <div class="stat-box">
+                            <span class="stat-label">Tổng số ứng viên</span>
+                            <span class="stat-number" id="cand-stat-total">0</span>
+                        </div>
+                        <div class="stat-box stat-strong">
+                            <span class="stat-label">Phù hợp cao</span>
+                            <span class="stat-number" id="cand-stat-strong">0</span>
+                        </div>
+                        <div class="stat-box stat-potential">
+                            <span class="stat-label">Có tiềm năng</span>
+                            <span class="stat-number" id="cand-stat-potential">0</span>
+                        </div>
+                        <div class="stat-box stat-low">
+                            <span class="stat-label">Phù hợp thấp</span>
+                            <span class="stat-number" id="cand-stat-low">0</span>
+                        </div>
+                        <div class="stat-box stat-reject">
+                            <span class="stat-label">Loại</span>
+                            <span class="stat-number" id="cand-stat-reject">0</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-label">Điểm trung bình</span>
+                            <span class="stat-number" id="cand-stat-avg">0.0</span>
+                        </div>
+                    </div>
+
+                    <!-- Search & Filter Toolbar -->
+                    <div class="cand-toolbar">
+                        <div class="search-input-group">
+                            <input type="text" id="cand-search-input" class="form-control" placeholder="Tìm theo tên, chức danh hoặc email ứng viên..." aria-label="Tìm ứng viên theo tên, chức danh hoặc email">
+                        </div>
+                        <div class="toolbar-select-group">
+                            <div class="select-wrapper">
+                                <label for="cand-filter-status">Lọc:</label>
+                                <select id="cand-filter-status" class="form-control">
+                                    <option value="ALL">Tất cả trạng thái</option>
+                                    <option value="STRONG_MATCH">Phù hợp cao (>=85)</option>
+                                    <option value="POTENTIAL_MATCH">Có tiềm năng (70-84)</option>
+                                    <option value="LOW_MATCH">Phù hợp thấp (55-69)</option>
+                                    <option value="REJECT">Loại (&lt;55 hoặc thiếu tiêu chí bắt buộc)</option>
+                                </select>
+                            </div>
+                            <div class="select-wrapper">
+                                <label for="cand-sort-by">Sắp xếp:</label>
+                                <select id="cand-sort-by" class="form-control">
+                                    <option value="evaluation_order" selected>Thứ tự đánh giá bí mật (Nhóm 1 → Nhóm 2 → Nhóm 3)</option>
+                                    <option value="score_desc">Điểm: Cao nhất trước</option>
+                                    <option value="score_asc">Điểm: Thấp nhất trước</option>
+                                    <option value="name_asc">Tên: A → Z</option>
+                                    <option value="name_desc">Tên: Z → A</option>
+                                    <option value="date_desc">Ngày: Mới nhất trước</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Candidate Evaluation Cards Grid -->
+                    <div id="cand-cards-grid" class="cand-cards-grid" aria-live="polite" aria-atomic="true">
+                        <div class="loading-state">Đang tải kết quả đánh giá ứng viên...</div>
+                    </div>
+                </div>
+            </div>
+{% endblock %}

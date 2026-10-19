@@ -1,4 +1,4 @@
-/* UI Component System - Buttons, Forms, & Badges */
+/* UI Component System - Buttons & Forms */
 
 /* Base Button */
 .btn {
@@ -143,60 +143,4 @@ textarea.form-control {
 .form-control-hidden:focus {
     border-color: var(--warning);
     box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.18);
-}
-
-/* Status Badges */
-.badge-success {
-    background-color: #DCFCE7;
-    color: #15803D;
-    border: 1px solid #86EFAC;
-    padding: 4px 10px;
-    border-radius: var(--radius-sm);
-    font-size: 0.78rem;
-    font-weight: 700;
-    font-family: var(--font-mono);
-}
-
-.match-pill, .badge-rec {
-    display: inline-flex;
-    align-items: center;
-    padding: 3px 9px;
-    border-radius: var(--radius-sm);
-    font-size: 0.74rem;
-    font-weight: 800;
-    font-family: var(--font-mono);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    line-height: 1.2;
-    white-space: nowrap;
-}
-
-.rec-STRONG_MATCH, .match-strong {
-    background-color: #DCFCE7;
-    color: #15803D;
-    border: 1px solid #86EFAC;
-}
-
-.rec-POTENTIAL_MATCH, .match-potential {
-    background-color: #E0F2FE;
-    color: #0369A1;
-    border: 1px solid #7DD3FC;
-}
-
-.rec-LOW_MATCH, .match-low {
-    background-color: #FEF3C7;
-    color: #B45309;
-    border: 1px solid #FCD34D;
-}
-
-.rec-REJECT, .rec-MUST_HAVE_REJECTED, .match-reject {
-    background-color: #FEE2E2;
-    color: #B91C1C;
-    border: 1px solid #FCA5A5;
-}
-
-.rec-ERROR, .match-error {
-    background-color: #F1F5F9;
-    color: #334155;
-    border: 1px solid #CBD5E1;
 }

@@ -139,6 +139,17 @@
     color: #ffffff;
 }
 
+.profile-avatar svg {
+    width: 28px;
+    height: 28px;
+    fill: var(--color-primary);
+}
+
+/* The resume states no applied-for position */
+.profile-position--missing {
+    color: var(--band-reject-fg);
+}
+
 .profile-details-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -193,6 +204,32 @@
     font-size: 0.95rem;
 }
 
+.proj-duration {
+    float: right;
+    font-size: 0.8rem;
+    font-weight: normal;
+}
+
+.proj-desc {
+    font-size: 0.85rem;
+    margin-top: 4px;
+}
+
+/* A section heading inside a visual tab; the first sits flush with the tab top */
+.tab-section-title {
+    margin: 20px 0 10px;
+}
+
+.tab-section-title:first-child {
+    margin-top: 0;
+}
+
+/* "Nothing found" note of a tab list; the experience timeline centres it */
+.timeline > .summary-text {
+    text-align: center;
+    padding: 2rem 0;
+}
+
 .skills-container {
     display: flex;
     flex-wrap: wrap;
@@ -228,6 +265,12 @@
     font-weight: 700;
     font-size: 0.95rem;
     margin-bottom: 0.5rem;
+}
+
+.warning-banner-header svg {
+    width: 20px;
+    height: 20px;
+    fill: #D97706;
 }
 
 .warning-list {

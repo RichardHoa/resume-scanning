@@ -48,6 +48,12 @@
     box-shadow: var(--shadow-sm);
 }
 
+.upload-icon svg {
+    width: 48px;
+    height: 48px;
+    fill: var(--color-secondary);
+}
+
 .upload-dropzone:hover .upload-icon {
     transform: translateY(-4px) scale(1.05);
     background-color: #FFFFFF;
@@ -77,7 +83,13 @@
     background-color: var(--brand-azure);
 }
 
+/* A real button inside the dropzone, styled as a link */
 .browse-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
     color: var(--brand-azure);
     font-weight: 700;
     text-decoration: underline;
@@ -109,6 +121,12 @@
     font-weight: 800;
     font-size: 0.82rem;
     font-family: var(--font-mono);
+}
+
+.file-icon-pdf svg {
+    width: 28px;
+    height: 28px;
+    fill: var(--color-destructive);
 }
 
 .file-icon-pdf::after { content: 'PDF'; }

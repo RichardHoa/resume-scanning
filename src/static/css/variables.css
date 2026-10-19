@@ -75,6 +75,51 @@
     --danger-bg: #FEF2F2;
     --danger-glow: rgba(220, 38, 38, 0.15);
 
+    --warning-bg-strong: #FEF3C7;
+    --warning-fg: #78350F;
+    --warning-border: #F59E0B;
+
+    /* Match bands (matchBand() in js/modules/report.js) */
+    --band-strong-bg: #ECFDF5;
+    --band-strong-fg: #047857;
+    --band-strong-border: #A7F3D0;
+    --band-potential-bg: #F0F9FF;
+    --band-potential-fg: #0369A1;
+    --band-potential-border: #BAE6FD;
+    --band-low-bg: #FFFBEB;
+    --band-low-fg: #B45309;
+    --band-low-border: #FDE68A;
+    --band-reject-bg: #FEF2F2;
+    --band-reject-fg: #B91C1C;
+    --band-reject-border: #FECACA;
+    --band-neutral-bg: #F8FAFC;
+    --band-neutral-fg: #334155;
+    --band-neutral-border: #CBD5E1;
+
+    /* Score numbers and bars (scoreBand() in js/modules/report.js) */
+    --score-high: #059669;
+    --score-mid: #0284C7;
+    --score-low: #D97706;
+    --score-reject: #DC2626;
+    --score-muted: #64748B;
+
+    /* Evaluation-order tiers: badge, section border (accent) and section background (wash) */
+    --tier-1-bg: #E0E7FF;
+    --tier-1-fg: #3730A3;
+    --tier-1-border: #C7D2FE;
+    --tier-1-accent: #059669;
+    --tier-1-wash: #F0FDF4;
+    --tier-2-bg: #E0F2FE;
+    --tier-2-fg: #075985;
+    --tier-2-border: #BAE6FD;
+    --tier-2-accent: #0284C7;
+    --tier-2-wash: #F0F9FF;
+    --tier-3-bg: #F1F5F9;
+    --tier-3-fg: #334155;
+    --tier-3-border: #CBD5E1;
+    --tier-3-accent: #475569;
+    --tier-3-wash: #F8FAFC;
+
     /* Borders & Structural Lines */
     --border: var(--color-border);
     --border-hover: #94A3B8;

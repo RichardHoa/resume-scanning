@@ -73,14 +73,9 @@
 }
 
 /* Importance colors, shared by guide tags, column heads and cell labels */
-.criteria-level-tag,
-.criteria-col-head,
-.criteria-cell-label {
+.criteria-level-tag {
     font-weight: 700;
     color: var(--text-secondary);
-}
-
-.criteria-level-tag {
     justify-self: start;
     padding: 2px 8px;
     font-size: 0.75rem;
@@ -135,18 +130,18 @@
     background: var(--bg-card-active);
 }
 
-.criteria-matrix-corner,
-.criteria-col-head {
+.criteria-matrix-corner {
     padding: 8px 12px;
     font-size: 0.8rem;
-}
-
-.criteria-matrix-corner {
     font-weight: 700;
     color: var(--text-muted);
 }
 
 .criteria-col-head {
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-secondary);
     border-left: 1px solid var(--border);
 }
 
@@ -207,6 +202,8 @@
 .criteria-cell-label {
     display: none;
     font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-secondary);
 }
 
 /* HR Check Items: never scored, one cell across every column */

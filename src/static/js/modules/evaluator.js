@@ -1,107 +1,28 @@
 /**
  * ==============================================================================
- * Step 2: HR Evaluator Controller (Fulbright Redesign Edition)
+ * Step 2: HR Evaluator Controller
  * ==============================================================================
- * Description: Manages 2-step HR workflow:
+ * Description: Manages the 4-step HR workflow:
  *              1. Input requirements & decompose into 5-dimension RAG criteria + hr_rag.txt
  *              2. Inspect & freely edit/adjust RAG criteria before evaluation
- *              3. Candidate selection with live filtering & secret tier ordering
- *              4. AI batch evaluation against verified RAG criteria, KPI statistics,
- *                 and full-width dossier inspector.
- * Line Count: ~1020 lines (Strict Limit: < 500 lines)
+ *              3. Candidate selection with live filtering & secret tier ordering (ResumeSelection)
+ *              4. AI batch evaluation against verified RAG criteria, with KPI statistics and
+ *                 leaderboards (ResultsDashboard)
  */
 
 import { API } from './api.js';
 import { CriteriaEditor, CATEGORY_NAMES } from './criteria-editor.js';
 import { WaitingScreen } from './waiting-screen.js';
+import { ResumeSelection } from './resume-selection.js';
+import { ResultsDashboard } from './results-dashboard.js';
+import { byId } from './dom.js';
+import { html } from './html.js';
 
 // How often the batch-evaluation job status is polled while the waiting screen shows.
 const EVAL_JOB_POLL_MS = 1500;
 
-// Display text for the match_recommendation keys; the keys themselves stay as CSS class suffixes.
-const RECOMMENDATION_LABELS = {
-    STRONG_MATCH: 'PHÙ HỢP CAO',
-    POTENTIAL_MATCH: 'CÓ TIỀM NĂNG',
-    LOW_MATCH: 'PHÙ HỢP THẤP',
-    REJECT: 'LOẠI',
-    MUST_HAVE_REJECTED: 'Bị loại – thiếu tiêu chí bắt buộc'
-};
-
-const FAILED_EVALUATION_LABEL = 'Lỗi – cần chạy lại';
-
-/**
- * A Failed Evaluation (any Category failed) keeps its partial score in the report, but is
- * never ranked or shown as a result. HR reruns it by selecting it and clicking Evaluate again.
- */
-function isFailedEvaluation(res) {
-    return res.status === 'error';
-}
-
-const SCANNED_RESUME_LABEL = 'CV bản scan – không đọc được';
-const SCANNED_RESUME_MESSAGE = 'CV là bản scan (không có lớp văn bản), hệ thống không đọc được nên không chấm điểm hay xếp hạng. Vui lòng yêu cầu ứng viên gửi bản PDF có thể chọn chữ.';
-
-/**
- * A Scanned Resume: no page of its PDF has text, so it is never evaluated or ranked. Its result says so;
- * a rerun cannot fix it, only a PDF with selectable text from the candidate.
- */
-function isScannedResume(res) {
-    return res.status === 'scanned';
-}
-
-const MISSING_POSITION_LABEL = 'Thiếu vị trí ứng tuyển';
-const MISSING_POSITION_MESSAGE = 'CV không ghi vị trí ứng tuyển; hệ thống mặc định ứng viên ứng tuyển vị trí này và vẫn đánh giá, xếp hạng như bình thường.';
-
-/**
- * A Missing Position resume states no applied-for position. It is still evaluated and ranked as if
- * applying for this job; the flag only tells HR the position was missing.
- */
-function isMissingPosition(res) {
-    return res.missing_position === true;
-}
-
-/**
- * The label shown instead of a score for an unscored result (a Failed Evaluation or a Scanned Resume).
- * @returns {string} The label, or '' for a scored result.
- */
-function unscoredLabel(res) {
-    if (isFailedEvaluation(res)) return FAILED_EVALUATION_LABEL;
-    if (isScannedResume(res)) return SCANNED_RESUME_LABEL;
-    return '';
-}
-
-const MUST_HAVE_REJECTION_LABEL = RECOMMENDATION_LABELS.MUST_HAVE_REJECTED;
-
-/**
- * A Must-have Rejection: the evaluator set its recommendation to MUST_HAVE_REJECTED. The scores are kept for HR to
- * see, but the candidate is never ranked and gets no Candidate Feedback.
- */
-function isMustHaveRejection(res) {
-    return !unscoredLabel(res) && res.match_recommendation === 'MUST_HAVE_REJECTED';
-}
-
-/**
- * The must-have Criteria a Must-have Rejection judged NO_EVIDENCE.
- * @returns {Array<{category: string, criterion: string}>}
- */
-function mustHaveRejection(res) {
-    return isMustHaveRejection(res) && Array.isArray(res.must_have_rejection) ? res.must_have_rejection : [];
-}
-
-/**
- * The Category results to show: a Not Applicable Category got no Criterion from HR's requirements and is never judged.
- * @returns {Object} dimension_scores without Not Applicable Categories.
- */
-function shownCategories(res) {
-    return Object.fromEntries(Object.entries(res.dimension_scores || {}).filter(([, d]) => !(d && d.not_applicable)));
-}
-
 export class EvaluatorController {
     constructor() {
-        this.scannedResumes = [];
-        this.selectedResumesSet = new Set();
-        this.lastResults = [];
-        this.searchTerm = '';
-        this.currentHrRagText = '';
         this.currentStage = 1;
 
         // Number of Criteria stored in the RAG; the "Use Active RAG" skip button only shows when > 0.
@@ -117,72 +38,54 @@ export class EvaluatorController {
         this.initDOMElements();
         this.criteriaEditor = new CriteriaEditor(this.criteriaEditorContainer);
         this.waitingScreen = new WaitingScreen();
+        this.resumeSelection = new ResumeSelection(count => { this.btnRunEval.disabled = count === 0; });
+        this.dashboard = new ResultsDashboard();
         this.initEvents();
         this.checkExistingRag();
+        this.resumeSelection.load();
     }
 
     /**
      * Binds DOM element references across all stages.
      */
     initDOMElements() {
-        // Stage containers
-        this.stageReq = document.getElementById('eval-req-stage');
-        this.stageRagVerify = document.getElementById('eval-rag-verify-stage');
-        this.stageCandidates = document.getElementById('eval-candidates-stage');
-        this.stageResults = document.getElementById('eval-results-stage');
+        // Stage containers, in step order
+        this.stages = ['eval-req-stage', 'eval-rag-verify-stage', 'eval-candidates-stage', 'eval-results-stage'].map(byId);
+        // Stepped nav steps (1 to 4)
+        this.stepNavs = [1, 2, 3, 4].map(n => byId(`step-nav-${n}`));
 
         // Inputs & Buttons - Step 1
-        this.hrStdReqInput = document.getElementById('hr-std-req');
-        this.hrHiddenReqInput = document.getElementById('hr-hidden-req');
-        this.btnDecomposeReqs = document.getElementById('btn-decompose-reqs');
-        this.btnUseExistingRag = document.getElementById('btn-use-existing-rag');
+        this.hrStdReqInput = byId('hr-std-req');
+        this.hrHiddenReqInput = byId('hr-hidden-req');
+        this.btnDecomposeReqs = byId('btn-decompose-reqs');
+        this.btnUseExistingRag = byId('btn-use-existing-rag');
 
         // Step 1: Clarification Questions (Implicit Assumption scrutiny), shown beside each field
-        this.intakePanel = document.getElementById('intake-panel');
-        this.scrutinyPanel = document.getElementById('scrutiny-panel');
-        this.scrutinyListStandard = document.getElementById('scrutiny-list-standard');
-        this.scrutinyListHidden = document.getElementById('scrutiny-list-hidden');
-        this.btnProceedDecompose = document.getElementById('btn-proceed-decompose');
+        this.intakePanel = byId('intake-panel');
+        this.scrutinyPanel = byId('scrutiny-panel');
+        this.scrutinyListStandard = byId('scrutiny-list-standard');
+        this.scrutinyListHidden = byId('scrutiny-list-hidden');
+        this.btnProceedDecompose = byId('btn-proceed-decompose');
 
         // Step 2: RAG Verification & Editor
-        this.criteriaEditorContainer = document.getElementById('criteria-editor-container');
-        this.hrRagPreviewText = document.getElementById('hr-rag-preview-text');
-        this.tabBtnCategories = document.getElementById('tab-btn-categories');
-        this.tabBtnRawFile = document.getElementById('tab-btn-raw-file');
-        this.paneCategoriesEditor = document.getElementById('pane-categories-editor');
-        this.paneRawFile = document.getElementById('pane-raw-file');
-        this.btnBackToReqs = document.getElementById('btn-back-to-requirements');
-        this.btnSaveCriteriaChanges = document.getElementById('btn-save-criteria-changes');
-        this.btnProceedToCandidates = document.getElementById('btn-proceed-to-candidates');
+        this.criteriaEditorContainer = byId('criteria-editor-container');
+        this.hrRagPreviewText = byId('hr-rag-preview-text');
+        this.tabBtnCategories = byId('tab-btn-categories');
+        this.tabBtnRawFile = byId('tab-btn-raw-file');
+        this.paneCategoriesEditor = byId('pane-categories-editor');
+        this.paneRawFile = byId('pane-raw-file');
+        this.btnBackToReqs = byId('btn-back-to-requirements');
+        this.btnSaveCriteriaChanges = byId('btn-save-criteria-changes');
+        this.btnProceedToCandidates = byId('btn-proceed-to-candidates');
 
-        // Step 3: Candidate Selection
-        this.activeRagBannerText = document.getElementById('active-rag-banner-text');
-        this.btnBackToRagVerify = document.getElementById('btn-back-to-rag-verify');
-        this.btnBackToCriteriaStep = document.getElementById('btn-back-to-criteria-step');
-        this.scannedContainer = document.getElementById('scanned-resumes-container');
-        this.chkSelectAll = document.getElementById('chk-select-all');
-        this.selectedCountBadge = document.getElementById('selected-count-badge');
-        this.candSearchInput = document.getElementById('eval-cand-search');
-        this.btnRefreshResumes = document.getElementById('btn-refresh-resumes');
-        this.btnRunEval = document.getElementById('btn-run-eval');
+        // Step 3: Candidate Selection (the list itself is ResumeSelection's)
+        this.activeRagBannerText = byId('active-rag-banner-text');
+        this.btnBackToRagVerify = byId('btn-back-to-rag-verify');
+        this.btnBackToCriteriaStep = byId('btn-back-to-criteria-step');
+        this.btnRunEval = byId('btn-run-eval');
 
-        // Step 4: Results & Dossier Inspector
-        this.tierBlocksContainer = document.getElementById('tier-blocks-container');
-        this.evalTotalBadge = document.getElementById('eval-total-badge');
-        this.btnModifyCriteria = document.getElementById('btn-modify-criteria');
-        this.detailView = document.getElementById('candidate-detail-view');
-
-        // KPI Banner elements
-        this.kpiTotalVal = document.getElementById('kpi-total-val');
-        this.kpiStrongVal = document.getElementById('kpi-strong-val');
-        this.kpiPotentialVal = document.getElementById('kpi-potential-val');
-        this.kpiAvgScoreVal = document.getElementById('kpi-avg-score-val');
-
-        // Stepped nav steps (1 to 4)
-        this.stepNav1 = document.getElementById('step-nav-1');
-        this.stepNav2 = document.getElementById('step-nav-2');
-        this.stepNav3 = document.getElementById('step-nav-3');
-        this.stepNav4 = document.getElementById('step-nav-4');
+        // Step 4: Results (the leaderboards are ResultsDashboard's)
+        this.btnModifyCriteria = byId('btn-modify-criteria');
     }
 
     /**
@@ -190,72 +93,30 @@ export class EvaluatorController {
      */
     initEvents() {
         // Step 1 triggers
-        if (this.btnDecomposeReqs) {
-            this.btnDecomposeReqs.addEventListener('click', () => this.handleDecomposeClick());
-        }
-        if (this.btnProceedDecompose) {
-            this.btnProceedDecompose.addEventListener('click', () => this.decomposeFromQuestionsPanel());
-        }
-        if (this.btnUseExistingRag) {
-            this.btnUseExistingRag.addEventListener('click', () => this.useExistingRagAndProceed());
-        }
+        this.btnDecomposeReqs.addEventListener('click', () => this.handleDecomposeClick());
+        this.btnProceedDecompose.addEventListener('click', () => this.decomposeFromQuestionsPanel());
+        this.btnUseExistingRag.addEventListener('click', () => this.useExistingRagAndProceed());
         [this.hrStdReqInput, this.hrHiddenReqInput].forEach(input => {
-            if (input) input.addEventListener('input', () => this.updateUseExistingRagVisibility());
+            input.addEventListener('input', () => this.updateUseExistingRagVisibility());
         });
 
         // Step 2 triggers (RAG Verification & Tabs)
-        if (this.tabBtnCategories && this.tabBtnRawFile) {
-            this.tabBtnCategories.addEventListener('click', () => this.switchRagTab('categories'));
-            this.tabBtnRawFile.addEventListener('click', () => this.switchRagTab('raw'));
-        }
-        if (this.btnBackToReqs) {
-            this.btnBackToReqs.addEventListener('click', () => this.goToStage(1));
-        }
-        if (this.btnSaveCriteriaChanges) {
-            this.btnSaveCriteriaChanges.addEventListener('click', () => this.saveModifiedCriteria(true));
-        }
-        if (this.btnProceedToCandidates) {
-            this.btnProceedToCandidates.addEventListener('click', async () => {
-                // Stay on the Verify step when the save fails; saveModifiedCriteria shows the error.
-                if (await this.saveModifiedCriteria(false)) this.goToStage(3);
-            });
-        }
+        this.tabBtnCategories.addEventListener('click', () => this.switchRagTab('categories'));
+        this.tabBtnRawFile.addEventListener('click', () => this.switchRagTab('raw'));
+        this.btnBackToReqs.addEventListener('click', () => this.goToStage(1));
+        this.btnSaveCriteriaChanges.addEventListener('click', () => this.saveModifiedCriteria(true));
+        this.btnProceedToCandidates.addEventListener('click', async () => {
+            // Stay on the Verify step when the save fails; saveModifiedCriteria shows the error.
+            if (await this.saveModifiedCriteria(false)) this.goToStage(3);
+        });
 
         // Step 3 triggers (Candidate Selection)
-        if (this.btnBackToRagVerify) {
-            this.btnBackToRagVerify.addEventListener('click', () => this.goToStage(2));
-        }
-        if (this.btnBackToCriteriaStep) {
-            this.btnBackToCriteriaStep.addEventListener('click', () => this.goToStage(1));
-        }
-        if (this.btnRefreshResumes) {
-            this.btnRefreshResumes.addEventListener('click', () => this.loadScannedResumes());
-        }
-        if (this.chkSelectAll) {
-            this.chkSelectAll.addEventListener('change', () => {
-                this.selectedResumesSet.clear();
-                if (this.chkSelectAll.checked) {
-                    const filtered = this.getFilteredResumes();
-                    filtered.forEach(r => this.selectedResumesSet.add(r.filename));
-                }
-                this.renderScannedList();
-                this.updateSelectedCount();
-            });
-        }
-        if (this.candSearchInput) {
-            this.candSearchInput.addEventListener('input', (e) => {
-                this.searchTerm = e.target.value.toLowerCase().trim();
-                this.renderScannedList();
-            });
-        }
-        if (this.btnRunEval) {
-            this.btnRunEval.addEventListener('click', () => this.runEvaluation());
-        }
+        this.btnBackToRagVerify.addEventListener('click', () => this.goToStage(2));
+        this.btnBackToCriteriaStep.addEventListener('click', () => this.goToStage(1));
+        this.btnRunEval.addEventListener('click', () => this.runEvaluation());
 
         // Step 4 triggers (Results)
-        if (this.btnModifyCriteria) {
-            this.btnModifyCriteria.addEventListener('click', () => this.goToStage(2));
-        }
+        this.btnModifyCriteria.addEventListener('click', () => this.goToStage(2));
     }
 
     /**
@@ -274,7 +135,7 @@ export class EvaluatorController {
      * Records how many Criteria the RAG holds, from any RAG summary response.
      */
     setStoredRagItemCount(summary) {
-        this.storedRagItemCount = summary && summary.has_stored_rag ? (summary.total_items || 0) : 0;
+        this.storedRagItemCount = summary.has_stored_rag ? summary.total_items : 0;
         this.updateUseExistingRagVisibility();
     }
 
@@ -283,10 +144,9 @@ export class EvaluatorController {
      * textareas are empty, so HR can't throw away new requirements they are typing.
      */
     updateUseExistingRagVisibility() {
-        if (!this.btnUseExistingRag) return;
         const { stdReq, hiddenReq } = this.readRequirementText();
         const visible = this.storedRagItemCount > 0 && !stdReq && !hiddenReq;
-        this.btnUseExistingRag.style.display = visible ? 'inline-flex' : 'none';
+        this.btnUseExistingRag.hidden = !visible;
         if (visible) {
             this.btnUseExistingRag.textContent = `Dùng RAG đang hoạt động (${this.storedRagItemCount} tiêu chí) & Bỏ qua →`;
         }
@@ -294,8 +154,8 @@ export class EvaluatorController {
 
     readRequirementText() {
         return {
-            stdReq: (this.hrStdReqInput ? this.hrStdReqInput.value : '').trim(),
-            hiddenReq: (this.hrHiddenReqInput ? this.hrHiddenReqInput.value : '').trim()
+            stdReq: this.hrStdReqInput.value.trim(),
+            hiddenReq: this.hrHiddenReqInput.value.trim()
         };
     }
 
@@ -307,16 +167,11 @@ export class EvaluatorController {
             this.startNewIntakePass();
         }
         this.currentStage = stepNum;
-
-        if (this.stageReq) this.stageReq.style.display = stepNum === 1 ? 'block' : 'none';
-        if (this.stageRagVerify) this.stageRagVerify.style.display = stepNum === 2 ? 'block' : 'none';
-        if (this.stageCandidates) this.stageCandidates.style.display = stepNum === 3 ? 'block' : 'none';
-        if (this.stageResults) this.stageResults.style.display = stepNum === 4 ? 'block' : 'none';
-
+        this.stages.forEach((stage, idx) => { stage.hidden = idx + 1 !== stepNum; });
         this.updateStepIndicator(stepNum);
 
-        if (stepNum === 3 && this.scannedResumes.length === 0) {
-            this.loadScannedResumes();
+        if (stepNum === 3 && this.resumeSelection.resumes.length === 0) {
+            this.resumeSelection.load();
         }
         if (stepNum === 3) {
             this.updateActiveRagBanner();
@@ -338,19 +193,15 @@ export class EvaluatorController {
     }
 
     /**
-     * Updates top progress step indicators.
+     * Updates top progress step indicators; the active step carries aria-current.
      */
     updateStepIndicator(activeStep) {
-        const stepEls = [this.stepNav1, this.stepNav2, this.stepNav3, this.stepNav4];
-        stepEls.forEach((stepEl, idx) => {
-            if (!stepEl) return;
+        this.stepNavs.forEach((stepEl, idx) => {
             const stepNum = idx + 1;
-            stepEl.classList.remove('active', 'completed');
-            if (stepNum === activeStep) {
-                stepEl.classList.add('active');
-            } else if (stepNum < activeStep) {
-                stepEl.classList.add('completed');
-            }
+            stepEl.classList.toggle('active', stepNum === activeStep);
+            stepEl.classList.toggle('completed', stepNum < activeStep);
+            if (stepNum === activeStep) stepEl.setAttribute('aria-current', 'step');
+            else stepEl.removeAttribute('aria-current');
         });
     }
 
@@ -358,18 +209,12 @@ export class EvaluatorController {
      * Toggles between Interactive Categories Editor and Raw hr_rag.txt View.
      */
     switchRagTab(tab) {
-        if (tab === 'categories') {
-            if (this.tabBtnCategories) this.tabBtnCategories.classList.add('active');
-            if (this.tabBtnRawFile) this.tabBtnRawFile.classList.remove('active');
-            if (this.paneCategoriesEditor) this.paneCategoriesEditor.style.display = 'block';
-            if (this.paneRawFile) this.paneRawFile.style.display = 'none';
-            this.criteriaEditor.resizeAll();
-        } else {
-            if (this.tabBtnCategories) this.tabBtnCategories.classList.remove('active');
-            if (this.tabBtnRawFile) this.tabBtnRawFile.classList.add('active');
-            if (this.paneCategoriesEditor) this.paneCategoriesEditor.style.display = 'none';
-            if (this.paneRawFile) this.paneRawFile.style.display = 'block';
-        }
+        const showCategories = tab === 'categories';
+        this.tabBtnCategories.classList.toggle('active', showCategories);
+        this.tabBtnRawFile.classList.toggle('active', !showCategories);
+        this.paneCategoriesEditor.hidden = !showCategories;
+        this.paneRawFile.hidden = showCategories;
+        if (showCategories) this.criteriaEditor.resizeAll();
     }
 
     /**
@@ -401,7 +246,7 @@ export class EvaluatorController {
                 'scrutiny',
                 'Đang kiểm tra yêu cầu...',
                 'Đang tìm các giả định chưa được nêu rõ trước khi phân loại...',
-                () => API.scrutinizeRequirements(stdReq, hiddenReq, 'vietnamese')
+                () => API.scrutinizeRequirements(stdReq, hiddenReq)
             );
             this.intake.checkedText = { std: stdReq, hidden: hiddenReq };
             this.intake.checkedThisPass = true;
@@ -439,13 +284,12 @@ export class EvaluatorController {
      */
     renderScrutinyPanel(stdFindings, hiddenFindings) {
         const renderList = (listEl, findings) => {
-            if (!listEl) return;
             listEl.innerHTML = findings.length > 0
-                ? findings.map(f => `
+                ? html`${findings.map(f => html`
                     <div class="scrutiny-question-item">
-                        <div class="scrutiny-question">${this.escapeHtml(f.question)}</div>
+                        <div class="scrutiny-question">${f.question}</div>
                     </div>
-                `).join('')
+                `)}`
                 : '<div class="scrutiny-empty-note">Không có câu hỏi</div>';
         };
 
@@ -453,21 +297,21 @@ export class EvaluatorController {
         renderList(this.scrutinyListHidden, hiddenFindings);
 
         this.intake.questionsShowing = true;
-        if (this.intakePanel) this.intakePanel.classList.add('has-questions');
-        if (this.scrutinyPanel) this.scrutinyPanel.style.display = 'block';
-        if (this.btnDecomposeReqs) this.btnDecomposeReqs.style.display = 'none';
-        if (this.btnProceedDecompose) this.btnProceedDecompose.style.display = 'inline-flex';
-        if (this.intakePanel) this.intakePanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        this.intakePanel.classList.add('has-questions');
+        this.scrutinyPanel.hidden = false;
+        this.btnDecomposeReqs.hidden = true;
+        this.btnProceedDecompose.hidden = false;
+        this.intakePanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     hideScrutinyPanel() {
         this.intake.questionsShowing = false;
-        if (this.intakePanel) this.intakePanel.classList.remove('has-questions');
-        if (this.scrutinyPanel) this.scrutinyPanel.style.display = 'none';
-        if (this.scrutinyListStandard) this.scrutinyListStandard.innerHTML = '';
-        if (this.scrutinyListHidden) this.scrutinyListHidden.innerHTML = '';
-        if (this.btnProceedDecompose) this.btnProceedDecompose.style.display = 'none';
-        if (this.btnDecomposeReqs) this.btnDecomposeReqs.style.display = '';
+        this.intakePanel.classList.remove('has-questions');
+        this.scrutinyPanel.hidden = true;
+        this.scrutinyListStandard.innerHTML = '';
+        this.scrutinyListHidden.innerHTML = '';
+        this.btnProceedDecompose.hidden = true;
+        this.btnDecomposeReqs.hidden = false;
     }
 
     /**
@@ -484,7 +328,7 @@ export class EvaluatorController {
                 'decompose',
                 'Đang phân rã yêu cầu...',
                 'Đang tách các tiêu chí đơn lẻ theo 5 chiều bằng LLM và vector embedding...',
-                () => API.decomposeRequirements(stdReq, hiddenReq, 'vietnamese')
+                () => API.decomposeRequirements(stdReq, hiddenReq)
             );
             this.processRagSummaryData(data);
             this.setStoredRagItemCount(data);
@@ -508,16 +352,18 @@ export class EvaluatorController {
     }
 
     /**
+     * Shows the hr_rag.txt preview in the Verify step's raw-file tab.
+     */
+    setHrRagText(text) {
+        this.hrRagPreviewText.textContent = text || 'Chưa tạo tệp hr_rag.txt.';
+    }
+
+    /**
      * Ingests summary data into controller state and renders the shared Criteria editor.
      */
     processRagSummaryData(data) {
-        this.currentHrRagText = data.hr_rag_text || '';
-        if (this.hrRagPreviewText) {
-            this.hrRagPreviewText.textContent = this.currentHrRagText || 'Chưa tạo tệp hr_rag.txt.';
-        }
-        this.criteriaEditor.setCategories(
-            data.categories || {}, data.hr_check_items || [], data.importance_levels, data.default_importance
-        );
+        this.setHrRagText(data.hr_rag_text);
+        this.criteriaEditor.setCategories(data.categories, data.hr_check_items, data.importance_levels, data.default_importance);
     }
 
     /**
@@ -543,10 +389,7 @@ export class EvaluatorController {
                 )
             );
             this.setStoredRagItemCount(updated);
-            this.currentHrRagText = updated.hr_rag_text || '';
-            if (this.hrRagPreviewText) {
-                this.hrRagPreviewText.textContent = this.currentHrRagText;
-            }
+            this.setHrRagText(updated.hr_rag_text);
             if (showSuccessAlert) {
                 alert('✓ Đã lưu thay đổi vào kho vector RAG và hr_rag.txt!');
             }
@@ -561,171 +404,17 @@ export class EvaluatorController {
      * Updates active RAG summary banner in Candidate Selection stage.
      */
     updateActiveRagBanner() {
-        if (!this.activeRagBannerText) return;
         const totalItems = this.criteriaEditor.totalCount();
-        this.activeRagBannerText.innerHTML = `<strong>Tiêu chí RAG đã xác minh và đang hoạt động:</strong> ${totalItems} tiêu chí thuộc 5 chiều được lưu trong kho vector ChromaDB.`;
-    }
-
-    /**
-     * Returns list of resumes matching search term.
-     */
-    getFilteredResumes() {
-        if (!this.searchTerm) return this.scannedResumes;
-        return this.scannedResumes.filter(r => {
-            const name = (r.filename || '').toLowerCase();
-            const email = (r.email || '').toLowerCase();
-            const title = (r.title || '').toLowerCase();
-            return name.includes(this.searchTerm) || email.includes(this.searchTerm) || title.includes(this.searchTerm);
-        });
-    }
-
-    /**
-     * Fetches scanned resumes from backend.
-     */
-    async loadScannedResumes() {
-        if (!this.scannedContainer) return;
-        this.scannedContainer.innerHTML = '<div class="loading-state">Đang tải danh sách CV đã quét...</div>';
-        this.selectedResumesSet.clear();
-        if (this.chkSelectAll) this.chkSelectAll.checked = false;
-        this.updateSelectedCount();
-
-        try {
-            const data = await API.getScannedResumes();
-            this.scannedResumes = data.resumes || [];
-            this.orderActive = data.evaluation_order_active;
-            this.orderPath = data.evaluation_order_path;
-            this.techMode = data.tech_mode === true;
-            this.tier1Count = data.tier1_count || 0;
-            this.tier2Count = data.tier2_count || 0;
-
-            if (this.scannedResumes.length === 0) {
-                this.scannedContainer.innerHTML = '<div class="empty-state" style="padding: 1.5rem 0;">Chưa có CV nào được quét. Hãy tải CV PDF lên ở Bước 1 trước.</div>';
-                return;
-            }
-            this.renderScannedList();
-        } catch (err) {
-            this.scannedContainer.innerHTML = `<div class="error-state">Không tải được danh sách CV: ${this.escapeHtml(err.message)}</div>`;
-        }
-    }
-
-    /**
-     * Renders candidate checkbox list grouped by tier.
-     */
-    renderScannedList() {
-        this.scannedContainer.innerHTML = '';
-
-        const resumes = this.getFilteredResumes();
-        if (resumes.length === 0) {
-            this.scannedContainer.innerHTML = '<div class="empty-state" style="padding: 1rem 0; font-size: 0.85rem;">Không có ứng viên nào khớp với từ khóa tìm kiếm.</div>';
-            return;
-        }
-
-        // Secret order status banner
-        const banner = document.createElement('div');
-        banner.style.cssText = 'padding: 8px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;';
-        if (this.orderActive) {
-            banner.style.background = '#DCFCE7';
-            banner.style.border = '1px solid #86EFAC';
-            banner.style.color = '#15803D';
-            banner.innerHTML = this.techMode
-                ? `<span>🔒 Thứ tự bí mật: Đang áp dụng</span><span style="font-size:0.72rem; opacity:0.9;">Top ${this.tier1Count}</span>`
-                : `<span>🔒 Thứ tự bí mật: Đang áp dụng</span><span style="font-size:0.72rem; opacity:0.9;">Nhóm 1: ${this.tier1Count} • Nhóm 2: ${this.tier2Count}</span>`;
-        } else {
-            banner.style.background = '#FFFBEB';
-            banner.style.border = '1px solid #FCD34D';
-            banner.style.color = '#B45309';
-            banner.innerHTML = `<span>⚠️ Thứ tự bí mật: Không tìm thấy tệp</span><span style="font-size:0.72rem;">${this.techMode ? 'evaluation_order_tech.txt' : 'evaluation_order.txt'}</span>`;
-        }
-        this.scannedContainer.appendChild(banner);
-
-        // The Tech resume set's secret file lists only the top 10, in rank order; everyone else is the rest
-        const tiers = this.techMode ? {
-            1: { title: 'Top 10 ứng viên', badgeClass: 'tier-badge-1', items: [] },
-            2: { title: 'Ứng viên còn lại', badgeClass: 'tier-badge-2', items: [] },
-            3: { title: 'Ứng viên còn lại', badgeClass: 'tier-badge-3', items: [] }
-        } : {
-            1: { title: 'Nhóm CV 1 (Ưu tiên)', badgeClass: 'tier-badge-1', items: [] },
-            2: { title: 'Nhóm CV 2 (Thứ cấp)', badgeClass: 'tier-badge-2', items: [] },
-            3: { title: 'Nhóm CV 3 (Ứng viên ngoài danh sách)', badgeClass: 'tier-badge-3', items: [] }
-        };
-
-        resumes.forEach(r => {
-            const t = r.tier || 3;
-            if (!tiers[t]) tiers[t] = tiers[3];
-            tiers[t].items.push(r);
-        });
-
-        [1, 2, 3].forEach(tNum => {
-            const group = tiers[tNum];
-            if (group.items.length === 0) return;
-
-            const block = document.createElement('div');
-            block.className = `scanned-tier-block tier-${tNum}-block`;
-
-            block.innerHTML = `
-                <div class="panel-header-split" style="margin-bottom: 8px;">
-                    <span style="font-weight: 700; font-size: 0.88rem; color: var(--brand-legacy-blue);">${group.title}</span>
-                    <span class="tier-badge ${group.badgeClass}">${group.items.length} ứng viên</span>
-                </div>
-                <div class="tier-items-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
-            `;
-
-            const itemsContainer = block.querySelector('.tier-items-list');
-
-            group.items.forEach(resItem => {
-                const isSel = this.selectedResumesSet.has(resItem.filename);
-                const rank = tNum === 1 && Number.isInteger(resItem.tier_order) ? resItem.tier_order + 1 : 0;
-                const card = document.createElement('div');
-                card.className = `resume-card-item ${isSel ? 'selected' : ''}`;
-                card.innerHTML = `
-                    <input type="checkbox" class="chk-resume" data-file="${resItem.filename}" ${isSel ? 'checked' : ''}>
-                    <div class="resume-info">
-                        <span class="resume-title">${rank ? `<span class="tier-rank-badge" title="Thứ hạng trong danh sách đánh giá">#${rank}</span> ` : ''}${this.escapeHtml(resItem.filename)}</span>
-                        <span class="resume-meta">✉ ${this.escapeHtml(resItem.email)} • ${resItem.scanned_resume
-                            ? `<span class="badge-ocr-review" title="${SCANNED_RESUME_MESSAGE}">⛔ ${SCANNED_RESUME_LABEL}</span>`
-                            : resItem.missing_position
-                            ? `<span class="badge-ocr-review" title="${MISSING_POSITION_MESSAGE}">⚠️ ${MISSING_POSITION_LABEL}</span>`
-                            : this.escapeHtml(resItem.title)}</span>
-                    </div>
-                `;
-
-                const chk = card.querySelector('.chk-resume');
-                card.addEventListener('click', (e) => {
-                    if (e.target !== chk) chk.checked = !chk.checked;
-                    if (chk.checked) {
-                        this.selectedResumesSet.add(resItem.filename);
-                        card.classList.add('selected');
-                    } else {
-                        this.selectedResumesSet.delete(resItem.filename);
-                        card.classList.remove('selected');
-                    }
-                    this.updateSelectedCount();
-                });
-
-                itemsContainer.appendChild(card);
-            });
-
-            this.scannedContainer.appendChild(block);
-        });
-    }
-
-    updateSelectedCount() {
-        if (this.selectedCountBadge) {
-            this.selectedCountBadge.textContent = `Đã chọn ${this.selectedResumesSet.size}`;
-        }
-        if (this.btnRunEval) {
-            this.btnRunEval.disabled = this.selectedResumesSet.size === 0;
-        }
+        const categoryCount = Object.keys(CATEGORY_NAMES).length;
+        this.activeRagBannerText.innerHTML = html`<strong>Tiêu chí RAG đã xác minh và đang hoạt động:</strong> ${totalItems} tiêu chí thuộc ${categoryCount} chiều được lưu trong kho vector ChromaDB.`;
     }
 
     /**
      * Submits verified RAG criteria and candidate selection to run batch AI evaluation.
      */
     async runEvaluation() {
-        const stdReq = (this.hrStdReqInput ? this.hrStdReqInput.value : '').trim();
-        const hiddenReq = (this.hrHiddenReqInput ? this.hrHiddenReqInput.value : '').trim();
-        const filenames = Array.from(this.selectedResumesSet);
-
+        const { stdReq, hiddenReq } = this.readRequirementText();
+        const filenames = this.resumeSelection.selectedFilenames();
         if (filenames.length === 0) {
             alert('Vui lòng chọn ít nhất một CV ứng viên.');
             return;
@@ -740,7 +429,6 @@ export class EvaluatorController {
 
         let data;
         try {
-            // Use existing verified RAG criteria
             data = await this.runEvaluationJob(stdReq, hiddenReq, filenames);
         } catch (err) {
             // Close the waiting screen before the blocking alert so it isn't left behind it.
@@ -750,28 +438,25 @@ export class EvaluatorController {
         }
         this.waitingScreen.finish();
 
-        try {
-            if (data && Array.isArray(data.results)) {
-                if (data.results.length === 0) {
-                    alert('Không có kết quả đánh giá nào. Hãy kiểm tra các ứng viên đã chọn đã được quét/trích xuất ở Bước 1.');
-                } else {
-                    this.renderDashboard(data.results);
-                }
-            } else {
-                alert('Đánh giá thất bại: Máy chủ trả về dữ liệu không hợp lệ.');
-            }
-        } catch (err) {
-            alert('Lỗi đánh giá: ' + err.message);
+        if (!data || !Array.isArray(data.results)) {
+            alert('Đánh giá thất bại: Máy chủ trả về dữ liệu không hợp lệ.');
+            return;
         }
+        if (data.results.length === 0) {
+            alert('Không có kết quả đánh giá nào. Hãy kiểm tra các ứng viên đã chọn đã được quét/trích xuất ở Bước 1.');
+            return;
+        }
+        this.goToStage(4);
+        this.dashboard.render(data.results, this.resumeSelection.techMode);
     }
 
     /**
      * Starts batch evaluation as a background job and polls it, reporting per-candidate
      * progress to the waiting screen, until it finishes.
-     * @returns {Promise<Object>} The same results payload the synchronous batch endpoint returns.
+     * @returns {Promise<Object>} The job's results payload: {results, total_evaluated, batch_execution_time_seconds}.
      */
     async runEvaluationJob(stdReq, hiddenReq, filenames) {
-        const { job_id: jobId } = await API.startEvaluationJob(stdReq, hiddenReq, filenames, true, 'vietnamese');
+        const { job_id: jobId } = await API.startEvaluationJob(stdReq, hiddenReq, filenames);
         for (;;) {
             await new Promise(resolve => setTimeout(resolve, EVAL_JOB_POLL_MS));
             const job = await API.getEvaluationJob(jobId);
@@ -780,245 +465,4 @@ export class EvaluatorController {
             if (job.state === 'failed') throw new Error(job.error || 'Tác vụ đánh giá thất bại.');
         }
     }
-
-    /**
-     * Renders evaluation results dashboard and dossier inspector.
-     */
-    renderDashboard(results) {
-        this.lastResults = results;
-        this.goToStage(4);
-
-        // Update KPI summary stats
-        const totalCount = results.length;
-        // Must-have Rejections are scored but out, so they count as neither a match nor in the average
-        const scored = results.filter(r => !unscoredLabel(r) && !isMustHaveRejection(r));
-        const strongCount = scored.filter(r => r.match_recommendation === 'STRONG_MATCH').length;
-        const potentialCount = scored.filter(r => r.match_recommendation === 'POTENTIAL_MATCH').length;
-        const avgScore = scored.length > 0 ? (scored.reduce((acc, curr) => acc + (curr.overall_score || 0), 0) / scored.length).toFixed(1) : '0.0';
-
-        if (this.kpiTotalVal) this.kpiTotalVal.textContent = totalCount;
-        if (this.kpiStrongVal) this.kpiStrongVal.textContent = strongCount;
-        if (this.kpiPotentialVal) this.kpiPotentialVal.textContent = potentialCount;
-        if (this.kpiAvgScoreVal) this.kpiAvgScoreVal.textContent = avgScore;
-        if (this.evalTotalBadge) this.evalTotalBadge.textContent = `Đã đánh giá ${totalCount}`;
-
-        if (!this.tierBlocksContainer) return;
-        this.tierBlocksContainer.innerHTML = '';
-
-        const tierGroups = {
-            1: { title: 'Nhóm CV 1 (Ứng viên ưu tiên)', badgeClass: 'tier-badge-1', cardClass: 'tier-1-card', items: [] },
-            2: { title: 'Nhóm CV 2 (Ứng viên thứ cấp)', badgeClass: 'tier-badge-2', cardClass: 'tier-2-card', items: [] },
-            3: { title: 'Nhóm CV 3 (Ứng viên ngoài danh sách)', badgeClass: 'tier-badge-3', cardClass: 'tier-3-card', items: [] },
-            // Must-have Rejections and Scanned Resumes are never ranked, so they leave their tier for sections of their own, last
-            rejected: { title: MUST_HAVE_REJECTION_LABEL, badge: 'Bị loại', badgeClass: 'tier-badge-3', cardClass: 'tier-3-card', items: [] },
-            scanned: { title: 'CV bản scan – cần ứng viên gửi lại', badge: 'Bản scan', badgeClass: 'tier-badge-3', cardClass: 'tier-3-card', items: [] }
-        };
-
-        results.forEach(res => {
-            if (isScannedResume(res)) {
-                tierGroups.scanned.items.push(res);
-                return;
-            }
-            if (isMustHaveRejection(res)) {
-                tierGroups.rejected.items.push(res);
-                return;
-            }
-            const t = res.tier || 3;
-            if (!tierGroups[t]) tierGroups[t] = tierGroups[3];
-            tierGroups[t].items.push(res);
-        });
-
-        let inspectSet = false;
-
-        [1, 2, 3, 'rejected', 'scanned'].forEach(tNum => {
-            const group = tierGroups[tNum];
-            if (group.items.length === 0) return;
-
-            const blockCard = document.createElement('div');
-            blockCard.className = `tier-block-card ${group.cardClass}`;
-            
-            blockCard.innerHTML = `
-                <div class="panel-header-split" style="margin-bottom: 14px;">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <h3 style="margin: 0; color: var(--brand-legacy-blue); font-size: 1.1rem;">${group.title}</h3>
-                        <span class="tier-badge ${group.badgeClass}">${group.badge || `Nhóm ${tNum}`}</span>
-                    </div>
-                    <span class="text-muted" style="font-size: 0.85rem; font-weight:600;">${group.items.length} ứng viên</span>
-                </div>
-                <div class="table-responsive">
-                    <table class="leaderboard-table">
-                        <thead>
-                            <tr>
-                                <th>Hạng</th>
-                                <th>Ứng viên / Email</th>
-                                <th>Điểm phù hợp</th>
-                                <th>Đề xuất</th>
-                                <th>Điểm mạnh / Thiếu sót</th>
-                                <th>Thao tác</th>
-                            </tr>
-                        </thead>
-                        <tbody class="tier-tbody"></tbody>
-                    </table>
-                </div>
-            `;
-
-            const tbody = blockCard.querySelector('.tier-tbody');
-
-            group.items.forEach((res, idx) => {
-                const evalOrderNum = idx + 1;
-                const tr = document.createElement('tr');
-                const unscored = unscoredLabel(res);
-                const rejected = isMustHaveRejection(res);
-
-                tr.innerHTML = `
-                    <td>${isScannedResume(res) || rejected ? '—' : `<span class="rank-badge rank-${evalOrderNum}">${evalOrderNum}</span>`}</td>
-                    <td>
-                        <strong style="color: var(--brand-legacy-blue); font-size: 0.95rem;">${this.escapeHtml(res.resume_name)}</strong><br>
-                        <span style="font-size:0.78rem; color: var(--text-muted);">✉ ${this.escapeHtml(res.candidate_email || res.candidate_identifier || 'Không có')}</span>
-                        ${isMissingPosition(res) ? `<br><span class="badge-ocr-review" title="${MISSING_POSITION_MESSAGE}">⚠️ ${MISSING_POSITION_LABEL}</span>` : ''}
-                    </td>
-                    <td>${unscored
-                        ? '<strong style="color: var(--text-muted); font-size:1.2rem; font-family:var(--font-mono);">—</strong>'
-                        : `<strong style="color: ${rejected ? 'var(--text-muted)' : 'var(--brand-azure)'}; font-size:1.2rem; font-family:var(--font-mono);">${res.overall_score || 0}</strong><span style="font-size:0.8rem; color:var(--text-muted);">/100</span>`}</td>
-                    <td>${unscored
-                        ? `<span class="badge-rec rec-ERROR">${unscored}</span>`
-                        : `<span class="badge-rec rec-${res.match_recommendation}">${this.recommendationLabel(res.match_recommendation)}</span>`}</td>
-                    <td style="font-size:0.82rem; font-weight:600;">${unscored ? '' : `
-                        <span style="color:#15803D;">✓ ${res.summary?.total_strengths || 0}</span> • 
-                        <span style="color:#B91C1C;">✗ ${res.summary?.total_gaps || 0}</span>
-                    `}</td>
-                    <td>
-                        <button class="btn btn-sm btn-secondary btn-inspect">Xem hồ sơ</button>
-                    </td>
-                `;
-
-                tr.querySelector('.btn-inspect').addEventListener('click', () => {
-                    this.renderCandidateDetail(res);
-                });
-
-                tbody.appendChild(tr);
-
-                if (!inspectSet) {
-                    this.renderCandidateDetail(res);
-                    inspectSet = true;
-                }
-            });
-
-            this.tierBlocksContainer.appendChild(blockCard);
-        });
-    }
-
-    /**
-     * Renders spacious full-width candidate dossier detail view.
-     */
-    renderCandidateDetail(cand) {
-        if (!this.detailView) return;
-        this.detailView.style.display = 'block';
-
-        const nameEl = document.getElementById('det-cand-name');
-        const fileEl = document.getElementById('det-cand-file');
-        const scoreEl = document.getElementById('det-cand-score');
-        const recBadge = document.getElementById('det-cand-rec');
-        const summaryEl = document.getElementById('det-cand-summary');
-        const strengthsListEl = document.getElementById('det-cand-strengths-list');
-        const gapsListEl = document.getElementById('det-cand-gaps-list');
-        const unscored = unscoredLabel(cand);
-        const rejected = isMustHaveRejection(cand);
-
-        if (nameEl) nameEl.textContent = cand.candidate_identifier || cand.resume_name;
-        if (fileEl) fileEl.textContent = `${cand.resume_name}.json • Đánh giá lúc ${cand.evaluated_at ? new Date(cand.evaluated_at).toLocaleTimeString('vi-VN') : 'vừa xong'}`;
-        if (scoreEl) scoreEl.textContent = unscored ? '—' : (cand.overall_score || '0.0');
-
-        if (recBadge) {
-            recBadge.textContent = unscored || this.recommendationLabel(cand.match_recommendation);
-            recBadge.className = `badge-rec rec-${unscored ? 'ERROR' : cand.match_recommendation}`;
-        }
-
-        // Executive summary body
-        if (summaryEl) {
-            if (isScannedResume(cand)) {
-                summaryEl.textContent = SCANNED_RESUME_MESSAGE;
-            } else if (unscored) {
-                const failedNames = (cand.failed_categories || []).map(k => CATEGORY_NAMES[k] || k);
-                const what = failedNames.length > 0 ? `các mục: ${failedNames.join(', ')}` : 'một số mục đánh giá';
-                summaryEl.textContent = `Không thể chấm điểm ${what}. Kết quả này không được xếp hạng. Hãy chọn lại ứng viên này và bấm Đánh giá để chạy lại.`;
-            } else if (rejected) {
-                summaryEl.textContent = `Ứng viên bị loại vì CV không cho thấy bằng chứng cho tiêu chí bắt buộc: ${mustHaveRejection(cand).map(m => m.criterion).join('; ')}. Điểm vẫn được giữ để HR tham khảo nhưng không được xếp hạng.`;
-            } else {
-                summaryEl.textContent = cand.summary?.executive_summary || `Ứng viên đạt ${cand.overall_score}/100 điểm, mức độ phù hợp: ${this.recommendationLabel(cand.match_recommendation)}. Được đánh giá theo 5 chiều vector RAG.`;
-                if (isMissingPosition(cand)) summaryEl.textContent = `⚠️ ${MISSING_POSITION_MESSAGE} ${summaryEl.textContent}`;
-            }
-        }
-
-        // An unscored result has no Category results to show; a Failed Evaluation's partial ones are hidden
-        const dims = unscored ? {} : shownCategories(cand);
-
-        // Populate Strengths & Gaps lists
-        if (strengthsListEl) {
-            const allStrengths = [];
-            Object.values(dims).forEach(d => {
-                (d.strengths || []).forEach(s => allStrengths.push(s));
-            });
-            strengthsListEl.innerHTML = unscored ? '<li>—</li>' : allStrengths.length > 0
-                ? allStrengths.map(s => `<li>${this.escapeHtml(s)}</li>`).join('')
-                : '<li>Chưa ghi nhận điểm mạnh rõ ràng.</li>';
-        }
-
-        if (gapsListEl) {
-            const allGaps = [];
-            Object.values(dims).forEach(d => {
-                (d.gaps || []).forEach(g => allGaps.push(g));
-            });
-            gapsListEl.innerHTML = unscored ? '<li>—</li>' : allGaps.length > 0
-                ? allGaps.map(g => `<li>${this.escapeHtml(g)}</li>`).join('')
-                : '<li>Không có thiếu sót hay rủi ro lớn.</li>';
-        }
-
-        // Render 5-Dimension Scorecard Cards
-        const dimensionsContainer = document.getElementById('dimensions-container');
-        if (dimensionsContainer) {
-            dimensionsContainer.innerHTML = '';
-            Object.keys(dims).forEach(key => {
-                const d = dims[key];
-                const card = document.createElement('div');
-                card.className = 'dimension-card';
-
-                const strengthsList = (d.strengths || []).map(s => `<li>${this.escapeHtml(s)}</li>`).join('');
-                const gapsList = (d.gaps || []).map(g => `<li style="color:#B91C1C;">${this.escapeHtml(g)}</li>`).join('');
-                const reasoningText = d.reasoning_summary ? this.escapeHtml(d.reasoning_summary) : '';
-
-                card.innerHTML = `
-                    <div class="dim-header">
-                        <span>${this.escapeHtml(CATEGORY_NAMES[key] || d.category_name)} (${Math.round((d.weight || 0.2) * 100)}%)</span>
-                        <span class="dim-score">${d.score}/100</span>
-                    </div>
-                    <div class="dim-progress-track">
-                        <div class="dim-progress-fill" style="width: ${d.score}%;"></div>
-                    </div>
-                    ${reasoningText ? `
-                        <div style="font-size:0.8rem; font-weight:700; margin-top:6px; color: var(--brand-legacy-blue);">🧠 Lập luận của AI:</div>
-                        <div class="dim-reasoning-box">${reasoningText}</div>
-                    ` : ''}
-                    <div style="font-size:0.8rem; font-weight:700; margin-top:6px; color:#15803D;">Điểm mạnh:</div>
-                    <ul class="dim-list">${strengthsList || '<li>Không có</li>'}</ul>
-                    <div style="font-size:0.8rem; font-weight:700; margin-top:6px; color:#B91C1C;">Thiếu sót / Lưu ý:</div>
-                    <ul class="dim-list">${gapsList || '<li>Không có</li>'}</ul>
-                `;
-                dimensionsContainer.appendChild(card);
-            });
-        }
-
-        this.detailView.scrollIntoView({ behavior: 'smooth' });
-    }
-
-    recommendationLabel(rec) {
-        return RECOMMENDATION_LABELS[rec] || rec || '';
-    }
-
-    escapeHtml(str) {
-        if (!str) return '';
-        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    }
 }
-
-

@@ -7,10 +7,10 @@
  *              against the server's expected duration for the operation kind.
  *              Batch waits show "completed/total" and extrapolate the time
  *              remaining from how fast candidates actually finish.
- * Line Count: ~200 lines (Strict Limit: < 500 lines)
  */
 
 import { API } from './api.js';
+import { byId } from './dom.js';
 
 const TICK_MS = 250;
 // The bar never reaches 100% until the operation actually finishes.
@@ -29,12 +29,12 @@ function formatRemaining(seconds) {
 
 export class WaitingScreen {
     constructor() {
-        this.overlay = document.getElementById('loader-overlay');
-        this.titleEl = document.getElementById('loader-title');
-        this.descEl = document.getElementById('loader-desc');
-        this.progressEl = document.getElementById('loader-progress');
-        this.timeEl = document.getElementById('loader-time');
-        this.countEl = document.getElementById('loader-count');
+        this.overlay = byId('loader-overlay');
+        this.titleEl = byId('loader-title');
+        this.descEl = byId('loader-desc');
+        this.progressEl = byId('loader-progress');
+        this.timeEl = byId('loader-time');
+        this.countEl = byId('loader-count');
         this.timer = null;
         this.wait = null;
     }
@@ -76,7 +76,7 @@ export class WaitingScreen {
         clearInterval(this.timer);
         this.timer = null;
         this.wait = null;
-        if (this.overlay) this.overlay.style.display = 'none';
+        this.overlay.hidden = true;
     }
 
     /**
@@ -105,10 +105,10 @@ export class WaitingScreen {
         };
         this.wait = wait;
 
-        if (this.titleEl) this.titleEl.textContent = title;
-        if (this.descEl) this.descEl.textContent = desc || '';
-        if (this.countEl) this.countEl.style.display = mode === 'batch' ? 'block' : 'none';
-        if (this.overlay) this.overlay.style.display = 'flex';
+        this.titleEl.textContent = title;
+        this.descEl.textContent = desc || '';
+        this.countEl.hidden = mode !== 'batch';
+        this.overlay.hidden = false;
 
         this.render();
         this.timer = setInterval(() => this.render(), TICK_MS);
@@ -142,20 +142,18 @@ export class WaitingScreen {
         } else {
             fraction = wait.total > 0 ? wait.completed / wait.total : 0;
             remaining = this.batchRemainingSeconds(elapsed);
-            if (this.countEl) this.countEl.textContent = `${wait.completed}/${wait.total} ứng viên`;
+            this.countEl.textContent = `${wait.completed}/${wait.total} ứng viên`;
         }
 
         const clamped = Math.min(Math.max(fraction, 0), MAX_BAR_FRACTION);
-        if (this.progressEl) this.progressEl.style.width = `${(clamped * 100).toFixed(1)}%`;
+        this.progressEl.style.width = `${(clamped * 100).toFixed(1)}%`;
 
-        if (this.timeEl) {
-            if (remaining === null) {
-                this.timeEl.textContent = 'Đang ước tính thời gian còn lại…';
-            } else if (remaining <= 0) {
-                this.timeEl.textContent = 'Sắp xong…';
-            } else {
-                this.timeEl.textContent = formatRemaining(remaining);
-            }
+        if (remaining === null) {
+            this.timeEl.textContent = 'Đang ước tính thời gian còn lại…';
+        } else if (remaining <= 0) {
+            this.timeEl.textContent = 'Sắp xong…';
+        } else {
+            this.timeEl.textContent = formatRemaining(remaining);
         }
     }
 

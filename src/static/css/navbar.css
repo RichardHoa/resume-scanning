@@ -42,7 +42,7 @@
     fill: currentColor;
 }
 
-.rail-brand-title h1, .rail-brand-title .brand-heading {
+.rail-brand-title .brand-heading {
     font-size: 0.98rem;
     font-weight: 800;
     line-height: 1.2;
@@ -167,6 +167,11 @@
     color: var(--text-muted);
     font-family: var(--font-mono);
     font-weight: 500;
+}
+
+.telemetry-value {
+    color: var(--color-secondary);
+    font-weight: 700;
 }
 
 .status-indicator {

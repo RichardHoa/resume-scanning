@@ -4,11 +4,12 @@ Standalone: runs in its own venv (requirements-audio.txt), imports nothing from 
 
 Pipeline (see .scratch/audio-transcribe/spec.md):
   1. Decode the audio to 16 kHz mono with ffmpeg.
-  2. pyannote finds who speaks when (exactly 2 speakers, exclusive turns).
+  2. pyannote finds who speaks when (2 to 4 speakers, exclusive turns).
   3. Silero VAD finds the speech, so cuts only ever fall inside pauses.
   4. Speech is split at speaker changes (moved to the nearest pause), long stretches are split at their longest
      pause, and close pieces of the same speaker are joined into Segments of up to ~30 s.
-  5. Qwen3-ASR transcribes each Segment; the Segment's own start/end are its timestamps.
+  5. Qwen3-ASR transcribes each Segment, with an optional glossary as context; a Segment detected as a language
+     other than Vietnamese/English/French is redone as Vietnamese. The Segment's own start/end are its timestamps.
 
 Output: <input-stem>.transcript.txt next to the input, one line per Segment:
   [HH:MM:SS.s → HH:MM:SS.s] Person N: text
@@ -26,7 +27,8 @@ import numpy as np
 import torch
 
 SAMPLE_RATE = 16000
-NUM_SPEAKERS = 2
+MIN_SPEAKERS = 2
+MAX_SPEAKERS = 4  # others in the room may speak too, e.g. students asking questions
 
 ASR_MODEL = "Qwen/Qwen3-ASR-1.7B"
 DIARIZATION_MODEL = "pyannote/speaker-diarization-community-1"
@@ -43,6 +45,8 @@ MIN_SPEAKER_PIECE_S = 0.5  # a shorter speaker piece (e.g. a quick "ừ") joins 
 
 ASR_BATCH_SIZE = 16
 ASR_MAX_NEW_TOKENS = 512
+ALLOWED_LANGUAGES = {"Vietnamese", "English", "French"}  # a Segment detected as anything else is redone
+FALLBACK_LANGUAGE = "Vietnamese"
 
 log = logging.getLogger("transcribe_audio")
 
@@ -108,7 +112,8 @@ def diarize(pipeline, audio: np.ndarray) -> list[Span]:
     """Exclusive speaker turns (one speaker at any moment), with back-to-back turns of one speaker merged."""
     output = pipeline(
         {"waveform": torch.from_numpy(audio)[None], "sample_rate": SAMPLE_RATE},
-        num_speakers=NUM_SPEAKERS,
+        min_speakers=MIN_SPEAKERS,
+        max_speakers=MAX_SPEAKERS,
     )
     turns: list[Span] = []
     for turn, speaker in output.exclusive_speaker_diarization:
@@ -241,7 +246,15 @@ def build_segments(audio: np.ndarray, turns: list[Span] | None) -> list[Span]:
     return join_close(pieces)
 
 
-def transcribe_segments(audio: np.ndarray, segments: list[Span]) -> list[str]:
+def is_unexpected_language(language: str) -> bool:
+    """True if the detected language (e.g. "Vietnamese,English") holds one outside ALLOWED_LANGUAGES.
+
+    An empty language means the ASR heard nothing, which is not unexpected.
+    """
+    return bool(language) and not set(language.split(",")) <= ALLOWED_LANGUAGES
+
+
+def transcribe_segments(audio: np.ndarray, segments: list[Span], context: str) -> list[str]:
     from qwen_asr import Qwen3ASRModel
 
     model = Qwen3ASRModel.from_pretrained(
@@ -258,8 +271,21 @@ def transcribe_segments(audio: np.ndarray, segments: list[Span]) -> list[str]:
             (audio[int(s.start * SAMPLE_RATE):int(s.end * SAMPLE_RATE)], SAMPLE_RATE) for s in batch
         ]
         # language=None: auto-detect, so Vietnamese with English/French mixed in stays as spoken
-        results = model.transcribe(audio=clips, language=None)
-        texts.extend(r.text.strip() for r in results)
+        results = model.transcribe(audio=clips, context=context, language=None)
+        batch_texts = [r.text.strip() for r in results]
+        # A short clip is sometimes heard as another language (e.g. Cantonese); redo those as Vietnamese
+        redo = [j for j, r in enumerate(results) if is_unexpected_language(r.language)]
+        if redo:
+            forced = model.transcribe(
+                audio=[clips[j] for j in redo], context=context, language=FALLBACK_LANGUAGE,
+            )
+            for j, r in zip(redo, forced):
+                log.info(
+                    "Redid %s–%s as %s (detected %s)",
+                    format_time(batch[j].start), format_time(batch[j].end), FALLBACK_LANGUAGE, results[j].language,
+                )
+                batch_texts[j] = r.text.strip()
+        texts.extend(batch_texts)
         log.info("Transcribed %d/%d segments", len(texts), len(segments))
     return texts
 
@@ -272,7 +298,7 @@ def format_time(seconds: float) -> str:
 
 
 def person_names(segments: list[Span]) -> dict[str, str]:
-    """The speaker heard first is Person 1, the next Person 2."""
+    """Speakers are numbered Person 1, Person 2, ... in the order they are first heard."""
     names: dict[str, str] = {}
     for segment in segments:
         if segment.speaker is not None and segment.speaker not in names:
@@ -297,11 +323,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Transcribe one recording into timestamped, speaker-labelled lines.")
     parser.add_argument("audio", type=Path, help="audio file (any format ffmpeg reads, e.g. .m4a)")
     parser.add_argument("--no-speakers", action="store_true", help="skip speaker labels (no Hugging Face token needed)")
+    parser.add_argument(
+        "--context", type=Path,
+        help="text file of terms the speakers use (names, foreign phrases), given to the ASR so it spells them right",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if not args.audio.is_file():
         sys.exit(f"[ERROR] Audio file not found: {args.audio}")
+    if args.context is not None and not args.context.is_file():
+        sys.exit(f"[ERROR] Context file not found: {args.context}")
     if not torch.cuda.is_available():
         sys.exit("[ERROR] No GPU visible. Run this on a compute node with a GPU.")
 
@@ -322,7 +354,8 @@ def main() -> None:
     segments = build_segments(audio, turns)
     log.info("Cut into %d segments", len(segments))
 
-    texts = transcribe_segments(audio, segments)
+    context = args.context.read_text(encoding="utf-8").strip() if args.context is not None else ""
+    texts = transcribe_segments(audio, segments, context)
 
     out_path = args.audio.with_name(f"{args.audio.stem}.transcript.txt")
     count = write_transcript(out_path, segments, texts)

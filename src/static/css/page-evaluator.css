@@ -1,4 +1,4 @@
-/* Step 2: HR Evaluator Page - Fulbright Brand Identity */
+/* Step 2: HR Evaluator Page */
 
 /* Stepped Process Navigation Header */
 .stepped-process-bar {
@@ -71,17 +71,6 @@
     height: 2px;
     background: #E2E8F0;
     margin: 0 1.25rem;
-}
-
-/* Layout Grid for Setup Stage */
-.eval-layout {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.5rem;
-}
-
-@media (max-width: 1024px) {
-    .eval-layout { grid-template-columns: 1fr; }
 }
 
 .scanned-resumes-list {
@@ -200,13 +189,6 @@
 }
 
 /* Leaderboard Table Component */
-.leaderboard-card {
-    background: #FFFFFF;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 1rem;
-}
-
 .table-responsive {
     overflow-x: auto;
 }
@@ -254,264 +236,143 @@
 .scanned-tier-block, .tier-block-card {
     background: #FFFFFF;
     border: 1px solid var(--border);
+    border-left: 4px solid var(--tier-accent);
     border-radius: var(--radius-md);
     padding: 1.25rem;
     margin-bottom: 1.25rem;
     box-shadow: var(--shadow-sm);
 }
 
-.tier-block-card.tier-1-card, .scanned-tier-block.tier-1-block {
-    border-left: 4px solid #16A34A;
-}
-
-.tier-block-card.tier-2-card, .scanned-tier-block.tier-2-block {
-    border-left: 4px solid #0077C8;
-}
-
-.tier-block-card.tier-3-card, .scanned-tier-block.tier-3-block {
-    border-left: 4px solid #64748B;
-}
-
-.tier-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: var(--radius-sm);
-    font-size: 0.74rem;
-    font-weight: 800;
-    font-family: var(--font-mono);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.tier-badge-1 {
-    background: #DCFCE7;
-    color: #15803D;
-    border: 1px solid #86EFAC;
-}
-
-.tier-badge-2 {
-    background: #E0F2FE;
-    color: #0369A1;
-    border: 1px solid #7DD3FC;
-}
-
-.tier-badge-3 {
-    background: #F1F5F9;
-    color: #475569;
-    border: 1px solid #CBD5E1;
-}
-
-/* FULL-WIDTH CANDIDATE DOSSIER INSPECTOR */
-.dossier-inspector-panel {
-    background: #FFFFFF;
-    border: 2px solid var(--brand-azure);
-    border-radius: var(--radius-lg);
-    padding: 2rem;
-    box-shadow: var(--shadow-lg);
-}
-
-.dossier-header-bar {
+/* Scanned-resume list: the secret evaluation order file's status */
+.order-banner {
     display: flex;
+    align-items: center;
     justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 1.25rem;
-    padding-bottom: 1.25rem;
-    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-weight: 600;
 }
 
-.dossier-badge-label {
-    font-size: 0.7rem;
-    font-weight: 800;
-    color: var(--brand-azure);
-    letter-spacing: 1.2px;
-    font-family: var(--font-mono);
-    text-transform: uppercase;
+.order-banner--active {
+    background: #DCFCE7;
+    border: 1px solid #86EFAC;
+    color: #15803D;
 }
 
-.dossier-title-area h2 {
-    font-size: 1.6rem;
-    font-weight: 800;
-    color: var(--brand-legacy-blue);
-    margin-top: 2px;
+.order-banner--missing {
+    background: #FFFBEB;
+    border: 1px solid #FCD34D;
+    color: #B45309;
 }
 
-.dossier-meta {
-    font-size: 0.82rem;
-    color: var(--text-muted);
-    font-family: var(--font-mono);
+.order-banner-detail {
+    font-size: 0.72rem;
+    opacity: 0.9;
 }
 
-.dossier-score-hero {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
+.scanned-tier-header {
+    margin-bottom: 8px;
 }
 
-.score-circle-outer {
-    width: 72px;
-    height: 72px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--brand-legacy-blue), var(--brand-azure));
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    color: #FFFFFF;
-    box-shadow: 0 4px 14px rgba(0, 61, 165, 0.25);
-}
-
-.score-number {
-    font-size: 1.5rem;
-    font-weight: 800;
-    font-family: var(--font-mono);
-    line-height: 1;
-}
-
-.score-max {
-    font-size: 0.65rem;
-    opacity: 0.85;
-    font-family: var(--font-mono);
-}
-
-/* Executive AI Summary Box */
-.executive-summary-box {
-    background: var(--brand-azure-mist);
-    border-left: 4px solid var(--brand-legacy-blue);
-    padding: 1.25rem 1.5rem;
-    border-radius: 0 var(--radius-md) var(--radius-md) 0;
-    margin-top: 1.25rem;
-}
-
-.exec-summary-title {
-    font-size: 0.85rem;
-    font-weight: 800;
-    color: var(--brand-legacy-blue);
-    margin-bottom: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.exec-summary-body {
-    font-family: var(--font-editorial);
-    font-size: 1.05rem;
-    line-height: 1.6;
-    color: var(--brand-navy-dark);
-}
-
-/* Strengths vs Gaps Comparison Grid */
-.strengths-gaps-split {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.25rem;
-    margin-top: 1.25rem;
-}
-
-@media (max-width: 768px) {
-    .strengths-gaps-split { grid-template-columns: 1fr; }
-}
-
-.sg-column {
-    background: #F8FAFC;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 1.1rem 1.25rem;
-}
-
-.sg-strengths { border-top: 3px solid #16A34A; }
-.sg-gaps { border-top: 3px solid #DC2626; }
-
-.sg-column h4 {
-    font-size: 0.9rem;
-    font-weight: 800;
-    margin-bottom: 0.65rem;
-}
-
-.sg-strengths h4 { color: #15803D; }
-.sg-gaps h4 { color: #B91C1C; }
-
-.sg-column ul {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+.scanned-tier-title {
+    font-weight: 700;
     font-size: 0.88rem;
+    color: var(--brand-legacy-blue);
 }
 
-.sg-strengths li { color: #166534; position: relative; padding-left: 18px; }
-.sg-strengths li::before { content: '✓'; position: absolute; left: 0; font-weight: 800; }
-
-.sg-gaps li { color: #991B1B; position: relative; padding-left: 18px; }
-.sg-gaps li::before { content: '✗'; position: absolute; left: 0; font-weight: 800; }
-
-/* 5-Dimension Scorecard Grid */
-.dimensions-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 1.25rem;
-    margin-top: 1rem;
-}
-
-.dimension-card {
-    background: #FFFFFF;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 1.25rem;
+.tier-items-list {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    box-shadow: var(--shadow-sm);
 }
 
-.dim-header {
+.select-all-label {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    font-weight: 700;
-    font-size: 0.92rem;
-    color: var(--text-main);
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 600;
 }
 
-.dim-score {
-    color: var(--brand-legacy-blue);
-    font-weight: 800;
-    font-family: var(--font-mono);
-    font-size: 1.05rem;
+.eval-search-box {
+    margin-top: 0.5rem;
 }
 
-.dim-progress-track {
-    height: 7px;
-    background: #E2E8F0;
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-}
-
-.dim-progress-fill {
-    height: 100%;
-    background: linear-gradient(to right, var(--brand-legacy-blue), var(--brand-azure));
-    border-radius: var(--radius-sm);
-}
-
-.dim-reasoning-box {
-    background: var(--brand-azure-mist);
-    border-left: 3px solid var(--brand-azure);
-    padding: 10px 12px;
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+.eval-search-box .form-control {
     font-size: 0.85rem;
-    color: var(--text-secondary);
-    line-height: 1.5;
-    margin-top: 6px;
-    font-family: var(--font-sans);
 }
 
-.dim-list {
-    font-size: 0.82rem;
-    color: var(--text-secondary);
-    margin-left: 1.2rem;
+.btn-wide {
+    min-width: 250px;
 }
+
+/* Results stage header and leaderboards */
+.results-panel-header {
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.results-panel-header h2 {
+    color: var(--color-primary);
+    font-size: 1.4rem;
+}
+
+.leaderboard-header {
+    margin-bottom: 14px;
+}
+
+.leaderboard-title-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.leaderboard-title {
+    margin: 0;
+    color: var(--brand-legacy-blue);
+    font-size: 1.1rem;
+}
+
+.leaderboard-count {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.leaderboard-name {
+    color: var(--brand-legacy-blue);
+    font-size: 0.95rem;
+}
+
+.leaderboard-email {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.leaderboard-score {
+    color: var(--brand-azure);
+    font-size: 1.2rem;
+    font-family: var(--font-mono);
+}
+
+/* Shown but not ranked: a Must-have Rejection's score, or the dash of an unscored result */
+.leaderboard-score--muted {
+    color: var(--text-muted);
+}
+
+.leaderboard-score-max {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.leaderboard-tally {
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.leaderboard-tally-strengths { color: #15803D; }
+.leaderboard-tally-gaps { color: #B91C1C; }
 
 /* Criteria Editor & Verification Stage */
 .rag-verify-header {
@@ -523,6 +384,16 @@
     margin-bottom: 1.25rem;
     padding-bottom: 1rem;
     border-bottom: 1px solid var(--border);
+}
+
+.rag-verify-header h2 {
+    color: var(--brand-legacy-blue);
+    font-size: 1.3rem;
+}
+
+/* hr_rag.txt preview tab */
+.raw-file-pane {
+    margin-bottom: 1.5rem;
 }
 
 /* Step 2 notice: the evaluator judges only the stated Criteria */
@@ -716,4 +587,8 @@
     color: #15803D;
 }
 
-
+.active-rag-banner-body {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}

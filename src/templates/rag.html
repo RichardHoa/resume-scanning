@@ -1,0 +1,60 @@
+{# RAG Knowledge Base Workbench #}
+{% extends "base.html" %}
+{% block title %}Kho tri thức RAG{% endblock %}
+{% block heading %}Quản lý cơ sở dữ liệu vector RAG{% endblock %}
+{% block description %}Xem và chỉnh sửa các tiêu chí đã phân rã, được lưu lâu dài trong ChromaDB theo 5 chiều.{% endblock %}
+{% block content %}
+            <div class="page-view active" id="page-rag">
+                <div class="panel">
+                    <div class="panel-header-split">
+                        <div>
+                            <h2>Kho tri thức tiêu chí RAG</h2>
+                            <p>Cơ sở dữ liệu vector cục bộ lưu trữ lâu dài (<code id="rag-db-path">rag/chroma_db</code>).</p>
+                        </div>
+                        <div class="action-row">
+                            <button class="btn btn-secondary" id="btn-refresh-rag" type="button">
+                                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Làm mới RAG
+                            </button>
+                            <button class="btn btn-danger" id="btn-clear-rag" type="button">
+                                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg> Xóa CSDL RAG
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Vector Store Summary Status Banner -->
+                    <div id="rag-status-banner" class="rag-status-banner">
+                        <div>
+                            <span class="rag-status-label">Trạng thái: </span>
+                            <span id="rag-status-badge" class="badge-success">RAG đang hoạt động</span>
+                        </div>
+                        <div>
+                            <span class="rag-status-label">Bộ máy: </span>
+                            <span id="rag-engine-badge" class="rag-engine-tag">Kho lưu trữ ChromaDB</span>
+                        </div>
+                        <div>
+                            <span class="rag-status-label">Tổng số tiêu chí: </span>
+                            <span id="rag-total-count" class="rag-total-count">0</span>
+                        </div>
+                    </div>
+
+                    <!-- Shared Criteria Editor (Category × Importance matrix) -->
+                    <div id="rag-categories-grid" class="criteria-editor-grid rag-categories-editor">
+                        <div class="loading-state">Đang tải kho tri thức RAG...</div>
+                    </div>
+
+                    <div class="rag-save-bar">
+                        <button class="btn btn-primary" id="btn-save-rag" type="button" disabled>
+                            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg> Lưu vào RAG
+                        </button>
+                    </div>
+
+                    <!-- Decomposed Requirement Text File Preview -->
+                    <div class="hr-rag-preview">
+                        <h3>Tệp tóm tắt yêu cầu HR (<code>hr_rag.txt</code>)</h3>
+                        <div class="logs-content-pane">
+                            <pre><code id="hr-rag-code-view">Đang tải nội dung hr_rag.txt...</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+{% endblock %}

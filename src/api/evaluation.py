@@ -33,6 +33,7 @@ from src.core.run_files import (
     clear_resume_evaluation, extraction_markdown_path, run_dir_of_evaluation, run_dir_of_extraction
 )
 from src.core.dev_details import resume_dev_details
+from src.pipelines.evaluator_backend import evaluation_report_filename
 from src.reports.candidate_report import build_candidate_report_pdf
 
 router = APIRouter(prefix="/api", tags=["evaluation"])
@@ -187,6 +188,9 @@ async def _run_batch_evaluation(
                 eval_result["tier"] = item["tier"]
                 eval_result["tier_name"] = item["tier_name"]
                 eval_result["tier_order"] = item["tier_order"]
+                # As list_eval_results adds them, so the page's report view can link the saved report and resume PDF
+                eval_result["filename"] = evaluation_report_filename(base_name)
+                eval_result["has_resume_pdf"] = find_resume_pdf(eval_result.get("resume_name") or fname) is not None
                 return eval_result
             except Exception as e:
                 print(f"Error evaluating {fname}: {e}\n{traceback.format_exc()}", file=sys.stderr)

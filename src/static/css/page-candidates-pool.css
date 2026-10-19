@@ -1,5 +1,5 @@
 /* ==============================================================================
- * Candidate Evaluation Pool Page Styles (Harmonious Executive Light Theme)
+ * Candidate Evaluation Pool Page Styles
  * ============================================================================== */
 
 /* Stats Summary Grid */
@@ -47,10 +47,10 @@
     line-height: 1.1;
 }
 
-.stat-strong .stat-number { color: #059669; } /* Emerald green */
-.stat-potential .stat-number { color: #0284C7; } /* Sky blue */
-.stat-low .stat-number { color: #D97706; } /* Warm amber */
-.stat-reject .stat-number { color: #DC2626; } /* Vivid crimson */
+.stat-strong .stat-number { color: var(--score-high); }
+.stat-potential .stat-number { color: var(--score-mid); }
+.stat-low .stat-number { color: var(--score-low); }
+.stat-reject .stat-number { color: var(--score-reject); }
 
 /* Toolbar: Search input & filter dropdowns */
 .cand-toolbar {
@@ -230,77 +230,6 @@
     flex-wrap: wrap;
 }
 
-.match-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px 12px;
-    border-radius: var(--radius-sm);
-    font-size: 0.78rem;
-    font-weight: 800;
-    font-family: var(--font-mono);
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-}
-
-.match-strong {
-    background: #ECFDF5;
-    color: #047857;
-    border: 1.5px solid #A7F3D0;
-}
-
-.match-potential {
-    background: #F0F9FF;
-    color: #0369A1;
-    border: 1.5px solid #BAE6FD;
-}
-
-.match-low {
-    background: #FFFBEB;
-    color: #B45309;
-    border: 1.5px solid #FDE68A;
-}
-
-.match-reject {
-    background: #FEF2F2;
-    color: #B91C1C;
-    border: 1.5px solid #FECACA;
-}
-
-.match-error {
-    background: #F8FAFC;
-    color: #334155;
-    border: 1.5px solid #CBD5E1;
-}
-
-.tier-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 10px;
-    border-radius: var(--radius-sm);
-    font-size: 0.76rem;
-    font-weight: 800;
-    font-family: var(--font-mono);
-    letter-spacing: 0.02em;
-}
-
-.tier-badge-1 { background: #E0E7FF; color: #3730A3; border: 1px solid #C7D2FE; }
-.tier-badge-2 { background: #E0F2FE; color: #075985; border: 1px solid #BAE6FD; }
-.tier-badge-3 { background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; }
-
-/* Rank of a tier-1 candidate in the secret evaluation order */
-.tier-rank-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 8px;
-    border-radius: var(--radius-sm);
-    font-size: 0.76rem;
-    font-weight: 800;
-    font-family: var(--font-mono);
-    background: #3730A3;
-    color: #FFFFFF;
-}
-
 /* Match Score Breakdown Bars (Vital Info) */
 .cand-dimensions-breakdown {
     background: #F8FAFC;
@@ -339,24 +268,6 @@
     font-family: var(--font-mono);
 }
 
-.dim-progress-track {
-    height: 6px;
-    background: #E2E8F0;
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.dim-progress-fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.4s ease-out;
-}
-
-.fill-emerald { background: #059669; }
-.fill-cyan { background: #0284C7; }
-.fill-amber { background: #D97706; }
-.fill-crimson { background: #DC2626; }
-
 /* Card Footer */
 .cand-card-footer {
     display: flex;
@@ -385,27 +296,14 @@
 
 /* Tier Block Containers */
 .cand-tier-block {
-    background: #FFFFFF;
+    grid-column: 1 / -1;
+    background: linear-gradient(180deg, var(--tier-wash) 0%, #FFFFFF 100%);
     border: 1.5px solid #CBD5E1;
+    border-left: 6px solid var(--tier-accent);
     border-radius: var(--radius-md);
     padding: 1.5rem;
     margin-bottom: 1.75rem;
     box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
-}
-
-.cand-tier-block.tier-1-block {
-    border-left: 6px solid #059669;
-    background: linear-gradient(180deg, #F0FDF4 0%, #FFFFFF 100%);
-}
-
-.cand-tier-block.tier-2-block {
-    border-left: 6px solid #0284C7;
-    background: linear-gradient(180deg, #F0F9FF 0%, #FFFFFF 100%);
-}
-
-.cand-tier-block.tier-3-block {
-    border-left: 6px solid #475569;
-    background: linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 100%);
 }
 
 .cand-tier-header {
@@ -430,6 +328,31 @@
     margin: 0;
 }
 
+.cand-tier-count {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #334155;
+}
+
+/* No candidate matches the search or filter: spans the whole grid */
+.empty-state--grid {
+    grid-column: 1 / -1;
+    padding: 3rem 1rem;
+}
+
+.empty-state--grid .empty-icon {
+    margin-bottom: 1rem;
+}
+
+.empty-state--grid h3 {
+    color: #0F172A;
+    font-weight: 800;
+}
+
+.empty-state--grid p {
+    color: #334155;
+}
+
 /* Must-have Rejection: the must-have Criteria the resume shows no evidence for, which put the candidate out */
 .cand-must-have-rejection {
     background: var(--danger-bg);
@@ -445,21 +368,4 @@
 
 .cand-must-have-rejection strong {
     color: var(--danger);
-}
-
-/* HR warning badges: OCR review, Missing Position */
-.badge-ocr-review {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background: #FEF3C7;
-    color: #78350F;
-    border: 1.5px solid #F59E0B;
-    border-radius: var(--radius-sm);
-    padding: 4px 10px;
-    font-size: 0.74rem;
-    font-weight: 800;
-    font-family: var(--font-mono);
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
 }

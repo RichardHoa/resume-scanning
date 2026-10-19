@@ -329,6 +329,11 @@ def aggregate_evaluation_results(
     return dimension_results, category_timings, overall_score, recommendation, failed_category_keys
 
 
+def evaluation_report_filename(resume_name: str) -> str:
+    """File name of a resume's evaluation report in an output directory, as find_eval_file looks it up."""
+    return f"{re.sub(r'[^a-zA-Z0-9_-]', '_', resume_name)}_evaluation.json"
+
+
 def save_evaluation_report(
     evaluation_output: Dict[str, Any],
     resume_name: str,
@@ -338,8 +343,7 @@ def save_evaluation_report(
     """Helper to save evaluation report JSON to disk."""
     out_target = output_path
     if not out_target and output_dir:
-        out_filename = f"{re.sub(r'[^a-zA-Z0-9_-]', '_', resume_name)}_evaluation.json"
-        out_target = os.path.join(output_dir, out_filename)
+        out_target = os.path.join(output_dir, evaluation_report_filename(resume_name))
 
     if out_target:
         try:

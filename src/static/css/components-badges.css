@@ -1,0 +1,141 @@
+/* UI Component System - Badges, Pills, Score Colours & Tier Colours
+ * The one owner of each badge. Match bands are the keys matchBand() returns and score
+ * tones the ones scoreBand() returns (js/modules/report.js). */
+
+/* Status Badges */
+.badge-success {
+    background-color: #DCFCE7;
+    color: #15803D;
+    border: 1px solid #86EFAC;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 0.78rem;
+    font-weight: 700;
+    font-family: var(--font-mono);
+}
+
+/* HR warnings: Scanned Resume, Missing Position, empty RAG */
+.badge-warning {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--warning-bg-strong);
+    color: var(--warning-fg);
+    border: 1.5px solid var(--warning-border);
+    border-radius: var(--radius-sm);
+    padding: 4px 10px;
+    font-size: 0.74rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+/* Match pill: a report's match band, or why it has none */
+.match-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.78rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.band-STRONG_MATCH {
+    background: var(--band-strong-bg);
+    color: var(--band-strong-fg);
+    border: 1.5px solid var(--band-strong-border);
+}
+
+.band-POTENTIAL_MATCH {
+    background: var(--band-potential-bg);
+    color: var(--band-potential-fg);
+    border: 1.5px solid var(--band-potential-border);
+}
+
+.band-LOW_MATCH {
+    background: var(--band-low-bg);
+    color: var(--band-low-fg);
+    border: 1.5px solid var(--band-low-border);
+}
+
+/* A Must-have Rejection reads as a rejection */
+.band-REJECT, .band-MUST_HAVE_REJECTED {
+    background: var(--band-reject-bg);
+    color: var(--band-reject-fg);
+    border: 1.5px solid var(--band-reject-border);
+}
+
+.band-ERROR {
+    background: var(--band-neutral-bg);
+    color: var(--band-neutral-fg);
+    border: 1.5px solid var(--band-neutral-border);
+}
+
+/* Evaluation-order tier badges */
+.tier-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 0.76rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.tier-badge-1 { background: var(--tier-1-bg); color: var(--tier-1-fg); border: 1px solid var(--tier-1-border); }
+.tier-badge-2 { background: var(--tier-2-bg); color: var(--tier-2-fg); border: 1px solid var(--tier-2-border); }
+.tier-badge-3 { background: var(--tier-3-bg); color: var(--tier-3-fg); border: 1px solid var(--tier-3-border); }
+
+/* Rank of a tier-1 candidate in the secret evaluation order */
+.tier-rank-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 0.76rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    background: var(--tier-1-fg);
+    color: var(--color-card);
+}
+
+/* Tier sections: each block type draws its own border and wash from these */
+.tier-1-block { --tier-accent: var(--tier-1-accent); --tier-wash: var(--tier-1-wash); }
+.tier-2-block { --tier-accent: var(--tier-2-accent); --tier-wash: var(--tier-2-wash); }
+.tier-3-block { --tier-accent: var(--tier-3-accent); --tier-wash: var(--tier-3-wash); }
+
+/* Score numbers by band; a score shown but not ranked is muted */
+.score--high { color: var(--score-high); }
+.score--mid { color: var(--score-mid); }
+.score--low { color: var(--score-low); }
+.score--reject { color: var(--score-reject); }
+.score--muted { color: var(--score-muted); }
+
+/* Score bars */
+.dim-progress-track {
+    height: 6px;
+    background: #E2E8F0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.dim-progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease-out;
+}
+
+.bar-fill--high { background: var(--score-high); }
+.bar-fill--mid { background: var(--score-mid); }
+.bar-fill--low { background: var(--score-low); }
+.bar-fill--reject { background: var(--score-reject); }

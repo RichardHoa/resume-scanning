@@ -5,7 +5,6 @@
  * Description: How HR reads a Criterion's share of its Category's 100 points, on the
  *              RAG page's live preview and in the candidate modal. The PDF report's
  *              points_label in src/reports/candidate_report.py uses the same wording.
- * Line Count: ~40 lines (Strict Limit: < 500 lines)
  */
 
 /**

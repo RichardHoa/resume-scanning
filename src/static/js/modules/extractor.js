@@ -4,16 +4,19 @@
  * ==============================================================================
  * Description: Manages PDF file drag-and-drop, upload submission, extraction
  *              progress spinner state, and visual tab rendering for parsed JSON.
- * Line Count: ~350 lines (Strict Limit: < 500 lines)
  */
 
 import { API } from './api.js';
 import { WaitingScreen } from './waiting-screen.js';
+import { byId, downloadBlob } from './dom.js';
+import { html } from './html.js';
+import { MISSING_POSITION_MESSAGE } from './report.js';
 
 export class ExtractorController {
     constructor() {
         this.selectedFile = null;
         this.extractedJsonData = null;
+        this.isFullVisual = false;
         this.waitingScreen = new WaitingScreen();
 
         this.initDOMElements();
@@ -24,91 +27,83 @@ export class ExtractorController {
      * Binds DOM element references required for file upload and JSON visualization.
      */
     initDOMElements() {
-        this.dropzone = document.getElementById('dropzone');
-        this.fileInput = document.getElementById('file-input');
-        this.browseLink = document.querySelector('.browse-link');
-        this.filePreview = document.getElementById('file-preview');
-        this.previewFilename = document.getElementById('preview-filename');
-        this.previewFilesize = document.getElementById('preview-filesize');
-        this.btnRemoveFile = document.getElementById('btn-remove-file');
-        this.btnExtract = document.getElementById('btn-extract');
+        this.dropzone = byId('dropzone');
+        this.fileInput = byId('file-input');
+        this.browseLink = this.dropzone.querySelector('.browse-link');
+        this.filePreview = byId('file-preview');
+        this.previewFilename = byId('preview-filename');
+        this.previewFilesize = byId('preview-filesize');
+        this.btnRemoveFile = byId('btn-remove-file');
+        this.btnExtract = byId('btn-extract');
 
-        this.uploadSection = document.getElementById('upload-section');
-        this.resultsSection = document.getElementById('results-section');
-        this.jsonOutput = document.getElementById('json-output');
+        this.uploadSection = byId('upload-section');
+        this.resultsSection = byId('results-section');
+        this.jsonOutput = byId('json-output');
+        this.warningBanner = byId('warning-banner');
+        this.warningList = byId('warning-list');
+        this.badgeTime = byId('badge-time');
+        this.valTime = byId('val-time');
 
-        this.btnToggleView = document.getElementById('btn-toggle-view');
-        this.dashboardSplit = document.querySelector('.dashboard-split');
-        this.codePane = document.querySelector('.code-pane');
+        this.btnToggleView = byId('btn-toggle-view');
+        this.dashboardSplit = this.resultsSection.querySelector('.dashboard-split');
+        this.codePane = this.resultsSection.querySelector('.code-pane');
 
-        this.btnCopy = document.getElementById('btn-copy');
-        this.btnDownload = document.getElementById('btn-download');
-        this.btnReset = document.getElementById('btn-reset');
+        this.btnCopy = byId('btn-copy');
+        this.btnDownload = byId('btn-download');
+        this.btnReset = byId('btn-reset');
 
-        this.tabButtons = document.querySelectorAll('.tab-btn');
-        this.tabContents = document.querySelectorAll('.tab-content');
-        this.isFullVisual = false;
+        this.tabButtons = this.resultsSection.querySelectorAll('.tab-btn');
+        this.tabContents = this.resultsSection.querySelectorAll('.tab-content');
     }
 
     /**
      * Registers event listeners for drag-and-drop file upload, extraction actions, and tab navigation.
      */
     initEvents() {
-        if (this.browseLink) {
-            this.browseLink.addEventListener('click', () => this.fileInput.click());
-        }
+        this.browseLink.addEventListener('click', () => this.fileInput.click());
+        // The dropzone is a button too; keys on the browse link inside it are the link's own
+        this.dropzone.addEventListener('keydown', (e) => {
+            if (e.target !== this.dropzone || (e.key !== 'Enter' && e.key !== ' ')) return;
+            e.preventDefault();
+            this.fileInput.click();
+        });
 
-        if (this.fileInput) {
-            this.fileInput.addEventListener('change', (e) => {
-                if (e.target.files.length > 0) this.handleFileSelect(e.target.files[0]);
+        this.fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) this.handleFileSelect(e.target.files[0]);
+        });
+
+        ['dragenter', 'dragover'].forEach(evt => {
+            this.dropzone.addEventListener(evt, (e) => {
+                e.preventDefault();
+                this.dropzone.classList.add('dragover');
             });
-        }
-
-        if (this.dropzone) {
-            ['dragenter', 'dragover'].forEach(evt => {
-                this.dropzone.addEventListener(evt, (e) => {
-                    e.preventDefault();
-                    this.dropzone.classList.add('dragover');
-                });
+        });
+        ['dragleave', 'drop'].forEach(evt => {
+            this.dropzone.addEventListener(evt, (e) => {
+                e.preventDefault();
+                this.dropzone.classList.remove('dragover');
             });
+        });
+        this.dropzone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) this.handleFileSelect(files[0]);
+        });
 
-            ['dragleave', 'drop'].forEach(evt => {
-                this.dropzone.addEventListener(evt, (e) => {
-                    e.preventDefault();
-                    this.dropzone.classList.remove('dragover');
-                });
-            });
-
-            this.dropzone.addEventListener('drop', (e) => {
-                const files = e.dataTransfer.files;
-                if (files.length > 0) this.handleFileSelect(files[0]);
-            });
-        }
-
-        if (this.btnRemoveFile) {
-            this.btnRemoveFile.addEventListener('click', () => this.resetFileInput());
-        }
-
-        if (this.btnExtract) {
-            this.btnExtract.addEventListener('click', () => this.runExtraction());
-        }
-
-        if (this.btnToggleView) {
-            this.btnToggleView.addEventListener('click', () => this.toggleViewMode());
-        }
-
-        if (this.btnCopy) this.btnCopy.addEventListener('click', () => this.copyJson());
-        if (this.btnDownload) this.btnDownload.addEventListener('click', () => this.downloadJson());
-        if (this.btnReset) this.btnReset.addEventListener('click', () => this.resetView());
+        this.btnRemoveFile.addEventListener('click', () => this.resetFileInput());
+        this.btnExtract.addEventListener('click', () => this.runExtraction());
+        this.btnToggleView.addEventListener('click', () => this.toggleViewMode());
+        this.btnCopy.addEventListener('click', () => this.copyJson());
+        this.btnDownload.addEventListener('click', () => this.downloadJson());
+        this.btnReset.addEventListener('click', () => this.resetView());
 
         // Visual Pane Tab Switching
         this.tabButtons.forEach(btn => {
             btn.addEventListener('click', () => {
-                const tabId = btn.getAttribute('data-tab');
-                this.tabButtons.forEach(b => b.classList.remove('active'));
-                this.tabContents.forEach(c => c.classList.remove('active'));
-                btn.classList.add('active');
-                document.getElementById(tabId)?.classList.add('active');
+                this.tabButtons.forEach(b => {
+                    b.classList.toggle('active', b === btn);
+                    b.setAttribute('aria-selected', String(b === btn));
+                });
+                this.tabContents.forEach(c => c.classList.toggle('active', c.id === btn.dataset.tab));
             });
         });
     }
@@ -117,17 +112,10 @@ export class ExtractorController {
      * Toggles between Split View (Code + Visual) and Full Visual View (Visual Only 100% width).
      */
     toggleViewMode() {
-        if (!this.dashboardSplit) return;
         this.isFullVisual = !this.isFullVisual;
-        if (this.isFullVisual) {
-            this.dashboardSplit.classList.add('full-visual-mode');
-            if (this.codePane) this.codePane.style.display = 'none';
-            if (this.btnToggleView) this.btnToggleView.textContent = '👁️ Hiện chia đôi màn hình';
-        } else {
-            this.dashboardSplit.classList.remove('full-visual-mode');
-            if (this.codePane) this.codePane.style.display = 'flex';
-            if (this.btnToggleView) this.btnToggleView.textContent = '👁️ Chỉ trực quan / Chia đôi';
-        }
+        this.dashboardSplit.classList.toggle('full-visual-mode', this.isFullVisual);
+        this.codePane.hidden = this.isFullVisual;
+        this.btnToggleView.textContent = this.isFullVisual ? '👁️ Hiện chia đôi màn hình' : '👁️ Chỉ trực quan / Chia đôi';
     }
 
     /**
@@ -142,8 +130,8 @@ export class ExtractorController {
         this.selectedFile = file;
         this.previewFilename.textContent = file.name;
         this.previewFilesize.textContent = this.formatBytes(file.size);
-        this.dropzone.style.display = 'none';
-        this.filePreview.style.display = 'flex';
+        this.dropzone.hidden = true;
+        this.filePreview.hidden = false;
         this.btnExtract.disabled = false;
     }
 
@@ -152,10 +140,10 @@ export class ExtractorController {
      */
     resetFileInput() {
         this.selectedFile = null;
-        if (this.fileInput) this.fileInput.value = '';
-        if (this.filePreview) this.filePreview.style.display = 'none';
-        if (this.dropzone) this.dropzone.style.display = 'flex';
-        if (this.btnExtract) this.btnExtract.disabled = true;
+        this.fileInput.value = '';
+        this.filePreview.hidden = true;
+        this.dropzone.hidden = false;
+        this.btnExtract.disabled = true;
     }
 
     /**
@@ -168,7 +156,7 @@ export class ExtractorController {
                 'extract',
                 'Đang trích xuất CV PDF...',
                 'Đang đọc tệp PDF và cấu trúc hóa thông tin CV bằng mô hình AI cục bộ.',
-                () => API.extractCv(this.selectedFile, 'vietnamese')
+                () => API.extractCv(this.selectedFile)
             );
             this.extractedJsonData = data;
             this.displayResults(data, extractionTime);
@@ -183,125 +171,99 @@ export class ExtractorController {
      * @param {string|null} extractionTime - Execution time header string.
      */
     displayResults(data, extractionTime) {
-        if (this.jsonOutput) {
-            this.jsonOutput.textContent = JSON.stringify(data, null, 2);
-        }
+        this.jsonOutput.textContent = JSON.stringify(data, null, 2);
 
-        this.renderParsedData(data);
+        this.renderProfile(data);
+        this.renderExperience(data.work_experience || []);
+        this.renderEducation(data.education_background || []);
+        this.renderCertifications(data.certifications || [], data.languages || []);
+        this.renderSkills(data.skills || []);
+        this.renderProjects(data.projects || []);
 
-        // Render warnings if present
-        const warningBanner = document.getElementById('warning-banner');
-        const warningList = document.getElementById('warning-list');
-        if (warningBanner && warningList) {
-            warningList.innerHTML = '';
-            const warnings = data.warning || [];
-            if (warnings.length > 0) {
-                warnings.forEach(msg => {
-                    const li = document.createElement('li');
-                    li.textContent = msg;
-                    warningList.appendChild(li);
-                });
-                warningBanner.style.display = 'block';
-            } else {
-                warningBanner.style.display = 'none';
-            }
-        }
+        const warnings = data.warning || [];
+        this.warningList.innerHTML = html`${warnings.map(msg => html`<li>${msg}</li>`)}`;
+        this.warningBanner.hidden = warnings.length === 0;
 
-        const badgeTime = document.getElementById('badge-time');
-        const valTime = document.getElementById('val-time');
-        if (extractionTime && badgeTime && valTime) {
-            valTime.textContent = parseFloat(extractionTime).toFixed(2) + 's';
-            badgeTime.style.display = 'flex';
-        } else if (badgeTime) {
-            badgeTime.style.display = 'none';
-        }
+        if (extractionTime) this.valTime.textContent = parseFloat(extractionTime).toFixed(2) + 's';
+        this.badgeTime.hidden = !extractionTime;
 
-        this.uploadSection.style.display = 'none';
-        this.resultsSection.style.display = 'flex';
+        this.uploadSection.hidden = true;
+        this.resultsSection.hidden = false;
     }
 
     /**
-     * Renders parsed data across profile, experience, education, and skills tabs.
-     * @param {Object} data - Structured resume JSON.
+     * Fills a list from items, or shows a note when there are none.
+     * @param {HTMLElement} el - The list container.
+     * @param {Array} items
+     * @param {string} emptyText - Shown when items is empty.
+     * @param {function(*): SafeHtml} renderItem - Markup for one item.
      */
-    renderParsedData(data) {
-        // 1. Profile Tab
+    renderList(el, items, emptyText, renderItem) {
+        el.innerHTML = items.length > 0
+            ? html`${items.map(renderItem)}`
+            : html`<p class="summary-text">${emptyText}</p>`;
+    }
+
+    /** Profile tab: applied position, contact details and self-evaluation. */
+    renderProfile(data) {
         const applied = data.position_applied || {};
-        // A Missing Position is never evaluated; HR sees it here, right after upload
-        const positionEl = document.getElementById('profile-position');
+        // A Missing Position is still evaluated, as if applying for the job HR evaluates against; HR sees it here, right after upload
+        const positionEl = byId('profile-position');
         const missingPosition = !(typeof applied.title === 'string' && applied.title.trim());
-        positionEl.textContent = missingPosition ? '⚠️ Không tìm thấy vị trí ứng tuyển — CV này sẽ không được đánh giá' : applied.title;
-        positionEl.style.color = missingPosition ? '#B91C1C' : '';
-        document.getElementById('profile-level').textContent = applied.level || 'Chưa rõ';
+        positionEl.textContent = missingPosition ? `⚠️ ${MISSING_POSITION_MESSAGE}` : applied.title;
+        positionEl.classList.toggle('profile-position--missing', missingPosition);
+        byId('profile-level').textContent = applied.level || 'Chưa rõ';
 
         const basic = data.basic_information || {};
-        document.getElementById('profile-email').textContent = basic.email || 'Không có';
-        document.getElementById('profile-phone').textContent = basic.phone || 'Không có';
-        document.getElementById('profile-location').textContent = basic.location || 'Không có';
-        document.getElementById('profile-links').textContent = basic.other_info || 'Không có';
-        document.getElementById('profile-summary').textContent = data.self_evaluation || 'Không có phần tự đánh giá.';
+        byId('profile-email').textContent = basic.email || 'Không có';
+        byId('profile-phone').textContent = basic.phone || 'Không có';
+        byId('profile-location').textContent = basic.location || 'Không có';
+        byId('profile-links').textContent = basic.other_info || 'Không có';
+        byId('profile-summary').textContent = data.self_evaluation || 'Không có phần tự đánh giá.';
+    }
 
-        // 2. Work Experience Tab
-        const expTimeline = document.getElementById('experience-timeline');
-        expTimeline.innerHTML = '';
-        const jobs = data.work_experience || [];
-        if (jobs.length === 0) {
-            expTimeline.innerHTML = '<p class="summary-text" style="text-align: center; padding: 2rem 0;">Không tìm thấy kinh nghiệm làm việc.</p>';
-        } else {
-            jobs.forEach(job => {
-                const card = document.createElement('div');
-                card.className = 'timeline-card';
-                let respHtml = '';
-                if (job.responsibilities) {
-                    if (Array.isArray(job.responsibilities)) {
-                        respHtml = `<div class="job-responsibilities"><ul>${job.responsibilities.map(r => `<li>${this.escapeHtml(r)}</li>`).join('')}</ul></div>`;
-                    } else {
-                        respHtml = `<div class="job-responsibilities">${this.escapeHtml(job.responsibilities)}</div>`;
-                    }
-                }
-                card.innerHTML = `
+    /** Work Experience tab: one timeline card per job. */
+    renderExperience(jobs) {
+        this.renderList(byId('experience-timeline'), jobs, 'Không tìm thấy kinh nghiệm làm việc.', job => {
+            const resp = job.responsibilities;
+            const respHtml = resp && html`<div class="job-responsibilities">${Array.isArray(resp)
+                ? html`<ul>${resp.map(r => html`<li>${r}</li>`)}</ul>`
+                : resp}</div>`;
+            return html`
+                <div class="timeline-card">
                     <div class="timeline-card-header">
                         <div>
-                            <div class="job-title">${this.escapeHtml(job.position || 'Vị trí')}</div>
-                            <div class="company-name">${this.escapeHtml(job.company_name || 'Không có')}</div>
+                            <div class="job-title">${job.position || 'Vị trí'}</div>
+                            <div class="company-name">${job.company_name || 'Không có'}</div>
                         </div>
-                        <span class="job-duration">${this.escapeHtml(job.duration || 'Không có')}</span>
+                        <span class="job-duration">${job.duration || 'Không có'}</span>
                     </div>
-                    ${job.company_description ? `<div class="company-desc">${this.escapeHtml(job.company_description)}</div>` : ''}
+                    ${job.company_description && html`<div class="company-desc">${job.company_description}</div>`}
                     ${respHtml}
-                `;
-                expTimeline.appendChild(card);
-            });
-        }
+                </div>
+            `;
+        });
+    }
 
-        // 3. Education & Certifications Tab
-        const eduList = document.getElementById('education-list');
-        eduList.innerHTML = '';
-        const schools = data.education_background || [];
-        if (schools.length === 0) {
-            eduList.innerHTML = '<p class="summary-text">Không tìm thấy thông tin học vấn.</p>';
-        } else {
-            schools.forEach(school => {
-                const item = document.createElement('div');
-                item.className = 'education-item';
-                const meta = [];
-                if (school.field_of_study) meta.push(`Chuyên ngành: ${school.field_of_study}`);
-                if (school.gpa) meta.push(`GPA: ${school.gpa}`);
-                item.innerHTML = `
-                    <div class="univ-name">${this.escapeHtml(school.university_name || 'Không có')}</div>
-                    <div class="edu-degree">${this.escapeHtml(school.degree || 'Không rõ bằng cấp')} (${school.graduation_year || 'Không có'})</div>
-                    ${meta.length > 0 ? `<div class="edu-meta">${this.escapeHtml(meta.join(' | '))}</div>` : ''}
-                `;
-                eduList.appendChild(item);
-            });
-        }
+    /** Education tab: one card per school. */
+    renderEducation(schools) {
+        this.renderList(byId('education-list'), schools, 'Không tìm thấy thông tin học vấn.', school => {
+            const meta = [];
+            if (school.field_of_study) meta.push(`Chuyên ngành: ${school.field_of_study}`);
+            if (school.gpa) meta.push(`GPA: ${school.gpa}`);
+            return html`
+                <div class="education-item">
+                    <div class="univ-name">${school.university_name || 'Không có'}</div>
+                    <div class="edu-degree">${school.degree || 'Không rõ bằng cấp'} (${school.graduation_year || 'Không có'})</div>
+                    ${meta.length > 0 && html`<div class="edu-meta">${meta.join(' | ')}</div>`}
+                </div>
+            `;
+        });
+    }
 
-        const certsList = document.getElementById('certifications-list');
-        certsList.innerHTML = '';
-        const certs = data.certifications || [];
-        const languages = data.languages || [];
-        const certItems = [];
-        certs.forEach(c => certItems.push({ name: c.name, org: c.issuing_organization, dur: c.duration }));
+    /** Certifications list: certificates, then language certificates or, without one, the stated proficiency. */
+    renderCertifications(certs, languages) {
+        const certItems = certs.map(c => ({ name: c.name, org: c.issuing_organization, dur: c.duration }));
         languages.forEach(l => {
             if (l.certificates && l.certificates.length > 0) {
                 l.certificates.forEach(lc => certItems.push({ name: `${l.language}: ${lc.name}`, org: lc.issuing_organization || 'Tổ chức cấp', dur: lc.duration }));
@@ -309,51 +271,27 @@ export class ExtractorController {
                 certItems.push({ name: `Ngoại ngữ: ${l.language}`, org: l.proficiency, dur: '' });
             }
         });
-        if (certItems.length === 0) {
-            certsList.innerHTML = '<p class="summary-text">Không tìm thấy chứng chỉ.</p>';
-        } else {
-            certItems.forEach(cert => {
-                const card = document.createElement('div');
-                card.className = 'cert-card';
-                card.innerHTML = `
-                    <div class="cert-title">${this.escapeHtml(cert.name)}</div>
-                    <div class="cert-org">${this.escapeHtml(cert.org || 'Không có')} ${cert.dur ? `• ${this.escapeHtml(cert.dur)}` : ''}</div>
-                `;
-                certsList.appendChild(card);
-            });
-        }
+        this.renderList(byId('certifications-list'), certItems, 'Không tìm thấy chứng chỉ.', cert => html`
+            <div class="cert-card">
+                <div class="cert-title">${cert.name}</div>
+                <div class="cert-org">${cert.org || 'Không có'} ${cert.dur && `• ${cert.dur}`}</div>
+            </div>
+        `);
+    }
 
-        // 4. Skills & Projects Tab
-        const skillsList = document.getElementById('skills-list');
-        skillsList.innerHTML = '';
-        const skills = data.skills || [];
-        if (skills.length === 0) {
-            skillsList.innerHTML = '<p class="summary-text">Không tìm thấy kỹ năng.</p>';
-        } else {
-            skills.forEach(sk => {
-                const pill = document.createElement('span');
-                pill.className = 'skill-pill';
-                pill.textContent = sk;
-                skillsList.appendChild(pill);
-            });
-        }
+    /** Skills list: one pill per skill. */
+    renderSkills(skills) {
+        this.renderList(byId('skills-list'), skills, 'Không tìm thấy kỹ năng.', skill => html`<span class="skill-pill">${skill}</span>`);
+    }
 
-        const projectsList = document.getElementById('projects-list');
-        projectsList.innerHTML = '';
-        const projects = data.projects || [];
-        if (projects.length === 0) {
-            projectsList.innerHTML = '<p class="summary-text">Không tìm thấy dự án.</p>';
-        } else {
-            projects.forEach(p => {
-                const card = document.createElement('div');
-                card.className = 'project-card';
-                card.innerHTML = `
-                    <div class="proj-name">${this.escapeHtml(p.project_name || 'Dự án')} <span style="font-size:0.8rem; font-weight:normal; float:right;">${this.escapeHtml(p.duration || '')}</span></div>
-                    <div class="proj-desc" style="font-size:0.85rem; margin-top:4px;">${this.escapeHtml(p.description || 'Không có')}</div>
-                `;
-                projectsList.appendChild(card);
-            });
-        }
+    /** Projects list: one card per project. */
+    renderProjects(projects) {
+        this.renderList(byId('projects-list'), projects, 'Không tìm thấy dự án.', p => html`
+            <div class="project-card">
+                <div class="proj-name">${p.project_name || 'Dự án'} <span class="proj-duration">${p.duration || ''}</span></div>
+                <div class="proj-desc">${p.description || 'Không có'}</div>
+            </div>
+        `);
     }
 
     /**
@@ -371,14 +309,9 @@ export class ExtractorController {
      */
     downloadJson() {
         if (!this.extractedJsonData) return;
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.extractedJsonData, null, 2));
-        const anchor = document.createElement('a');
-        const filename = this.selectedFile ? `${this.selectedFile.name.replace(/\.[^/.]+$/, "")}_extracted.json` : 'extracted_resume.json';
-        anchor.setAttribute("href", dataStr);
-        anchor.setAttribute("download", filename);
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
+        const blob = new Blob([JSON.stringify(this.extractedJsonData, null, 2)], { type: 'application/json;charset=utf-8' });
+        const filename = this.selectedFile ? `${this.selectedFile.name.replace(/\.[^/.]+$/, '')}_extracted.json` : 'extracted_resume.json';
+        downloadBlob(blob, filename);
     }
 
     /**
@@ -387,8 +320,8 @@ export class ExtractorController {
     resetView() {
         this.resetFileInput();
         this.extractedJsonData = null;
-        this.resultsSection.style.display = 'none';
-        this.uploadSection.style.display = 'flex';
+        this.resultsSection.hidden = true;
+        this.uploadSection.hidden = false;
     }
 
     formatBytes(bytes, decimals = 2) {
@@ -398,10 +331,5 @@ export class ExtractorController {
         const sizes = ['byte', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-    }
-
-    escapeHtml(str) {
-        if (!str) return '';
-        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 }

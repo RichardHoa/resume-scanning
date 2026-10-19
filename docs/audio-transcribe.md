@@ -7,8 +7,9 @@ Turns one recording into a transcript with timestamps and speaker labels:
 ```
 
 - **Transcription:** `Qwen/Qwen3-ASR-1.7B`, with the language auto-detected. Vietnamese with English or French mixed in stays as spoken.
-- **Speakers:** `pyannote/speaker-diarization-community-1`, fixed at 2 speakers. Whoever is heard first is **Person 1**.
+- **Speakers:** `pyannote/speaker-diarization-community-1`, with 2 to 4 speakers. They are numbered **Person 1**, **Person 2**, … in the order they are first heard.
 - **Cutting:** Silero VAD. The audio is only ever cut inside a pause, so no word is split.
+- **Language guard:** a segment detected as a language other than Vietnamese, English or French (e.g. a short clip heard as Cantonese) is transcribed again as Vietnamese. The log names each segment that was redone.
 
 The code is `src/cli/transcribe_audio.py`. The design is in `.scratch/audio-transcribe/spec.md`.
 
@@ -50,6 +51,22 @@ bash scripts/transcribe_audio.sh vsc-project/audio-transcribe/1.m4a
 ```
 
 This writes `vsc-project/audio-transcribe/1.transcript.txt`.
+
+### Glossary context (optional)
+
+The model misspells names and foreign phrases it hasn't heard before (e.g. "Đại Đạo Tam Kỳ Phổ Độ", "Troisième Amnistie de Dieu en Orient"). List the terms the speakers use in a text file next to the audio and pass it with `--context`:
+
+```bash
+bash scripts/transcribe_audio.sh vsc-project/audio-transcribe/1.m4a --context vsc-project/audio-transcribe/1.context.txt
+```
+
+The file is plain text, e.g. comma-separated terms:
+
+```
+Bác Cảnh, Đức Hộ Pháp, Hộ Pháp Đường, Đại Đạo Tam Kỳ Phổ Độ, Victor Hugo, Troisième Amnistie de Dieu en Orient
+```
+
+Its text goes to the model as context for every segment. Only list terms you are sure of, since a wrong spelling will be copied.
 
 The first run downloads the models, about 5 GB in total, into `~/.cache/huggingface`.
 
