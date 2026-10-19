@@ -106,7 +106,7 @@
     font-weight: 800;
     font-family: var(--font-mono);
     background: var(--tier-1-fg);
-    color: var(--color-card);
+    color: var(--text-inverse);
 }
 
 /* Tier sections: each block type draws its own border and wash from these */

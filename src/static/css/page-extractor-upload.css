@@ -7,7 +7,7 @@
 
 /* Upload Dropzone Container */
 .upload-dropzone {
-    border: 2px dashed var(--brand-azure);
+    border: 2px dashed var(--color-secondary);
     border-radius: var(--radius-lg);
     padding: 3.5rem 2rem;
     text-align: center;
@@ -22,7 +22,7 @@
 }
 
 .upload-dropzone:hover, .upload-dropzone.dragover {
-    border-color: var(--brand-legacy-blue);
+    border-color: var(--color-primary);
     background-color: #E5EEF9;
     box-shadow: 0 4px 20px rgba(0, 119, 200, 0.18);
 }
@@ -37,8 +37,8 @@
 .upload-icon {
     width: 64px;
     height: 64px;
-    background-color: #FFFFFF;
-    border: 1px solid var(--border-accent);
+    background-color: var(--bg-card);
+    border: 1px solid var(--color-secondary);
     border-radius: 50%;
     position: relative;
     transition: transform var(--transition-normal);
@@ -56,8 +56,8 @@
 
 .upload-dropzone:hover .upload-icon {
     transform: translateY(-4px) scale(1.05);
-    background-color: #FFFFFF;
-    border-color: var(--brand-legacy-blue);
+    background-color: var(--bg-card);
+    border-color: var(--color-primary);
 }
 
 .upload-icon::before {
@@ -67,7 +67,7 @@
     left: 23px;
     width: 16px;
     height: 16px;
-    border: 3px solid var(--brand-azure);
+    border: 3px solid var(--color-secondary);
     border-bottom: none;
     border-left: none;
     transform: rotate(-45deg);
@@ -80,7 +80,7 @@
     left: 30px;
     width: 3px;
     height: 16px;
-    background-color: var(--brand-azure);
+    background-color: var(--color-secondary);
 }
 
 /* A real button inside the dropzone, styled as a link */
@@ -90,7 +90,7 @@
     padding: 0;
     font: inherit;
     cursor: pointer;
-    color: var(--brand-azure);
+    color: var(--color-secondary);
     font-weight: 700;
     text-decoration: underline;
     text-underline-offset: 3px;
@@ -101,7 +101,7 @@
     display: flex;
     align-items: center;
     gap: 1rem;
-    background-color: #FFFFFF;
+    background-color: var(--bg-card);
     border: 1px solid var(--border-bright);
     border-radius: var(--radius-md);
     padding: 1rem 1.35rem;
@@ -126,7 +126,7 @@
 .file-icon-pdf svg {
     width: 28px;
     height: 28px;
-    fill: var(--color-destructive);
+    fill: var(--danger);
 }
 
 .file-icon-pdf::after { content: 'PDF'; }

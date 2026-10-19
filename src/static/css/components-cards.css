@@ -16,7 +16,7 @@
 }
 
 .panel:hover {
-    border-color: #CBD5E1;
+    border-color: var(--border);
     box-shadow: var(--shadow-lg);
 }
 
@@ -30,7 +30,7 @@
 .panel-header h2 {
     font-size: 1.3rem;
     font-weight: 800;
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
     letter-spacing: -0.015em;
     font-family: var(--font-display);
 }

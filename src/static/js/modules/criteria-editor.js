@@ -25,6 +25,7 @@
  */
 
 import { maxPointsLabel } from './criterion-points.js';
+import { html, raw } from './html.js';
 
 // Display names of the five Categories, in row order. Also used to label evaluation dimensions.
 export const CATEGORY_NAMES = {
@@ -51,7 +52,7 @@ const DUPLICATE_MESSAGE = 'Nhóm này có hai tiêu chí trùng nội dung';
 // Every list the editor holds, in row order: the five Categories, then the HR Check Items
 const LIST_NAMES = { ...CATEGORY_NAMES, [HR_CHECK_ITEMS_KEY]: HR_CHECK_ITEMS_NAME };
 
-// What each Importance level means to HR, shown in the guide. Keyed like src/core/config.py;
+// What each Importance level means to HR, shown in the guide (trusted markup). Keyed like src/core/config.py;
 // a level missing here is listed with its label and weight only
 const IMPORTANCE_HELP = {
     must_have: 'Ứng viên bắt buộc phải có. Nếu CV không cho thấy bằng chứng cho dù chỉ <strong>một</strong> tiêu chí Bắt buộc, ứng viên <strong>bị loại ngay</strong>. CV đáp ứng một phần thì không bị loại.',
@@ -192,7 +193,7 @@ export class CriteriaEditor {
         this.container.innerHTML = '';
         const warning = document.createElement('p');
         warning.className = 'criteria-must-have-warning';
-        warning.innerHTML = MUST_HAVE_WARNING;
+        warning.innerHTML = raw(MUST_HAVE_WARNING);
         this.container.appendChild(warning);
         this.container.appendChild(this.buildGuide());
         this.matrixEl = document.createElement('div');
@@ -208,15 +209,14 @@ export class CriteriaEditor {
         guide.className = 'criteria-guide';
         guide.open = true;
         const levels = Object.entries(this.importanceLevels);
-        const items = levels.map(([key]) => `
+        const items = levels.map(([key]) => html`
             <li>
                 <span class="criteria-level-tag" data-importance="${key}">${this.levelLabel(key)}</span>
-                <span>${IMPORTANCE_HELP[key] || ''}</span>
-            </li>`).join('');
+                <span>${raw(IMPORTANCE_HELP[key] || '')}</span>
+            </li>`);
         const example = Object.hasOwn(this.importanceLevels, NICE_TO_HAVE)
-            ? `<p class="criteria-guide-example"><strong>Cách tính điểm:</strong> mỗi chiều có 100 điểm, chia cho các tiêu chí Bắt buộc và Tiêu chuẩn theo trọng số; tiêu chí ${this.importanceLevels[NICE_TO_HAVE].label} chỉ cộng thêm điểm, tối đa 100 điểm cho chiều đó. Ví dụ: 2 tiêu chí Tiêu chuẩn và 1 tiêu chí ${this.importanceLevels[NICE_TO_HAVE].label} — mỗi tiêu chí Tiêu chuẩn 50 điểm, tiêu chí ${this.importanceLevels[NICE_TO_HAVE].label} +25 điểm thưởng. Số điểm của từng tiêu chí hiện ngay trên tiêu chí. Mỗi chiều cần ít nhất một tiêu chí Bắt buộc hoặc Tiêu chuẩn.</p>`
-            : '';
-        guide.innerHTML = `
+            && html`<p class="criteria-guide-example"><strong>Cách tính điểm:</strong> mỗi chiều có 100 điểm, chia cho các tiêu chí Bắt buộc và Tiêu chuẩn theo trọng số; tiêu chí ${this.importanceLevels[NICE_TO_HAVE].label} chỉ cộng thêm điểm, tối đa 100 điểm cho chiều đó. Ví dụ: 2 tiêu chí Tiêu chuẩn và 1 tiêu chí ${this.importanceLevels[NICE_TO_HAVE].label} — mỗi tiêu chí Tiêu chuẩn 50 điểm, tiêu chí ${this.importanceLevels[NICE_TO_HAVE].label} +25 điểm thưởng. Số điểm của từng tiêu chí hiện ngay trên tiêu chí. Mỗi chiều cần ít nhất một tiêu chí Bắt buộc hoặc Tiêu chuẩn.</p>`;
+        guide.innerHTML = html`
             <summary>Ý nghĩa các mức độ quan trọng</summary>
             <div class="criteria-guide-body">
                 <ul>
@@ -247,8 +247,8 @@ export class CriteriaEditor {
 
         const head = document.createElement('div');
         head.className = 'criteria-matrix-row criteria-matrix-head';
-        head.innerHTML = '<div class="criteria-matrix-corner">Chiều đánh giá</div>' + levels.map(([key, level]) =>
-            `<div class="criteria-col-head" data-importance="${key}">${level.label} <span class="criteria-col-weight">×${level.weight}</span></div>`).join('');
+        head.innerHTML = html`<div class="criteria-matrix-corner">Chiều đánh giá</div>${levels.map(([key, level]) =>
+            html`<div class="criteria-col-head" data-importance="${key}">${level.label} <span class="criteria-col-weight">×${level.weight}</span></div>`)}`;
         this.matrixEl.appendChild(head);
 
         Object.keys(LIST_NAMES).forEach((catKey, catIdx) => {
@@ -256,12 +256,13 @@ export class CriteriaEditor {
             const count = this.categories[catKey].length;
             const row = document.createElement('div');
             row.className = isCheckList ? 'criteria-matrix-row criteria-check-row' : 'criteria-matrix-row';
-            row.innerHTML = `
+            const problem = !isCheckList && this.categoryProblem(catKey);
+            row.innerHTML = html`
                 <div class="criteria-row-head">
-                    <span class="criteria-row-title">${isCheckList ? '' : `${catIdx + 1}. `}${LIST_NAMES[catKey]}</span>
+                    <span class="criteria-row-title">${!isCheckList && `${catIdx + 1}. `}${LIST_NAMES[catKey]}</span>
                     <span class="criteria-row-count">${count} ${isCheckList ? 'mục' : 'tiêu chí'}</span>
-                    ${isCheckList ? '<span class="criteria-row-note">Không chấm điểm</span>' : ''}
-                    ${!isCheckList && this.categoryProblem(catKey) ? `<span class="criteria-row-error" role="alert">${this.categoryProblem(catKey)}</span>` : ''}
+                    ${isCheckList && html`<span class="criteria-row-note">Không chấm điểm</span>`}
+                    ${problem && html`<span class="criteria-row-error" role="alert">${problem}</span>`}
                 </div>`;
             if (isCheckList) {
                 row.appendChild(this.buildCell(catKey, null));
@@ -304,7 +305,7 @@ export class CriteriaEditor {
 
         const addBox = document.createElement('div');
         addBox.className = 'criteria-add-box';
-        addBox.innerHTML = `
+        addBox.innerHTML = html`
             <textarea rows="1" class="criteria-add-input" placeholder="+ Thêm" aria-label="Thêm ${importance ? `tiêu chí ${this.importanceLevels[importance].label} vào` : 'mục vào'} ${LIST_NAMES[catKey]}"></textarea>
             <button class="btn btn-sm btn-secondary criteria-add-btn" type="button" aria-label="Thêm">+</button>
         `;
@@ -357,10 +358,10 @@ export class CriteriaEditor {
     buildChip(catKey, item) {
         const chip = document.createElement('div');
         chip.className = 'criteria-chip';
-        chip.innerHTML = `
+        chip.innerHTML = html`
             <span class="criteria-chip-handle" title="Kéo để chuyển sang ô khác" aria-hidden="true">⠿</span>
             <textarea rows="1" class="criteria-item-text" aria-label="Nội dung tiêu chí"></textarea>
-            ${catKey === HR_CHECK_ITEMS_KEY ? '' : `<span class="criteria-chip-points">${this.pointsLabel(catKey, item)}</span>`}
+            ${catKey !== HR_CHECK_ITEMS_KEY && html`<span class="criteria-chip-points">${this.pointsLabel(catKey, item)}</span>`}
             <select class="criteria-chip-menu" title="Chuyển hoặc xóa" aria-label="Chuyển hoặc xóa tiêu chí">
                 <option value="" selected>⋯</option>
                 ${this.menuOptions(catKey, item)}
@@ -425,15 +426,15 @@ export class CriteriaEditor {
         const levels = Object.entries(this.importanceLevels);
         const groups = Object.keys(LIST_NAMES).map(k => {
             if (k === HR_CHECK_ITEMS_KEY) {
-                return k === catKey ? '' : `<optgroup label="Chuyển đến: ${LIST_NAMES[k]}"><option value="${k}|">${LIST_NAMES[k]} (không chấm điểm)</option></optgroup>`;
+                return k !== catKey && html`<optgroup label="Chuyển đến: ${LIST_NAMES[k]}"><option value="${k}|">${LIST_NAMES[k]} (không chấm điểm)</option></optgroup>`;
             }
             const options = levels.map(([key, level]) => {
                 const here = k === catKey && key === item.importance;
-                return `<option value="${k}|${key}"${here ? ' disabled' : ''}>${level.label}${here ? ' (hiện tại)' : ''}</option>`;
-            }).join('');
-            return `<optgroup label="Chuyển đến: ${LIST_NAMES[k]}">${options}</optgroup>`;
-        }).join('');
-        return `${groups}<optgroup label="Thao tác"><option value="${DELETE_ACTION}">Xóa</option></optgroup>`;
+                return html`<option value="${k}|${key}"${here && raw(' disabled')}>${level.label}${here && ' (hiện tại)'}</option>`;
+            });
+            return html`<optgroup label="Chuyển đến: ${LIST_NAMES[k]}">${options}</optgroup>`;
+        });
+        return html`${groups}<optgroup label="Thao tác"><option value="${DELETE_ACTION}">Xóa</option></optgroup>`;
     }
 
     /**

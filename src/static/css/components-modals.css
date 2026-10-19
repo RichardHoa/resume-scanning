@@ -18,7 +18,7 @@
 
 /* Modal Window */
 .modal-card {
-    background: #FFFFFF;
+    background: var(--bg-card);
     border: 1px solid var(--border-bright);
     border-radius: var(--radius-lg);
     width: 100%;
@@ -42,12 +42,12 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #F8FAFC;
+    background: var(--color-background);
 }
 
 .modal-header-info h2 {
     font-size: 1.3rem;
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
     font-weight: 800;
 }
 
@@ -68,7 +68,7 @@
 }
 
 .modal-close-btn:hover {
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
 }
 
 .modal-body {
@@ -81,7 +81,7 @@
 
 /* Loader Overlay Card */
 .loader-card {
-    background: #FFFFFF;
+    background: var(--bg-card);
     border: 1px solid var(--border-bright);
     border-radius: var(--radius-lg);
     padding: 2.5rem;
@@ -96,7 +96,7 @@
 }
 
 .loader-card h3 {
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
     font-size: 1.2rem;
     font-weight: 800;
 }
@@ -120,10 +120,10 @@
     width: 44px;
     height: 44px;
     margin: 6px;
-    border: 3px solid var(--brand-azure);
+    border: 3px solid var(--color-secondary);
     border-radius: 50%;
     animation: spinnerRing 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
-    border-color: var(--brand-azure) transparent transparent transparent;
+    border-color: var(--color-secondary) transparent transparent transparent;
 }
 
 .spinner-ring div:nth-child(1) { animation-delay: -0.45s; }
@@ -147,12 +147,12 @@
 .loader-progress-fill {
     height: 100%;
     width: 0%;
-    background: linear-gradient(to right, var(--brand-legacy-blue), var(--brand-azure));
+    background: linear-gradient(to right, var(--color-primary), var(--color-secondary));
     transition: width 0.3s ease;
 }
 
 .loader-card .loader-count {
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
     font-size: 0.95rem;
     font-weight: 700;
 }

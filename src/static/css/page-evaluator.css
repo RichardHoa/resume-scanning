@@ -5,7 +5,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: #FFFFFF;
+    background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     padding: 0.85rem 1.5rem;
@@ -40,14 +40,14 @@
 }
 
 .process-step.active .step-num {
-    background: linear-gradient(135deg, var(--brand-legacy-blue), var(--brand-azure));
-    color: #FFFFFF;
+    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+    color: var(--text-inverse);
     box-shadow: 0 2px 8px rgba(0, 61, 165, 0.3);
 }
 
 .process-step.completed .step-num {
     background: var(--success);
-    color: #FFFFFF;
+    color: var(--text-inverse);
 }
 
 .step-text {
@@ -84,7 +84,7 @@
 }
 
 .resume-card-item {
-    background: #FFFFFF;
+    background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     padding: 10px 14px;
@@ -96,14 +96,14 @@
 }
 
 .resume-card-item:hover {
-    border-color: var(--brand-azure);
+    border-color: var(--color-secondary);
     background: var(--brand-azure-mist);
 }
 
 .resume-card-item.selected {
-    border-color: var(--brand-legacy-blue);
+    border-color: var(--color-primary);
     background: #EBF3FF;
-    box-shadow: inset 3px 0 0 var(--brand-legacy-blue);
+    box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .resume-info {
@@ -137,14 +137,14 @@
     align-items: center;
     font-size: 0.85rem;
     color: var(--text-secondary);
-    background: #F8FAFC;
+    background: var(--color-background);
     padding: 8px 12px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
 }
 
 .selected-count {
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
     font-weight: 700;
     font-family: var(--font-mono);
 }
@@ -158,7 +158,7 @@
 }
 
 .kpi-card {
-    background: #FFFFFF;
+    background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     padding: 1.1rem 1.25rem;
@@ -166,7 +166,7 @@
     flex-direction: column;
     gap: 4px;
     box-shadow: var(--shadow-sm);
-    border-left: 4px solid var(--brand-azure);
+    border-left: 4px solid var(--color-secondary);
 }
 
 .kpi-card.kpi-strong { border-left-color: #16A34A; }
@@ -211,7 +211,7 @@
     font-size: 0.76rem;
     text-transform: uppercase;
     font-family: var(--font-mono);
-    background: #F8FAFC;
+    background: var(--color-background);
 }
 
 .rank-badge {
@@ -230,11 +230,11 @@
 
 .rank-badge.rank-1 { background: #FEF3C7; color: #B45309; border: 1px solid #FCD34D; }
 .rank-badge.rank-2 { background: #E0F2FE; color: #0369A1; border: 1px solid #7DD3FC; }
-.rank-badge.rank-3 { background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; }
+.rank-badge.rank-3 { background: #F1F5F9; color: var(--text-muted); border: 1px solid var(--border); }
 
 /* Tier Grouping Blocks */
 .scanned-tier-block, .tier-block-card {
-    background: #FFFFFF;
+    background: var(--bg-card);
     border: 1px solid var(--border);
     border-left: 4px solid var(--tier-accent);
     border-radius: var(--radius-md);
@@ -279,7 +279,7 @@
 .scanned-tier-title {
     font-weight: 700;
     font-size: 0.88rem;
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
 }
 
 .tier-items-list {
@@ -331,7 +331,7 @@
 
 .leaderboard-title {
     margin: 0;
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
     font-size: 1.1rem;
 }
 
@@ -341,7 +341,7 @@
 }
 
 .leaderboard-name {
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
     font-size: 0.95rem;
 }
 
@@ -351,7 +351,7 @@
 }
 
 .leaderboard-score {
-    color: var(--brand-azure);
+    color: var(--color-secondary);
     font-size: 1.2rem;
     font-family: var(--font-mono);
 }
@@ -387,7 +387,7 @@
 }
 
 .rag-verify-header h2 {
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
     font-size: 1.3rem;
 }
 
@@ -457,8 +457,8 @@
 }
 
 .rag-tab-btn.active {
-    background: #FFFFFF;
-    color: var(--brand-legacy-blue);
+    background: var(--bg-card);
+    color: var(--color-primary);
     box-shadow: var(--shadow-sm);
 }
 
@@ -550,7 +550,7 @@
 .scrutiny-field-title {
     font-size: 0.82rem;
     font-weight: 700;
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
     margin-bottom: 6px;
 }
 
@@ -561,7 +561,7 @@
 }
 
 .scrutiny-question-item {
-    background: #FFFFFF;
+    background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: 8px 10px;

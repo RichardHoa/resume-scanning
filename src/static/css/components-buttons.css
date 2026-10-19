@@ -34,7 +34,7 @@
 /* Primary Action CTA (Master Navy & Blue) */
 .btn-primary {
     background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
-    color: #ffffff;
+    color: var(--text-inverse);
     border-color: var(--color-primary);
     box-shadow: 0 4px 14px rgba(30, 58, 95, 0.22);
 }
@@ -47,7 +47,7 @@
 
 /* Secondary Button */
 .btn-secondary {
-    background-color: #FFFFFF;
+    background-color: var(--bg-card);
     border-color: var(--border-bright);
     color: var(--text-main);
     box-shadow: var(--shadow-sm);
@@ -67,8 +67,8 @@
 }
 
 .btn-success:hover:not(:disabled) {
-    background-color: var(--color-accent);
-    color: #ffffff;
+    background-color: var(--success);
+    color: var(--text-inverse);
     box-shadow: 0 4px 14px rgba(22, 163, 74, 0.25);
     transform: translateY(-1px);
 }
@@ -81,9 +81,9 @@
 }
 
 .btn-danger:hover:not(:disabled) {
-    background-color: var(--color-destructive);
-    color: #ffffff;
-    border-color: var(--color-destructive);
+    background-color: var(--danger);
+    color: var(--text-inverse);
+    border-color: var(--danger);
     box-shadow: 0 4px 14px rgba(220, 38, 38, 0.25);
 }
 
@@ -113,7 +113,7 @@
 }
 
 .form-control {
-    background-color: #FFFFFF;
+    background-color: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     padding: 10px 14px;

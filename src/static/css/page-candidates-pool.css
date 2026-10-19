@@ -11,8 +11,8 @@
 }
 
 .stat-box {
-    background: #FFFFFF;
-    border: 1.5px solid #CBD5E1;
+    background: var(--bg-card);
+    border: 1.5px solid var(--border);
     border-radius: var(--radius-md);
     padding: 1.25rem 1.35rem;
     display: flex;
@@ -32,7 +32,7 @@
 
 .stat-label {
     font-size: 0.78rem;
-    color: #334155; /* WCAG AAA high-contrast crisp dark slate */
+    color: var(--text-secondary); /* WCAG AAA high-contrast crisp dark slate */
     font-weight: 800;
     text-transform: uppercase;
     font-family: var(--font-mono);
@@ -43,7 +43,7 @@
     font-size: 1.75rem;
     font-weight: 800;
     font-family: var(--font-mono);
-    color: #0F172A;
+    color: var(--text-main);
     line-height: 1.1;
 }
 
@@ -59,8 +59,8 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 1.25rem;
-    background: #F8FAFC;
-    border: 1.5px solid #CBD5E1;
+    background: var(--color-background);
+    border: 1.5px solid var(--border);
     border-radius: var(--radius-md);
     padding: 1.15rem 1.35rem;
     margin: 1.25rem 0 1.75rem 0;
@@ -78,9 +78,9 @@
 .search-input-group .form-control {
     font-size: 0.92rem;
     font-weight: 500;
-    color: #0F172A;
-    background: #FFFFFF;
-    border: 1.5px solid #CBD5E1;
+    color: var(--text-main);
+    background: var(--bg-card);
+    border: 1.5px solid var(--border);
     padding: 0.65rem 1rem;
     border-radius: var(--radius-sm);
     width: 100%;
@@ -104,13 +104,13 @@
     gap: 8px;
     font-size: 0.88rem;
     font-weight: 700;
-    color: #0F172A;
+    color: var(--text-main);
 }
 
 .select-wrapper select {
-    background: #FFFFFF;
-    border: 1.5px solid #CBD5E1;
-    color: #0F172A;
+    background: var(--bg-card);
+    border: 1.5px solid var(--border);
+    color: var(--text-main);
     font-weight: 600;
     font-size: 0.88rem;
     padding: 0.55rem 0.85rem;
@@ -125,8 +125,8 @@
 }
 
 .cand-card {
-    background: #FFFFFF;
-    border: 1.5px solid #CBD5E1;
+    background: var(--bg-card);
+    border: 1.5px solid var(--border);
     border-radius: var(--radius-md);
     padding: 1.5rem;
     display: flex;
@@ -168,7 +168,7 @@
 .cand-info-group h3 {
     font-size: 1.18rem;
     font-weight: 800;
-    color: #0F172A; /* WCAG AAA crisp deep navy */
+    color: var(--text-main); /* WCAG AAA crisp deep navy */
     letter-spacing: -0.01em;
     overflow-wrap: break-word;
     word-break: break-word;
@@ -179,7 +179,7 @@
 .cand-email {
     font-size: 0.85rem;
     font-weight: 600;
-    color: #334155;
+    color: var(--text-secondary);
     overflow-wrap: break-word;
     word-break: break-word;
     text-decoration: none;
@@ -196,8 +196,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: #F8FAFC;
-    border: 1.5px solid #CBD5E1;
+    background: var(--color-background);
+    border: 1.5px solid var(--border);
     border-radius: var(--radius-md);
     padding: 8px 14px;
     min-width: 72px;
@@ -214,7 +214,7 @@
 
 .cand-score-lbl {
     font-size: 0.7rem;
-    color: #475569;
+    color: var(--text-muted);
     text-transform: uppercase;
     font-family: var(--font-mono);
     font-weight: 800;
@@ -232,7 +232,7 @@
 
 /* Match Score Breakdown Bars (Vital Info) */
 .cand-dimensions-breakdown {
-    background: #F8FAFC;
+    background: var(--color-background);
     border: 1.5px solid #E2E8F0;
     border-radius: var(--radius-sm);
     padding: 12px 14px;
@@ -256,14 +256,14 @@
 }
 
 .dim-bar-name {
-    color: #0F172A; /* High contrast label */
+    color: var(--text-main); /* High contrast label */
     font-weight: 700;
 }
 
 .dim-bar-val {
     flex-shrink: 0;
     white-space: nowrap;
-    color: #0F172A;
+    color: var(--text-main);
     font-weight: 800;
     font-family: var(--font-mono);
 }
@@ -297,8 +297,8 @@
 /* Tier Block Containers */
 .cand-tier-block {
     grid-column: 1 / -1;
-    background: linear-gradient(180deg, var(--tier-wash) 0%, #FFFFFF 100%);
-    border: 1.5px solid #CBD5E1;
+    background: linear-gradient(180deg, var(--tier-wash) 0%, var(--bg-card) 100%);
+    border: 1.5px solid var(--border);
     border-left: 6px solid var(--tier-accent);
     border-radius: var(--radius-md);
     padding: 1.5rem;
@@ -312,7 +312,7 @@
     align-items: center;
     margin-bottom: 1.25rem;
     padding-bottom: 0.85rem;
-    border-bottom: 1.5px solid #CBD5E1;
+    border-bottom: 1.5px solid var(--border);
 }
 
 .cand-tier-title-group {
@@ -324,14 +324,14 @@
 .cand-tier-title-group h3 {
     font-size: 1.2rem;
     font-weight: 800;
-    color: #0F172A;
+    color: var(--text-main);
     margin: 0;
 }
 
 .cand-tier-count {
     font-size: 0.88rem;
     font-weight: 700;
-    color: #334155;
+    color: var(--text-secondary);
 }
 
 /* No candidate matches the search or filter: spans the whole grid */
@@ -345,12 +345,12 @@
 }
 
 .empty-state--grid h3 {
-    color: #0F172A;
+    color: var(--text-main);
     font-weight: 800;
 }
 
 .empty-state--grid p {
-    color: #334155;
+    color: var(--text-secondary);
 }
 
 /* Must-have Rejection: the must-have Criteria the resume shows no evidence for, which put the candidate out */

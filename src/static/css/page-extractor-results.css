@@ -18,7 +18,7 @@
 }
 
 .results-title-group h2 {
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
     font-size: 1.4rem;
 }
 
@@ -44,7 +44,7 @@
 }
 
 .split-pane {
-    background-color: #FFFFFF;
+    background-color: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     padding: 1.5rem;
@@ -55,7 +55,7 @@
 }
 
 .code-container {
-    background-color: #F8FAFC;
+    background-color: var(--color-background);
     border: 1px solid var(--border-bright);
     border-radius: var(--radius-sm);
     padding: 1.25rem;
@@ -81,7 +81,7 @@
 }
 
 .tab-btn {
-    background: #F8FAFC;
+    background: var(--color-background);
     border: 1px solid var(--border);
     color: var(--text-secondary);
     padding: 8px 16px;
@@ -95,15 +95,15 @@
 }
 
 .tab-btn:hover {
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
     background: var(--brand-azure-mist);
-    border-color: var(--brand-azure);
+    border-color: var(--color-secondary);
 }
 
 .tab-btn.active {
-    color: #FFFFFF;
-    background: linear-gradient(135deg, var(--brand-legacy-blue), var(--brand-azure));
-    border-color: var(--brand-legacy-blue);
+    color: var(--text-inverse);
+    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+    border-color: var(--color-primary);
     font-weight: 700;
     box-shadow: 0 2px 8px rgba(0, 61, 165, 0.2);
 }
@@ -128,15 +128,15 @@
     width: 54px;
     height: 54px;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--brand-legacy-blue), var(--brand-azure));
-    border: 2px solid #FFFFFF;
+    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+    border: 2px solid var(--bg-card);
     box-shadow: 0 4px 12px rgba(0, 61, 165, 0.2);
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 800;
     font-size: 1.2rem;
-    color: #ffffff;
+    color: var(--text-inverse);
 }
 
 .profile-avatar svg {
@@ -154,7 +154,7 @@
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
-    background: #F8FAFC;
+    background: var(--color-background);
     padding: 1.25rem;
     border-radius: var(--radius-md);
     border: 1px solid var(--border);
@@ -188,7 +188,7 @@
 }
 
 .timeline-card, .education-item, .cert-card, .project-card {
-    background-color: #FFFFFF;
+    background-color: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     padding: 1.1rem 1.25rem;
@@ -200,7 +200,7 @@
 
 .job-title, .univ-name, .cert-title, .proj-name {
     font-weight: 700;
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
     font-size: 0.95rem;
 }
 
@@ -239,7 +239,7 @@
 .skill-pill {
     background: var(--brand-azure-mist);
     border: 1px solid #BEE0FF;
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
     padding: 4px 12px;
     border-radius: 14px;
     font-size: 0.8rem;

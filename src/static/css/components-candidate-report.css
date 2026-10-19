@@ -62,7 +62,7 @@
     display: block;
     margin-top: 4px;
     font-size: 0.85rem;
-    color: #334155;
+    color: var(--text-secondary);
     font-weight: 600;
 }
 
@@ -83,10 +83,10 @@
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    background: #FFFFFF;
+    background: var(--bg-card);
     padding: 4px 14px;
     border-radius: var(--radius-md);
-    border: 1.5px solid #CBD5E1;
+    border: 1.5px solid var(--border);
 }
 
 .modal-score-number {
@@ -97,7 +97,7 @@
 
 .modal-score-label {
     font-size: 0.75rem;
-    color: #334155;
+    color: var(--text-secondary);
     font-weight: 800;
     text-transform: uppercase;
     font-family: var(--font-mono);
@@ -117,7 +117,7 @@
 .modal-resume-frame {
     width: 100%;
     height: 70vh;
-    border: 1.5px solid #CBD5E1;
+    border: 1.5px solid var(--border);
     border-radius: var(--radius-md);
     background: #F1F5F9;
 }
@@ -125,10 +125,10 @@
 .modal-resume-missing {
     padding: 2rem;
     text-align: center;
-    color: #334155;
+    color: var(--text-secondary);
     font-weight: 700;
-    background: #F8FAFC;
-    border: 1.5px dashed #CBD5E1;
+    background: var(--color-background);
+    border: 1.5px dashed var(--border);
     border-radius: var(--radius-md);
 }
 
@@ -139,8 +139,8 @@
 }
 
 .modal-dim-card {
-    background: #FFFFFF;
-    border: 1.5px solid #CBD5E1;
+    background: var(--bg-card);
+    border: 1.5px solid var(--border);
     border-radius: var(--radius-md);
     padding: 1.35rem;
     display: flex;
@@ -158,7 +158,7 @@
 .modal-dim-title {
     font-weight: 800;
     font-size: 1.05rem;
-    color: #0F172A; /* High contrast heading */
+    color: var(--text-main); /* High contrast heading */
     display: flex;
     align-items: center;
     gap: 10px;
@@ -166,13 +166,13 @@
 
 .modal-dim-weight {
     font-size: 0.78rem;
-    color: #334155;
+    color: var(--text-secondary);
     font-weight: 700;
     font-family: var(--font-mono);
     background: #F1F5F9;
     padding: 2px 8px;
     border-radius: var(--radius-sm);
-    border: 1px solid #CBD5E1;
+    border: 1px solid var(--border);
 }
 
 .dim-score-pill {
@@ -198,13 +198,13 @@
 }
 
 .modal-reasoning-box {
-    background: #F8FAFC;
-    border: 1px solid #CBD5E1;
+    background: var(--color-background);
+    border: 1px solid var(--border);
     border-left: 4px solid #2563EB;
     padding: 12px 16px;
     border-radius: var(--radius-sm);
     font-size: 0.88rem;
-    color: #0F172A; /* Crisp high contrast body text */
+    color: var(--text-main); /* Crisp high contrast body text */
     line-height: 1.6;
     font-weight: 500;
 }
@@ -212,7 +212,7 @@
 .modal-section-title {
     font-weight: 800;
     font-size: 0.9rem;
-    color: #0F172A;
+    color: var(--text-main);
     margin-top: 8px;
 }
 
@@ -310,13 +310,13 @@
 
 .modal-quote-box {
     background: #F1F5F9;
-    border: 1px solid #CBD5E1;
-    border-left: 4px solid #475569;
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--text-muted);
     padding: 10px 14px;
     border-radius: var(--radius-sm);
     font-style: italic;
     font-size: 0.86rem;
-    color: #0F172A;
+    color: var(--text-main);
     font-weight: 500;
     margin-top: 6px;
 }
@@ -324,8 +324,8 @@
 
 /* Review Panel Candidate Feedback */
 .modal-feedback-card {
-    background: #FFFFFF;
-    border: 1.5px solid #CBD5E1;
+    background: var(--bg-card);
+    border: 1.5px solid var(--border);
     border-left: 4px solid #7C3AED;
     border-radius: var(--radius-md);
     padding: 1.35rem;
@@ -342,9 +342,9 @@
 }
 
 .modal-panelist-view {
-    border: 1px solid #CBD5E1;
+    border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    background: #F8FAFC;
+    background: var(--color-background);
 }
 
 .modal-panelist-view summary {
@@ -352,14 +352,14 @@
     padding: 8px 14px;
     font-weight: 700;
     font-size: 0.88rem;
-    color: #0F172A;
+    color: var(--text-main);
 }
 
 .modal-panelist-view-text {
     padding: 0 14px 12px;
     font-size: 0.88rem;
     line-height: 1.6;
-    color: #0F172A;
+    color: var(--text-main);
     white-space: pre-wrap;
 }
 
@@ -430,13 +430,13 @@
 }
 
 .modal-dev-tab[aria-selected="true"] {
-    border-color: var(--brand-azure);
+    border-color: var(--color-secondary);
     color: var(--text-main);
     font-weight: 700;
 }
 
 .modal-dev-tab:focus-visible {
-    outline: 2px solid var(--brand-azure);
+    outline: 2px solid var(--color-secondary);
     outline-offset: 2px;
 }
 
@@ -528,5 +528,5 @@
 .modal-dev-link:hover,
 .modal-dev-link:focus-visible {
     color: var(--text-main);
-    border-color: var(--brand-azure);
+    border-color: var(--color-secondary);
 }

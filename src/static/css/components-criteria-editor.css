@@ -37,7 +37,7 @@
     cursor: pointer;
     font-size: 0.88rem;
     font-weight: 700;
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
 }
 
 .criteria-guide-body ul {
@@ -162,7 +162,7 @@
 .criteria-row-title {
     font-size: 0.82rem;
     font-weight: 700;
-    color: var(--brand-legacy-blue);
+    color: var(--color-primary);
 }
 
 .criteria-row-count,
@@ -194,7 +194,7 @@
 
 .criteria-cell.is-drop-target {
     background: var(--brand-azure-mist);
-    outline: 2px dashed var(--brand-azure);
+    outline: 2px dashed var(--color-secondary);
     outline-offset: -4px;
 }
 
@@ -245,7 +245,7 @@
 
 .criteria-chip:hover,
 .criteria-chip:focus-within {
-    border-color: var(--brand-azure);
+    border-color: var(--color-secondary);
     box-shadow: var(--shadow-sm);
 }
 
@@ -291,8 +291,8 @@
 }
 
 .criteria-item-text:focus {
-    background: #FFFFFF;
-    border-color: var(--brand-azure);
+    background: var(--bg-card);
+    border-color: var(--color-secondary);
     outline: none;
 }
 
@@ -331,7 +331,7 @@
 .criteria-chip-menu:hover,
 .criteria-chip-menu:focus-visible {
     color: var(--text-main);
-    border-color: var(--brand-azure);
+    border-color: var(--color-secondary);
 }
 
 .criteria-chip-menu option,
@@ -357,7 +357,7 @@
 
 .criteria-add-input:focus {
     background: var(--bg-card);
-    border-color: var(--brand-azure);
+    border-color: var(--color-secondary);
     outline: none;
 }
 
