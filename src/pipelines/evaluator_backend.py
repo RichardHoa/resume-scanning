@@ -284,6 +284,8 @@ def aggregate_evaluation_results(
             "reasoning_summary": cat_res.get("reasoning_summary", ""),
             # Per-criterion verdicts with the resume quotes given for each, from the median run
             "criteria_evaluations": cat_res.get("criteria_evaluations", []),
+            # The Nice-to-haves met pushed that run past the Category's 100, so the gauge is capped below its rows
+            "bonus_capped": cat_res.get("bonus_capped", False),
             # How many runs gave each must-have Criterion NO_EVIDENCE; a majority makes a Must-have Rejection
             "must_have_no_evidence_counts": cat_res.get("must_have_no_evidence_counts", []),
             "retrieved_criteria": retrieved,

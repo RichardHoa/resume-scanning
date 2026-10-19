@@ -3,5 +3,6 @@
 qwen-asr==0.0.6
 pyannote.audio==4.0.7
 silero-vad==6.2.3
+imageio-ffmpeg==0.6.0
 torch
 numpy

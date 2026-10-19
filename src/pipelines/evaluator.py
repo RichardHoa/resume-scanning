@@ -28,7 +28,7 @@ from src.prompts.evaluator_prompts import (
     get_requirements_decomposition_system_prompt,
     get_requirements_scrutiny_system_prompt,
     get_category_evaluation_prompt,
-    CATEGORY_EVALUATION_SCHEMA
+    category_evaluation_schema
 )
 from src.pipelines.evaluator_mocks import (
     get_mock_category_response
@@ -196,12 +196,14 @@ class ResumeEvaluator:
     ) -> Dict[str, Any]:
         """
         One evaluation run of a Category. importance_map ({criterion_text: importance}) weights the Verdicts in the
-        Category score; the LLM never sees it, so the prompt is the same whatever Importance HR set.
+        Category score; the LLM never sees it, so the prompt is the same whatever Importance HR set. The schema allows
+        only the exact text of each retrieved Criterion, once each.
         Run 1 (or a run with no index) is greedy; later runs sample, so several runs are independent judgements.
         """
         eff_language = language or self.language
         resume_snippet = self._extract_relevant_resume_field(category, resume_data)
         prompt = get_category_evaluation_prompt(category_name, self.model_name, retrieved_criteria, resume_snippet)
+        json_schema = category_evaluation_schema(retrieved_criteria)
 
         first_temperature = 0.0 if (run_index or 1) == 1 else CATEGORY_EVAL_SAMPLE_TEMPERATURE
         reply = LLMReply("")
@@ -209,7 +211,7 @@ class ResumeEvaluator:
             reply = self._call_llm(
                 prompt, category, resume_name, run_index=run_index, language=eff_language,
                 temperature=first_temperature if attempt == 1 else CATEGORY_EVAL_RETRY_TEMPERATURE,
-                json_schema=CATEGORY_EVALUATION_SCHEMA, log_dir=log_dir, max_tokens=CATEGORY_EVAL_MAX_TOKENS
+                json_schema=json_schema, log_dir=log_dir, max_tokens=CATEGORY_EVAL_MAX_TOKENS
             )
             parsed = clean_and_parse_json(reply.text)
             validated = validate_category_evaluation(parsed, importance_map=importance_map)
@@ -220,7 +222,7 @@ class ResumeEvaluator:
 
             print(f"[Eval Retry] Attempt {attempt}/{max_retries} for category '{category}' failed. Retrying...", file=sys.stderr)
             log_broken_json(
-                prompt, reply.text, category, resume_name, attempt=attempt, error_reason="Invalid numeric score or JSON, or no Verdict for a must-have Criterion",
+                prompt, reply.text, category, resume_name, attempt=attempt, error_reason="Invalid numeric score or JSON, or not exactly one Verdict per Criterion",
                 run_index=run_index, finish_reason=reply.finish_reason, completion_tokens=reply.completion_tokens, log_dir=log_dir
             )
 
@@ -258,6 +260,12 @@ class ResumeEvaluator:
         retrieved = self.rag.retrieve(cat_key, query_context, top_k=None)
         # Mock replies judge no Criteria, so mocks score without an Importance map and never apply the Must-have gate
         importance_map = {} if self.mock else self.rag.get_importance_map(cat_key)
+        # The schema allows only the retrieved texts and the scoring expects the stored ones, so a vector store out of
+        # step with the HR RAG would fail every run; fail the Category once, saying why
+        if importance_map and set(retrieved) != set(importance_map):
+            raise RuntimeError(
+                f"The vector store's Criteria for '{cat_key}' differ from the stored HR RAG. Save the HR RAG again on the RAG page."
+            )
 
         if not retrieved:
             print(f"[Evaluation] Category '{cat_name}' has no criteria in RAG. Setting 0% weight (not applicable).", file=sys.stderr)
@@ -295,7 +303,9 @@ class ResumeEvaluator:
             has_category_failure = any(r.get("failed", False) for r in eval_runs)
             scores = [r.get("score", FALLBACK_ERROR_SCORE) for r in eval_runs]
             sorted_runs = sorted(eval_runs, key=lambda r: r.get("score", FALLBACK_ERROR_SCORE))
-            med_score = int(round(float(statistics.median(scores))))
+            # The lower median, so with an even run count the score is the shown run's own, matching its Criterion
+            # Points and cap note
+            med_score = int(statistics.median_low(scores))
             median_idx = (len(sorted_runs) - 1) // 2
             
             cat_res = dict(sorted_runs[median_idx])

@@ -14,13 +14,18 @@
  *              Every cell has its own add box. A chip dropped in the HR Check Items
  *              loses its Importance, so one moved back out is Standard. When the editor is
  *              narrower than 900px each row stacks its cells, each labelled with its Importance.
+ *              Each Criterion shows its Criterion Points out of its Category's 100, updated
+ *              as HR moves it. A Category whose Criteria are all Nice-to-have, or that has
+ *              one text twice, is flagged and blocks saving (callers check confirmSavable()).
  *              Callers pass in the RAG summary's categories ({category_key:
  *              [criterion]}, each a string or {text, importance}), its HR Check
  *              Items and its Importance levels (src/core/config.py is their only
  *              source), and read them back with getCategories()
  *              ({category_key: [{text, importance}]}) and getHrCheckItems() (strings).
- * Line Count: ~420 lines (Strict Limit: < 500 lines)
+ * Line Count: ~470 lines (Strict Limit: < 500 lines)
  */
+
+import { maxPointsLabel } from './criterion-points.js';
 
 // Display names of the five Categories, in row order. Also used to label evaluation dimensions.
 export const CATEGORY_NAMES = {
@@ -35,9 +40,14 @@ export const CATEGORY_NAMES = {
 export const HR_CHECK_ITEMS_KEY = 'hr_check_items';
 export const HR_CHECK_ITEMS_NAME = 'Cần HR kiểm tra thủ công';
 
-// The Importance key results are tagged by (MUST_HAVE in src/core/config.py). Every other level
-// detail comes from the server with the RAG summary
+// The Importance keys results are tagged by (MUST_HAVE and NICE_TO_HAVE in src/core/config.py).
+// Every other level detail comes from the server with the RAG summary
 export const MUST_HAVE = 'must_have';
+export const NICE_TO_HAVE = 'nice_to_have';
+
+// Shown on a Category the server refuses to save (hr_rag_problem in src/providers/rag_engine.py)
+const BONUS_ONLY_MESSAGE = 'Nhóm này cần ít nhất một tiêu chí Bắt buộc hoặc Tiêu chuẩn';
+const DUPLICATE_MESSAGE = 'Nhóm này có hai tiêu chí trùng nội dung';
 
 // Every list the editor holds, in row order: the five Categories, then the HR Check Items
 const LIST_NAMES = { ...CATEGORY_NAMES, [HR_CHECK_ITEMS_KEY]: HR_CHECK_ITEMS_NAME };
@@ -47,7 +57,7 @@ const LIST_NAMES = { ...CATEGORY_NAMES, [HR_CHECK_ITEMS_KEY]: HR_CHECK_ITEMS_NAM
 const IMPORTANCE_HELP = {
     must_have: 'Ứng viên bắt buộc phải có. Nếu CV không cho thấy bằng chứng cho dù chỉ <strong>một</strong> tiêu chí Bắt buộc, ứng viên <strong>bị loại ngay</strong>. CV đáp ứng một phần thì không bị loại.',
     standard: 'Yêu cầu thông thường của vị trí. Đây là mức mặc định khi bạn không chọn mức nào khác.',
-    nice_to_have: 'Điểm cộng. Ứng viên có thì được thêm điểm; không có thì chỉ mất ít điểm.'
+    nice_to_have: 'Điểm cộng. Ứng viên có thì được cộng thêm điểm (mỗi chiều tối đa 100 điểm); không có thì <strong>không bị trừ điểm</strong>.'
 };
 
 // Always shown above the guide: a Must-have decides who is rejected, not just the score
@@ -127,7 +137,55 @@ export class CriteriaEditor {
         return Object.values(this.getCategories()).reduce((acc, items) => acc + items.length, 0);
     }
 
-    /** An Importance level as HR reads it, e.g. "Bắt buộc ×3". */
+    /**
+     * The weight a Category's Must-have and Standard Criteria share its 100 points by (0 when all
+     * are Nice-to-have). Mirrors base_weight in src/core/importance.py.
+     */
+    baseWeight(catKey) {
+        return this.savedItems(catKey)
+            .filter(item => item.importance !== NICE_TO_HAVE)
+            .reduce((acc, item) => acc + (this.importanceLevels[item.importance]?.weight || 0), 0);
+    }
+
+    /**
+     * A Criterion's points out of its Category's 100, e.g. "33.3 điểm", or the bonus a
+     * Nice-to-have adds, e.g. "+16.7 điểm thưởng". Mirrors criterion_max_points in
+     * src/core/importance.py; the evaluation report's stored points are the source of truth.
+     */
+    pointsLabel(catKey, item) {
+        const base = this.baseWeight(catKey);
+        if (!base || !item.text.trim()) return '';
+        return maxPointsLabel((this.importanceLevels[item.importance]?.weight || 0) / base * 100, item.importance === NICE_TO_HAVE);
+    }
+
+    /** A Category's items the server would store: blank ones are dropped on save. */
+    savedItems(catKey) {
+        return this.categories[catKey].filter(item => item.text.trim());
+    }
+
+    /** Why a Category can't be saved (all Nice-to-have, or one text twice), or '' when it can. */
+    categoryProblem(catKey) {
+        const items = this.savedItems(catKey);
+        if (items.length && !this.baseWeight(catKey)) return BONUS_ONLY_MESSAGE;
+        if (new Set(items.map(item => item.text.trim())).size < items.length) return DUPLICATE_MESSAGE;
+        return '';
+    }
+
+    /**
+     * Whether the set can be saved; when it can't, tells HR which Categories to fix.
+     * Callers check this before saving. The server refuses the same sets.
+     * @returns {boolean}
+     */
+    confirmSavable() {
+        const problems = Object.keys(CATEGORY_NAMES)
+            .map(k => [CATEGORY_NAMES[k], this.categoryProblem(k)])
+            .filter(([, problem]) => problem)
+            .map(([name, problem]) => `${name}: ${problem}.`);
+        if (problems.length) alert(problems.join('\n'));
+        return !problems.length;
+    }
+
+    /** An Importance level as HR reads it, e.g. "Bắt buộc ×2". */
     levelLabel(key) {
         const level = this.importanceLevels[key];
         return `${level.label} ×${level.weight}`;
@@ -160,9 +218,8 @@ export class CriteriaEditor {
                 <span class="criteria-level-tag" data-importance="${key}">${this.levelLabel(key)}</span>
                 <span>${IMPORTANCE_HELP[key] || ''}</span>
             </li>`).join('');
-        const [highest, lowest] = [levels[0], levels[levels.length - 1]];
-        const example = levels.length > 1
-            ? `<p class="criteria-guide-example"><strong>Cách tính điểm:</strong> mỗi chiều được chấm bằng trung bình các tiêu chí của nó, có trọng số theo mức độ quan trọng. Ví dụ: một chiều có 1 tiêu chí ${highest[1].label} và 1 tiêu chí ${lowest[1].label} — tiêu chí ${highest[1].label} được tính gấp ${highest[1].weight / lowest[1].weight} lần tiêu chí ${lowest[1].label}.</p>`
+        const example = Object.hasOwn(this.importanceLevels, NICE_TO_HAVE)
+            ? `<p class="criteria-guide-example"><strong>Cách tính điểm:</strong> mỗi chiều có 100 điểm, chia cho các tiêu chí Bắt buộc và Tiêu chuẩn theo trọng số; tiêu chí ${this.importanceLevels[NICE_TO_HAVE].label} chỉ cộng thêm điểm, tối đa 100 điểm cho chiều đó. Ví dụ: 2 tiêu chí Tiêu chuẩn và 1 tiêu chí ${this.importanceLevels[NICE_TO_HAVE].label} — mỗi tiêu chí Tiêu chuẩn 50 điểm, tiêu chí ${this.importanceLevels[NICE_TO_HAVE].label} +25 điểm thưởng. Số điểm của từng tiêu chí hiện ngay trên tiêu chí. Mỗi chiều cần ít nhất một tiêu chí Bắt buộc hoặc Tiêu chuẩn.</p>`
             : '';
         guide.innerHTML = `
             <summary>Ý nghĩa các mức độ quan trọng</summary>
@@ -209,6 +266,7 @@ export class CriteriaEditor {
                     <span class="criteria-row-title">${isCheckList ? '' : `${catIdx + 1}. `}${LIST_NAMES[catKey]}</span>
                     <span class="criteria-row-count">${count} ${isCheckList ? 'mục' : 'tiêu chí'}</span>
                     ${isCheckList ? '<span class="criteria-row-note">Không chấm điểm</span>' : ''}
+                    ${!isCheckList && this.categoryProblem(catKey) ? `<span class="criteria-row-error" role="alert">${this.categoryProblem(catKey)}</span>` : ''}
                 </div>`;
             if (isCheckList) {
                 row.appendChild(this.buildCell(catKey, null));
@@ -307,6 +365,7 @@ export class CriteriaEditor {
         chip.innerHTML = `
             <span class="criteria-chip-handle" title="Kéo để chuyển sang ô khác" aria-hidden="true">⠿</span>
             <textarea rows="1" class="criteria-item-text" aria-label="Nội dung tiêu chí"></textarea>
+            ${catKey === HR_CHECK_ITEMS_KEY ? '' : `<span class="criteria-chip-points">${this.pointsLabel(catKey, item)}</span>`}
             <select class="criteria-chip-menu" title="Chuyển hoặc xóa" aria-label="Chuyển hoặc xóa tiêu chí">
                 <option value="" selected>⋯</option>
                 ${this.menuOptions(catKey, item)}

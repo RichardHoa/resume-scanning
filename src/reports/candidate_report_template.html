@@ -75,6 +75,10 @@
     .strengths li { color: #14532D; }
     .gaps li { color: #7F1D1D; }
     .partial-tag { font-size: 7.5pt; font-weight: 700; color: #92400E; background: #FEF3C7; border-radius: 3px; padding: 0 4pt; margin-left: 4pt; }
+    /* Criterion Points: a right-aligned column beside each Criterion's text */
+    .crit-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8pt; }
+    .crit-points { flex-shrink: 0; min-width: 60pt; text-align: right; font-size: 8pt; font-weight: 700; color: #334155; white-space: nowrap; }
+    .capped-note { font-size: 8pt; font-weight: 600; color: #14532D; margin-top: 3pt; }
     .must-have-tag { font-size: 7.5pt; font-weight: 700; color: #DC2626; background: #FEF2F2; border-radius: 3px; padding: 0 4pt; margin-left: 4pt; }
     .alert.must-have { border-color: #DC2626; background: #FEF2F2; color: #7F1D1D; }
     .alert.must-have ul { margin-top: 4pt; }
@@ -154,6 +158,7 @@
             <span class="dim-score">{{ cat.score }} / 100</span>
         </div>
         <div class="progress"><div class="{{ cat.fill_class }}" style="width: {{ cat.fill_width }}%;"></div></div>
+        {% if cat.bonus_capped %}<div class="capped-note">Đã đạt tối đa 100 điểm</div>{% endif %}
         {% if cat.strengths %}
         <div class="section-title">Điểm mạnh chính:</div>
         <ul class="strengths">{% for s in cat.strengths %}<li>{{ s }}</li>{% endfor %}</ul>
@@ -163,9 +168,23 @@
         <ul class="strengths">
             {% for s in cat.met_criteria %}
             <li>
-                {{ s.text }}{% if s.must_have %}<span class="must-have-tag">Bắt buộc</span>{% endif %}{% if s.partial %}<span class="partial-tag">Đáp ứng một phần</span>{% endif %}
+                <div class="crit-row">
+                    <span>{{ s.text }}{% if s.must_have %}<span class="must-have-tag">Bắt buộc</span>{% endif %}{% if s.partial %}<span class="partial-tag">Đáp ứng một phần</span>{% endif %}</span>
+                    <span class="crit-points">{{ s.points }}</span>
+                </div>
                 {% for q in s.quotes %}<div class="quote">“{{ q }}”</div>{% endfor %}
             </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% if cat.unmet_criteria %}
+        <div class="section-title">Tiêu chí chưa có bằng chứng:</div>
+        <ul class="gaps">
+            {% for s in cat.unmet_criteria %}
+            <li><div class="crit-row">
+                <span>{{ s.text }}{% if s.must_have %}<span class="must-have-tag">Bắt buộc</span>{% endif %}</span>
+                <span class="crit-points">{{ s.points }}</span>
+            </div></li>
             {% endfor %}
         </ul>
         {% endif %}

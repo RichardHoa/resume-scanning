@@ -41,8 +41,12 @@ A single verbatim requirement string assigned to one Category during decompositi
 _Avoid_: requirement item
 
 **Importance**:
-How much one Criterion counts inside its Category: Must-have (weight 2), Standard (2) or Nice-to-have (1). The Category score is the mean of its Verdicts weighted by Importance, so a Category of only Standard Criteria scores as a plain mean. A Must-have weighs the same as a Standard; what sets it apart is that lacking it makes a Must-have Rejection. Only HR sets it, per Criterion, when reviewing the HR RAG: the decomposer proposes none, so every Criterion starts as Standard. The evaluator LLM never sees it. HR Check Items have none. A Criterion stored without one reads as Standard.
+How much one Criterion counts inside its Category: Must-have (weight 2), Standard (2) or Nice-to-have (1). The Must-have and Standard Criteria make up the Category's full score, weighted by Importance, so a Category of only Standard Criteria scores as a plain mean. A Nice-to-have only adds: meeting it raises the score, up to the Category's maximum of 100, and lacking it never lowers the score. A Must-have weighs the same as a Standard; what sets it apart is that lacking it makes a Must-have Rejection. Only HR sets it, per Criterion, when reviewing the HR RAG: the decomposer proposes none, so every Criterion starts as Standard. The evaluator LLM never sees it. HR Check Items have none. A Criterion stored without one reads as Standard.
 _Avoid_: priority, weight (alone)
+
+**Criterion Points**:
+How much of its Category's 100 points one Criterion is worth, and how much a candidate earned on it, shown to HR so they can see where a Category score comes from. The Must-have and Standard Criteria share the Category's 100 by Importance. A Nice-to-have is worth bonus points on top, and the Category never goes above 100. A Partial earns half a Criterion's points. Shares of the candidate's overall score are not Criterion Points: those are a Category's weight.
+_Avoid_: criterion score, weight (alone)
 
 **Must-have Rejection**:
 An evaluation in which at least one Must-have Criterion got No Evidence in most of its Category's runs; it names which ones, and its match recommendation is `MUST_HAVE_REJECTED`. The candidate is out: still scored in every Category so HR can see the scores, but never ranked and given no Candidate Feedback, and listed apart from the ranked candidates. A Must-have with Partial evidence never rejects. HR un-rejects a candidate only by changing that Criterion's Importance and re-evaluating. A Failed Evaluation is never a Must-have Rejection: it needs a rerun first.

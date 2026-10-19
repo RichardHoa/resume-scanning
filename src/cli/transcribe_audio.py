@@ -65,9 +65,14 @@ class Span:
 
 
 def decode_audio(path: Path) -> np.ndarray:
-    """Decode any ffmpeg-readable file to a 16 kHz mono float32 waveform."""
+    """Decode any ffmpeg-readable file to a 16 kHz mono float32 waveform.
+
+    Uses the ffmpeg binary bundled with imageio-ffmpeg, since the compute machine has no system ffmpeg.
+    """
+    from imageio_ffmpeg import get_ffmpeg_exe
+
     cmd = [
-        "ffmpeg", "-nostdin", "-loglevel", "error", "-i", str(path),
+        get_ffmpeg_exe(), "-nostdin", "-loglevel", "error", "-i", str(path),
         "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "f32le", "-",
     ]
     raw = subprocess.run(cmd, check=True, capture_output=True).stdout

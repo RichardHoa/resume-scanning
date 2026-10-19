@@ -24,7 +24,7 @@ source ~/venvs/audio-transcribe/bin/activate
 pip install -r requirements-audio.txt
 ```
 
-`ffmpeg` must also be on the PATH. Check with `ffmpeg -version`. If it's missing, try `module load ffmpeg`, or `conda install -c conda-forge ffmpeg` inside a conda env.
+No system ffmpeg is needed: `imageio-ffmpeg` in `requirements-audio.txt` brings its own ffmpeg binary, which the script uses to decode the audio.
 
 ### 2. Get access to the speaker model (needed for Person 1 / Person 2)
 

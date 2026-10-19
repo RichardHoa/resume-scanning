@@ -14,7 +14,7 @@ import threading
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from src.core.config import ROOT_DIR, RAG_DIR, DEFAULT_EMBEDDING_MODEL, HR_CHECK_ITEMS_KEY, DEFAULT_IMPORTANCE
-from src.core.importance import normalize_importance, split_criterion_item
+from src.core.importance import normalize_importance, split_criterion_item, base_weight
 from src.providers.rag_exporter import export_hr_rag_file, get_stored_rag_summary
 
 # Evaluation never builds or changes the HR RAG: HR sets it on the RAG page first, so HR controls exactly what counts
@@ -22,6 +22,37 @@ NO_HR_RAG_MESSAGE = (
     "No HR RAG is stored. Set the HR requirements on the website's RAG page (decompose them and review the "
     "Criteria) before running an evaluation; evaluation never builds or changes the HR RAG."
 )
+
+# A Nice-to-have only adds bonus points on top of a Category's Must-have and Standard Criteria (docs/adr/0014)
+BONUS_ONLY_CATEGORY_MESSAGE = (
+    "A Category's Criteria are all Nice-to-have (Ưu tiên). Give it at least one Must-have or Standard Criterion "
+    "on the website's RAG page"
+)
+# Each Verdict finds its Criterion by exact text, so two Criteria with one text in a Category would share a Verdict
+DUPLICATE_CRITERION_MESSAGE = "A Category has the same Criterion text twice. Delete or reword one on the website's RAG page"
+
+
+def hr_rag_problem(categories: Dict[str, List[Any]]) -> str:
+    """
+    Why a set of Criteria ({category: [criterion]}, each a string or {"text", "importance"}) can't be scored, or ''
+    when it can: a Category whose Criteria are all Nice-to-have, or the same text twice in one Category. Blank
+    Criteria and HR Check Items are ignored, as they are never stored as Criteria.
+    """
+    bonus_only, duplicated = [], []
+    for cat, items in (categories or {}).items():
+        if cat == HR_CHECK_ITEMS_KEY or not isinstance(items, list):
+            continue
+        criteria = [c for c in (split_criterion_item(item) for item in items) if c[0]]
+        if criteria and base_weight(importance for _, importance in criteria) == 0:
+            bonus_only.append(cat)
+        if len({text for text, _ in criteria}) < len(criteria):
+            duplicated.append(cat)
+    problems = []
+    if bonus_only:
+        problems.append(f"{BONUS_ONLY_CATEGORY_MESSAGE} ({', '.join(bonus_only)}).")
+    if duplicated:
+        problems.append(f"{DUPLICATE_CRITERION_MESSAGE} ({', '.join(duplicated)}).")
+    return " ".join(problems)
 
 
 # Set on every Criterion saved since only HR sets Importance. A saved Criterion without it has an Importance the
@@ -176,9 +207,19 @@ class LocalCriteriaRAG:
         return len(self.documents) > 0
 
     def require_stored_rag(self):
-        """Raises RuntimeError(NO_HR_RAG_MESSAGE) unless HR has set the HR RAG."""
+        """
+        Raises RuntimeError(NO_HR_RAG_MESSAGE) unless HR has set the HR RAG, and a RuntimeError when its Criteria
+        can't be scored (hr_rag_problem). Saving already refuses such a set; this catches one stored before.
+        """
         if not self.has_stored_rag():
             raise RuntimeError(NO_HR_RAG_MESSAGE)
+        with self._lock:
+            categories: Dict[str, List[Any]] = {}
+            for doc in self.documents:
+                categories.setdefault(doc.get("category"), []).append(doc)
+        problem = hr_rag_problem(categories)
+        if problem:
+            raise RuntimeError(problem)
 
     def clear_rag_database(self):
         """Clears all stored RAG criteria from persistent ChromaDB collection/file backup and deletes hr_rag.txt."""
@@ -267,9 +308,12 @@ class LocalCriteriaRAG:
             for cat, items in decomposed.items():
                 if isinstance(items, list):
                     normalized[cat] = []
+                    # The decomposer can repeat a text; HR's saves are refused with one (hr_rag_problem)
+                    seen_texts = set()
                     for item in items:
                         cleaned_item, importance = split_criterion_item(item)
-                        if cleaned_item:
+                        if cleaned_item and cleaned_item not in seen_texts:
+                            seen_texts.add(cleaned_item)
                             item_counter += 1
                             doc_id = f"crit_{cat}_{item_counter}"
                             if cat == HR_CHECK_ITEMS_KEY:
@@ -379,7 +423,11 @@ class LocalCriteriaRAG:
         Updates stored RAG criteria with manual user edits, re-computes embeddings, and updates hr_rag.txt.
         Requirement text left as None falls back to the stored originals, so a Criteria-only
         edit (e.g. from the RAG Workbench) keeps HR's original text in hr_rag.txt.
+        Raises ValueError, storing nothing, when the edited Criteria can't be scored (hr_rag_problem).
         """
+        problem = hr_rag_problem(categories)
+        if problem:
+            raise ValueError(problem)
         if standard_req is None or hidden_req is None:
             originals = self.load_original_requirements()
             if standard_req is None:

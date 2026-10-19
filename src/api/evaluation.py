@@ -34,7 +34,6 @@ from src.core.run_files import (
 )
 from src.core.dev_details import resume_dev_details
 from src.reports.candidate_report import build_candidate_report_pdf
-from src.providers.rag_engine import NO_HR_RAG_MESSAGE
 
 router = APIRouter(prefix="/api", tags=["evaluation"])
 
@@ -92,8 +91,10 @@ async def _run_batch_evaluation(
                 llm_decomposer_func=lambda s, h: state.evaluator._decompose_requirements_with_llm(s, h),
                 force_reingest=True
             )
-        if not state.evaluator.rag.has_stored_rag():
-            raise HTTPException(status_code=400, detail=NO_HR_RAG_MESSAGE)
+        try:
+            state.evaluator.rag.require_stored_rag()
+        except RuntimeError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
         order_data = load_evaluation_order()
         candidate_items = []

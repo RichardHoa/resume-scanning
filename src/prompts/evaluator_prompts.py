@@ -181,6 +181,31 @@ CATEGORY_EVALUATION_SCHEMA: Dict[str, Any] = {
 }
 
 
+def category_evaluation_schema(criteria: List[str]) -> Dict[str, Any]:
+    """
+    CATEGORY_EVALUATION_SCHEMA tied to one Category's Criteria: "criterion" may only be one of their exact texts and
+    there is one item per Criterion, so the model can't reword, skip or add one and each Verdict finds its Criterion
+    by exact text. The enum's order doesn't matter, so reordering the Criteria in the prompt still works.
+    """
+    unique_criteria = list(dict.fromkeys(criteria))
+    item_schema = CATEGORY_EVALUATION_SCHEMA["properties"]["criteria_evaluations"]["items"]
+    return {
+        **CATEGORY_EVALUATION_SCHEMA,
+        "properties": {
+            **CATEGORY_EVALUATION_SCHEMA["properties"],
+            "criteria_evaluations": {
+                "type": "array",
+                "items": {
+                    **item_schema,
+                    "properties": {**item_schema["properties"], "criterion": {"type": "string", "enum": unique_criteria}}
+                },
+                "minItems": len(unique_criteria),
+                "maxItems": len(unique_criteria)
+            }
+        }
+    }
+
+
 def get_requirements_scrutiny_system_prompt(max_questions: int = 5) -> str:
     return f"""
 {current_date_prompt_line()}

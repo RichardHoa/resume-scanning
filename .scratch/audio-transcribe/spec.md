@@ -46,7 +46,7 @@ The Qwen timestamp model (`Qwen/Qwen3-ForcedAligner-0.6B`) can't be used. It doe
 - **Transcription.** Each segment goes through Qwen3-ASR-1.7B with the language left on auto-detect (`language=None`), so Vietnamese with English and French mixed in stays as spoken. It uses the plain transformers backend (`qwen-asr`), not vLLM, in bf16 on one GPU. The output is a transcript, never a translation.
 - **When pyannote can't run.** If `HF_TOKEN` is missing or the model's terms haven't been accepted, the script stops early with a clear error, before loading the ASR model. `--no-speakers` skips speaker labels on purpose, and the lines then have no `Person N:` prefix.
 - **Setup steps (`docs/audio-transcribe.md`).**
-  1. Create the venv and install `requirements.txt`. ffmpeg must be on the PATH.
+  1. Create the venv and install `requirements-audio.txt`. No system ffmpeg is needed: the compute machine has none (no `ffmpeg` module), so audio is decoded with the ffmpeg binary bundled in `imageio-ffmpeg`.
   2. Create a Hugging Face account and accept the terms on the `pyannote/speaker-diarization-community-1` model page.
   3. Create a read token at hf.co/settings/tokens and `export HF_TOKEN=...` on the compute machine.
   4. Run the shell file.

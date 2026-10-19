@@ -176,6 +176,13 @@
     color: var(--text-muted);
 }
 
+/* A Category whose Criteria are all Nice-to-have: it can't be saved until one is Must-have or Standard */
+.criteria-row-error {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--danger);
+}
+
 .criteria-cell {
     min-width: 0;
     padding: 8px;
@@ -290,6 +297,21 @@
     background: #FFFFFF;
     border-color: var(--brand-azure);
     outline: none;
+}
+
+/* The Criterion's points out of its Category's 100, recomputed as HR moves it */
+.criteria-chip-points {
+    flex-shrink: 0;
+    padding: 4px 2px;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: var(--text-muted);
+}
+
+.criteria-chip-points:empty {
+    display: none;
 }
 
 /* "⋯" menu: a native select, so it works with keyboard and touch */

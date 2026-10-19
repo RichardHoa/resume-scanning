@@ -90,17 +90,19 @@ DIMENSION_WEIGHTS = {
     "hidden_culture": 0.12
 }
 
-# Importance of one Criterion inside its Category, set only by HR in the HR RAG. The Category score is the mean of
-# the Verdicts weighted by these, so an all-Standard Category scores as an unweighted mean. A Must-have weighs the
-# same as a Standard: what sets it apart is the Must-have Rejection (NO_EVIDENCE on any one rejects the candidate).
-# See docs/adr/0011. The single source of the levels: the API, hr_rag.txt and the criteria editor (through the RAG
-# summary) read them here
+# Importance of one Criterion inside its Category, set only by HR in the HR RAG. The Must-have and Standard Criteria
+# share the Category's 100 points by these weights, so an all-Standard Category scores as an unweighted mean. A
+# Nice-to-have only adds bonus points at its weight, capped at the Category's 100, and never costs any (ADR 0014).
+# A Must-have weighs the same as a Standard: what sets it apart is the Must-have Rejection (NO_EVIDENCE on any one
+# rejects the candidate, ADR 0011). The single source of the levels: the API, hr_rag.txt and the criteria editor
+# (through the RAG summary) read them here
 MUST_HAVE = "must_have"
 DEFAULT_IMPORTANCE = "standard"
+NICE_TO_HAVE = "nice_to_have"
 IMPORTANCE_LEVELS = {
     MUST_HAVE: {"label": "Bắt buộc", "weight": 2},
     DEFAULT_IMPORTANCE: {"label": "Tiêu chuẩn", "weight": 2},
-    "nice_to_have": {"label": "Ưu tiên", "weight": 1}
+    NICE_TO_HAVE: {"label": "Ưu tiên", "weight": 1}
 }
 IMPORTANCE_WEIGHTS = {key: level["weight"] for key, level in IMPORTANCE_LEVELS.items()}
 

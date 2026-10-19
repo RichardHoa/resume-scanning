@@ -5,7 +5,7 @@ import os
 import sys
 from datetime import datetime
 from typing import Dict, List, Any
-from src.core.config import ROOT_DIR, HR_CHECK_ITEMS_KEY, IMPORTANCE_LEVELS, DEFAULT_IMPORTANCE, MUST_HAVE
+from src.core.config import ROOT_DIR, HR_CHECK_ITEMS_KEY, IMPORTANCE_LEVELS, DEFAULT_IMPORTANCE, MUST_HAVE, NICE_TO_HAVE
 from src.core.importance import normalize_importance, split_criterion_item
 
 
@@ -36,6 +36,7 @@ def export_hr_rag_file(
             f"{_importance_tag(key)} x{level['weight']}" for key, level in IMPORTANCE_LEVELS.items()
         ),
         f"A candidate with no evidence for any one {_importance_tag(MUST_HAVE)} Criterion is rejected.",
+        f"A {_importance_tag(NICE_TO_HAVE)} Criterion only adds bonus points, up to the Category's 100; lacking it costs nothing.",
         "=" * 80,
     ]
 

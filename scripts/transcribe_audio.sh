@@ -16,9 +16,4 @@ if [ $# -lt 1 ]; then
   exit 1
 fi
 
-if ! command -v ffmpeg >/dev/null 2>&1; then
-  echo "[ERROR] ffmpeg is not on the PATH (try 'module load ffmpeg', see docs/audio-transcribe.md)." >&2
-  exit 1
-fi
-
 exec python "$SCRIPT_DIR/../src/cli/transcribe_audio.py" "$@"

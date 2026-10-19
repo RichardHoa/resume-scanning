@@ -1,6 +1,8 @@
 # Criterion Importance weights Verdicts inside a Category
 
 > **Partly superseded by [ADR 0011](0011-must-have-rejection.md):** a Must-have with No Evidence now rejects the candidate, a Must-have weighs ×2 like a Standard, and the decomposer no longer proposes Importance (only HR sets it). Weighting Verdicts by Importance, and matching each Criterion's Importance by its echoed text, still stand, except that only an exact echo can make a Verdict a Must-have.
+>
+> **Partly superseded by [ADR 0014](0014-nice-to-have-bonus-and-schema-enforced-criteria.md):** a Nice-to-have now only adds bonus points (capped at the Category's 100) and is out of the denominator, and the schema forces the echoed text to be exact, so the `difflib` fallback is gone.
 
 Every Criterion in a Category used to count the same: the Category score was the plain mean of its Verdicts. In real hiring, missing the core language costs far more than missing a minor tool, and the Clarification Questions already ask HR which requirements are must-haves, but nothing carried the answer into scoring. Each Criterion now has an Importance: Must-have (weight 3), Standard (2) or Nice-to-have (1), from the fixed `IMPORTANCE_WEIGHTS` in `src/core/config.py`. The Category score is `Σ(weight × verdict score) / Σ(weight) × 100`, so a Category of only Standard Criteria scores exactly as before.
 

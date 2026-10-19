@@ -321,7 +321,8 @@
 .dim-bar-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: baseline;
+    gap: 8px;
     font-size: 0.8rem;
 }
 
@@ -331,6 +332,8 @@
 }
 
 .dim-bar-val {
+    flex-shrink: 0;
+    white-space: nowrap;
     color: #0F172A;
     font-weight: 800;
     font-family: var(--font-mono);

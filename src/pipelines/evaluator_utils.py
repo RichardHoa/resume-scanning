@@ -3,11 +3,11 @@ Utility functions for data extraction, list deduplication, PII sanitization, and
 """
 import re
 import sys
-import difflib
+from collections import Counter
 from typing import Dict, List, Any, Optional
 
 from src.core.config import IMPORTANCE_WEIGHTS, DEFAULT_IMPORTANCE, MUST_HAVE
-from src.core.importance import normalize_importance
+from src.core.importance import normalize_importance, base_weight, criterion_max_points
 
 
 def clean_and_deduplicate_list(items: Any, max_items: int = 10) -> List[str]:
@@ -31,57 +31,23 @@ def clean_and_deduplicate_list(items: Any, max_items: int = 10) -> List[str]:
 
 EMPTY_QUOTE_PLACEHOLDERS = ("null", "none", "n/a", "na", "", "không có", "không", "none.", "nil")
 
-# How close the LLM's echoed criterion text must be to a stored Criterion to take its Importance
-IMPORTANCE_MATCH_MIN_RATIO = 0.85
 
-
-def _normalize_criterion_text(text: str) -> str:
-    return " ".join(str(text).split()).casefold()
-
-
-def match_criterion_importance(criterion: str, importance_map: Dict[str, str]) -> str:
-    """
-    The Importance of the stored Criterion the LLM's echoed criterion text refers to: an exact match ignoring
-    whitespace and case, else the closest text at IMPORTANCE_MATCH_MIN_RATIO or above, else Standard.
-    Only an exact match can make a Verdict a Must-have, since a Must-have decides a Must-have Rejection: a fuzzy
-    match to a Must-have reads as Standard, so a slip costs weight, never a rejection.
-    Never by position, since the Criteria Permutation bias test reorders the Criteria.
-    """
-    target = _normalize_criterion_text(criterion)
-    if not target or not importance_map:
-        return DEFAULT_IMPORTANCE
-    normalized_map = {_normalize_criterion_text(k): v for k, v in importance_map.items()}
-    if target in normalized_map:
-        return normalize_importance(normalized_map[target])
-    best_ratio, best_importance = 0.0, DEFAULT_IMPORTANCE
-    for key, importance in normalized_map.items():
-        ratio = difflib.SequenceMatcher(None, target, key).ratio()
-        if ratio > best_ratio:
-            best_ratio, best_importance = ratio, importance
-    if best_ratio < IMPORTANCE_MATCH_MIN_RATIO:
-        return DEFAULT_IMPORTANCE
-    best_importance = normalize_importance(best_importance)
-    return DEFAULT_IMPORTANCE if best_importance == MUST_HAVE else best_importance
-
-
-def _unjudged_must_haves(importance_map: Optional[Dict[str, str]], echoed_criteria: List[str]) -> List[str]:
-    """The must-have Criteria in importance_map that no echoed criterion text matches exactly (ignoring whitespace and case)."""
-    echoed = {_normalize_criterion_text(c) for c in echoed_criteria}
-    return [
-        text for text, importance in (importance_map or {}).items()
-        if normalize_importance(importance) == MUST_HAVE and _normalize_criterion_text(text) not in echoed
-    ]
+def _not_one_verdict_per_criterion(importance_map: Dict[str, str], echoed_criteria: List[str]) -> bool:
+    """True unless every Criterion in importance_map got exactly one Verdict and no Verdict names another text."""
+    return Counter(echoed_criteria) != Counter(importance_map.keys())
 
 
 def validate_category_evaluation(parsed: Any, importance_map: Optional[Dict[str, str]] = None) -> Optional[Dict[str, Any]]:
     """
     Validates that parsed JSON contains valid evaluation data.
-    If criteria_evaluations list is present, computes score deterministically from atomic criteria coverage:
-    the mean of the Verdicts weighted by each Criterion's Importance from importance_map ({criterion_text:
-    importance}). Without a map every Criterion is Standard, i.e. a plain mean.
+    If criteria_evaluations list is present, computes score deterministically from atomic criteria coverage: the
+    Must-have and Standard Verdicts weighted by each Criterion's Importance from importance_map ({criterion_text:
+    importance}, looked up by the exact text the schema forces) make up the 100, and Nice-to-have Verdicts only add
+    to it, capped at 100. Each Criterion gets its Criterion Points (max_points, earned_points). Without a map every
+    Criterion is Standard, i.e. a plain mean.
     Otherwise, validates the numeric score (0-100) and required output fields.
-    Invalid (None) when a must-have Criterion in importance_map got no exactly echoed Verdict: an unjudged Must-have
-    could hide a Must-have Rejection, so the run is retried like any other broken output.
+    Invalid (None) unless every Criterion in importance_map got exactly one Verdict: a skipped or doubled Criterion
+    changes the score and could hide a Must-have Rejection, so the run is retried like any other broken output.
     """
     if not isinstance(parsed, dict) or not parsed:
         return None
@@ -91,9 +57,9 @@ def validate_category_evaluation(parsed: Any, importance_map: Optional[Dict[str,
     all_criteria_quotes: List[str] = []
     deterministic_score: Optional[int] = None
     raw_criteria = parsed.get("criteria_evaluations")
+    bonus_capped = False
     if isinstance(raw_criteria, list) and len(raw_criteria) > 0:
         total_score_acc = 0.0
-        total_weight = 0.0
         for item in raw_criteria:
             if isinstance(item, dict):
                 crit_text = str(item.get("criterion", "")).strip()
@@ -119,10 +85,8 @@ def validate_category_evaluation(parsed: Any, importance_map: Optional[Dict[str,
                 else:
                     s = 0.0
 
-                importance = match_criterion_importance(crit_text, importance_map) if importance_map else DEFAULT_IMPORTANCE
-                weight = IMPORTANCE_WEIGHTS[importance]
-                total_score_acc += weight * s
-                total_weight += weight
+                importance = normalize_importance(importance_map.get(crit_text)) if importance_map else DEFAULT_IMPORTANCE
+                total_score_acc += IMPORTANCE_WEIGHTS[importance] * s
                 cleaned_criteria.append({
                     "criterion": crit_text,
                     "importance": importance,
@@ -134,8 +98,20 @@ def validate_category_evaluation(parsed: Any, importance_map: Optional[Dict[str,
                     "reasoning": str(item.get("reasoning", "")).strip()
                 })
 
-        if total_weight > 0:
-            deterministic_score = int(round((total_score_acc / total_weight) * 100.0))
+        if importance_map and _not_one_verdict_per_criterion(importance_map, [c["criterion"] for c in cleaned_criteria]):
+            print(f"[Eval Validation] Not every Criterion got exactly one Verdict: {[c['criterion'] for c in cleaned_criteria]}", file=sys.stderr)
+            return None
+
+        category_base_weight = base_weight(c["importance"] for c in cleaned_criteria)
+        if category_base_weight > 0:
+            raw_score = total_score_acc / category_base_weight * 100.0
+            # The Nice-to-haves met push past the Category's 100, so the Criterion rows add up to more than the gauge
+            bonus_capped = raw_score > 100.0
+            deterministic_score = int(round(min(100.0, raw_score)))
+            for c in cleaned_criteria:
+                max_points = criterion_max_points(c["importance"], category_base_weight)
+                c["max_points"] = round(max_points, 1)
+                c["earned_points"] = round(max_points * c["score"], 1)
 
     # 2. Determine final score (deterministic calculation preferred, fallback to explicit score)
     score: Optional[int] = None
@@ -156,11 +132,6 @@ def validate_category_evaluation(parsed: Any, importance_map: Optional[Dict[str,
     if score is None or not (0 <= score <= 100):
         return None
 
-    unjudged = _unjudged_must_haves(importance_map, [c["criterion"] for c in cleaned_criteria])
-    if unjudged:
-        print(f"[Eval Validation] No Verdict for must-have Criteria: {unjudged}", file=sys.stderr)
-        return None
-
     strengths = clean_and_deduplicate_list(parsed.get("strengths", []), max_items=10)
     gaps = clean_and_deduplicate_list(parsed.get("gaps", []), max_items=8)
     quotes = clean_and_deduplicate_list(parsed.get("evidence_quotes", []), max_items=6)
@@ -177,6 +148,7 @@ def validate_category_evaluation(parsed: Any, importance_map: Optional[Dict[str,
     }
     if cleaned_criteria:
         result["criteria_evaluations"] = cleaned_criteria
+        result["bonus_capped"] = bonus_capped
 
     return result
 
@@ -184,8 +156,8 @@ def validate_category_evaluation(parsed: Any, importance_map: Optional[Dict[str,
 def count_must_have_no_evidence(eval_runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     For each must-have Criterion judged in a Category's runs, the number of runs that gave it NO_EVIDENCE, as
-    [{"criterion", "no_evidence_runs"}]. Criteria are matched across runs by exact text ignoring whitespace and case
-    (a Verdict is a Must-have only through an exact match); a run that echoes one twice counts once.
+    [{"criterion", "no_evidence_runs"}]. Every run echoes each Criterion's exact text (the schema forces it), so
+    runs are matched by that text; a run that echoes one twice counts once.
     """
     counts: Dict[str, Dict[str, Any]] = {}
     for run in eval_runs:
@@ -193,7 +165,7 @@ def count_must_have_no_evidence(eval_runs: List[Dict[str, Any]]) -> List[Dict[st
         for crit in run.get("criteria_evaluations") or []:
             if not isinstance(crit, dict) or crit.get("importance") != MUST_HAVE:
                 continue
-            key = _normalize_criterion_text(crit.get("criterion", ""))
+            key = str(crit.get("criterion", "")).strip()
             entry = counts.setdefault(key, {"criterion": str(crit.get("criterion", "")).strip(), "no_evidence_runs": 0})
             if str(crit.get("verdict", "")).upper() == "NO_EVIDENCE" and key not in no_evidence_in_run:
                 no_evidence_in_run.add(key)

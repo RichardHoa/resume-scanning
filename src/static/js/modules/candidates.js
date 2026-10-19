@@ -8,7 +8,8 @@
  */
 
 import { API } from './api.js';
-import { CATEGORY_NAMES, MUST_HAVE } from './criteria-editor.js';
+import { CATEGORY_NAMES, MUST_HAVE, NICE_TO_HAVE } from './criteria-editor.js';
+import { earnedPointsLabel } from './criterion-points.js';
 
 const FAILED_EVALUATION_LABEL = 'Lỗi – cần chạy lại';
 const FEEDBACK_TITLE = 'Nhận xét của hội đồng đánh giá';
@@ -65,6 +66,16 @@ function isMissingPosition(cand) {
 const MUST_HAVE_REJECTION_LABEL = 'Bị loại – thiếu tiêu chí bắt buộc';
 const MUST_HAVE_REJECTION_MESSAGE = 'CV không cho thấy bằng chứng cho các tiêu chí HR đánh dấu là bắt buộc dưới đây, nên ứng viên bị loại và không được xếp hạng. Điểm vẫn được giữ để HR tham khảo. Nếu CV chỉ bỏ sót thông tin, hãy đổi mức độ quan trọng của tiêu chí trong trang RAG rồi đánh giá lại ứng viên.';
 const MUST_HAVE_TAG = '<span class="modal-must-have-tag">Bắt buộc</span>';
+
+/**
+ * A Criterion's Criterion Points as stored in the report: earned / max out of its Category's 100,
+ * or the bonus a Nice-to-have added, which never costs points when missing.
+ * @param {Object} c - One entry of a Category's criteria_evaluations.
+ * @returns {string} HTML for the tag.
+ */
+function pointsTag(c) {
+    return `<span class="modal-points-tag">${earnedPointsLabel(c.earned_points, c.max_points, c.importance === NICE_TO_HAVE)}</span>`;
+}
 
 /**
  * A Must-have Rejection: the evaluator set its recommendation to MUST_HAVE_REJECTED. The candidate keeps their
@@ -450,16 +461,7 @@ export class CandidatePoolController {
         // Vital Info: Breakdown of Match Score Progress Bars
         const dims = cand.dimension_scores || {};
         let dimsBreakdownHtml = '';
-        const dimKeys = ['technical_skills', 'work_experience', 'seniority_title', 'education_certifications', 'hidden_culture'];
-        const dimShortNames = {
-            'technical_skills': 'Kỹ năng chuyên môn',
-            'work_experience': 'Kinh nghiệm làm việc',
-            'seniority_title': 'Cấp bậc',
-            'education_certifications': 'Học vấn & Chứng chỉ',
-            'hidden_culture': 'Văn hóa & Kỹ năng mềm'
-        };
-
-        dimKeys.forEach(k => {
+        Object.keys(CATEGORY_NAMES).forEach(k => {
             if (dims[k] && !unscored && !isNotApplicableCategory(dims[k])) {
                 const dScore = Math.round(dims[k].score || 0);
                 let fillClass = 'fill-cyan';
@@ -471,7 +473,7 @@ export class CandidatePoolController {
                 dimsBreakdownHtml += `
                     <div class="dim-bar-item">
                         <div class="dim-bar-header">
-                            <span class="dim-bar-name">${dimShortNames[k]}</span>
+                            <span class="dim-bar-name">${CATEGORY_NAMES[k]}</span>
                             <span class="dim-bar-val">${dScore}/100</span>
                         </div>
                         <div class="dim-progress-track">
@@ -606,6 +608,7 @@ export class CandidatePoolController {
                     <div class="modal-dim-progress">
                         <div class="modal-dim-progress-fill ${fillClass}" style="width: ${Math.min(100, Math.max(5, d.score))}%;"></div>
                     </div>
+                    ${d.bonus_capped ? '<div class="modal-dim-capped-note">Đã đạt tối đa 100 điểm</div>' : ''}
                     ${this.renderCategoryStrengths(d)}
                     ${this.renderCategoryMetCriteria(d)}
                     ${this.renderCategoryNoEvidence(d)}
@@ -873,7 +876,7 @@ export class CandidatePoolController {
             .filter(c => c.verdict === 'STRONG_EVIDENCE' || c.verdict === 'PARTIAL_EVIDENCE')
             .map(c => `
                 <li>
-                    ${this.escapeHtml(c.criterion)}${c.importance === MUST_HAVE ? MUST_HAVE_TAG : ''}${c.verdict === 'PARTIAL_EVIDENCE' ? '<span class="modal-partial-tag">Đáp ứng một phần</span>' : ''}
+                    ${this.escapeHtml(c.criterion)}${c.importance === MUST_HAVE ? MUST_HAVE_TAG : ''}${c.verdict === 'PARTIAL_EVIDENCE' ? '<span class="modal-partial-tag">Đáp ứng một phần</span>' : ''}${pointsTag(c)}
                     ${(c.evidence_quotes || []).map(q => `<div class="modal-quote-box">"${this.escapeHtml(q)}"</div>`).join('')}
                 </li>
             `).join('');
@@ -889,7 +892,7 @@ export class CandidatePoolController {
     renderCategoryNoEvidence(d) {
         const list = (d.criteria_evaluations || [])
             .filter(c => c.verdict === 'NO_EVIDENCE')
-            .map(c => `<li>${this.escapeHtml(c.criterion)}${c.importance === MUST_HAVE ? MUST_HAVE_TAG : ''}</li>`)
+            .map(c => `<li>${this.escapeHtml(c.criterion)}${c.importance === MUST_HAVE ? MUST_HAVE_TAG : ''}${pointsTag(c)}</li>`)
             .join('');
         return list ? `<div class="modal-section-title">Tiêu chí chưa có bằng chứng:</div><ul class="modal-bullets gaps">${list}</ul>` : '';
     }

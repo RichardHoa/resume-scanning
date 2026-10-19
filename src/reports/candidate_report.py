@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pypdf import PdfWriter
 
-from src.core.config import MUST_HAVE
+from src.core.config import MUST_HAVE, NICE_TO_HAVE
 
 TEMPLATE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_NAME = "candidate_report_template.html"
@@ -82,22 +82,44 @@ def _evaluated_at(value: Optional[str]) -> str:
     return f"{dt:%H:%M:%S} {dt.day}/{dt.month}/{dt.year}"
 
 
+def _points(value: Any) -> str:
+    """Criterion Points as HR reads them: one decimal, without a trailing ".0", like the website's formatPoints."""
+    return f"{float(value or 0):.1f}".removesuffix(".0")
+
+
+def points_label(c: Dict[str, Any]) -> str:
+    """
+    A Criterion's Criterion Points: earned / max out of its Category's 100, or the bonus a Nice-to-have added, which
+    never costs points when missing. Same wording as earnedPointsLabel in src/static/js/modules/criterion-points.js.
+    """
+    if c.get("importance") != NICE_TO_HAVE:
+        return f"{_points(c.get('earned_points'))} / {_points(c.get('max_points'))}"
+    if (c.get("earned_points") or 0) > 0:
+        return f"+{_points(c.get('earned_points'))}"
+    return "+0 · không trừ điểm"
+
+
+def _criterion_view(c: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "text": c.get("criterion", ""),
+        "partial": c.get("verdict") == "PARTIAL_EVIDENCE",
+        "must_have": c.get("importance") == MUST_HAVE,
+        "points": points_label(c),
+        "quotes": c.get("evidence_quotes") or []
+    }
+
+
 def met_criteria(dim: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    A Category's criteria judged STRONG or PARTIAL, each with its resume quotes. Reports made before per-criterion
-    results were saved have none.
-    """
+    """A Category's criteria judged STRONG or PARTIAL, each with its points and resume quotes."""
     return [
-        {
-            "text": c.get("criterion", ""),
-            "partial": c.get("verdict") == "PARTIAL_EVIDENCE",
-            # Reports made before Criterion Importance have none, and show no tag
-            "must_have": c.get("importance") == MUST_HAVE,
-            "quotes": c.get("evidence_quotes") or []
-        }
-        for c in dim.get("criteria_evaluations") or []
+        _criterion_view(c) for c in dim.get("criteria_evaluations") or []
         if c.get("verdict") in ("STRONG_EVIDENCE", "PARTIAL_EVIDENCE")
     ]
+
+
+def unmet_criteria(dim: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """A Category's criteria judged NO_EVIDENCE, each with its points (a Nice-to-have's say it cost nothing)."""
+    return [_criterion_view(c) for c in dim.get("criteria_evaluations") or [] if c.get("verdict") == "NO_EVIDENCE"]
 
 
 def _view(report: Dict[str, Any]) -> Dict[str, Any]:
@@ -130,6 +152,9 @@ def _view(report: Dict[str, Any]) -> Dict[str, Any]:
                 # Shown whenever the evaluator wrote any, whatever the Verdicts
                 "strengths": dim.get("strengths") or [],
                 "met_criteria": met_criteria(dim),
+                "unmet_criteria": unmet_criteria(dim),
+                # The Nice-to-haves met pushed the Category past 100, so its rows add up to more than the gauge
+                "bonus_capped": bool(dim.get("bonus_capped")),
                 "gaps": dim.get("gaps") or []
             })
 

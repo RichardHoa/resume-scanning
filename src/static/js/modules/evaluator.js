@@ -8,7 +8,7 @@
  *              3. Candidate selection with live filtering & secret tier ordering
  *              4. AI batch evaluation against verified RAG criteria, KPI statistics,
  *                 and full-width dossier inspector.
- * Line Count: ~860 lines (Strict Limit: < 500 lines)
+ * Line Count: ~1020 lines (Strict Limit: < 500 lines)
  */
 
 import { API } from './api.js';
@@ -528,6 +528,7 @@ export class EvaluatorController {
         // With both textareas empty (HR came in through "Use Active RAG"), omit the text so the
         // server keeps the stored original requirements in hr_rag.txt.
         const hasText = Boolean(stdReq || hiddenReq);
+        if (!this.criteriaEditor.confirmSavable()) return false;
 
         try {
             const updated = await this.waitingScreen.run(

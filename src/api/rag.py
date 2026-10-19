@@ -143,6 +143,9 @@ def update_rag_criteria_endpoint(payload: UpdateRagCriteriaRequest):
             "message": "RAG criteria and hr_rag.txt updated successfully.",
             **summary
         }
+    except ValueError as e:
+        # Criteria that can't be scored (all Nice-to-have, or a repeated text): HR's to fix, nothing was saved
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         import traceback
         traceback.print_exc()

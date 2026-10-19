@@ -101,6 +101,7 @@ export class RagController {
      */
     async saveRagCriteria() {
         if (!this.btnSaveRag) return;
+        if (!this.criteriaEditor.confirmSavable()) return;
         try {
             const updated = await this.waitingScreen.run(
                 'save_criteria',

@@ -261,6 +261,29 @@
     font-style: normal;
 }
 
+/* A Criterion's Criterion Points: earned / max out of its Category's 100, or a Nice-to-have's bonus */
+.modal-points-tag {
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    background: var(--bg-card-active);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 1px 6px;
+    margin-left: 6px;
+    font-style: normal;
+    white-space: nowrap;
+}
+
+/* The Nice-to-haves met pushed the Category past 100, so its rows add up to more than the gauge */
+.modal-dim-capped-note {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--success);
+    margin-top: 4px;
+}
+
 /* Must-have Rejection: must-have Criteria without evidence; any one rejects the candidate */
 .modal-must-have-rejection-banner {
     background: var(--danger-bg);
