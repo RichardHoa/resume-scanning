@@ -8,18 +8,27 @@ Pipeline (see .scratch/audio-transcribe/spec.md):
   3. Silero VAD finds the speech, so cuts only ever fall inside pauses.
   4. Speech is split at speaker changes (moved to the nearest pause), long stretches are split at their longest
      pause, and close pieces of the same speaker are joined into Segments of up to ~30 s.
-  5. Qwen3-ASR transcribes each Segment, with an optional glossary as context; a Segment detected as a language
-     other than Vietnamese/English/French is redone as Vietnamese. The Segment's own start/end are its timestamps.
+  5. Qwen3-ASR transcribes each Segment; a Segment detected as a language other than Vietnamese/English/French is
+     redone as Vietnamese. The Segment's own start/end are its timestamps.
+  6. With a glossary, a Segment whose text sounds like some glossary terms is transcribed again with just those
+     terms as context, and the new text is kept only if it passes the leak guard.
 
 Output: <input-stem>.transcript.txt next to the input, one line per Segment:
   [HH:MM:SS.s → HH:MM:SS.s] Person N: text
+
+With --phowhisper, step 5 uses PhoWhisper-large instead (always Vietnamese), Segments over 30 s are cut to fit its
+window, there is no glossary pass, and the output is <input-stem>.phowhisper.transcript.txt.
 """
 
 import argparse
+import difflib
 import logging
 import os
+import re
 import subprocess
 import sys
+import unicodedata
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -32,6 +41,7 @@ MAX_SPEAKERS = 4  # others in the room may speak too, e.g. students asking quest
 
 ASR_MODEL = "Qwen/Qwen3-ASR-1.7B"
 DIARIZATION_MODEL = "pyannote/speaker-diarization-community-1"
+PHOWHISPER_MODEL = "vinai/PhoWhisper-large"
 
 # Cutting rules (spec: "Cutting the audio")
 MIN_CUT_SILENCE_MS = 500  # speech regions are only separated by pauses at least this long
@@ -47,6 +57,24 @@ ASR_BATCH_SIZE = 16
 ASR_MAX_NEW_TOKENS = 512
 ALLOWED_LANGUAGES = {"Vietnamese", "English", "French"}  # a Segment detected as anything else is redone
 FALLBACK_LANGUAGE = "Vietnamese"
+
+# PhoWhisper (spec: "Next: PhoWhisper option")
+WHISPER_WINDOW_S = 30.0  # Whisper hears only this much; the rest of a longer clip would be dropped
+WHISPER_MAX_NEW_TOKENS = 440  # the decoder holds 448 positions, 4 of them taken by the language/task prompt
+WHISPER_NO_REPEAT_NGRAM = 10  # tokens, about 4 Vietnamese syllables: stops repetition loops, not normal speech
+REPETITIVE_COMPRESSION_RATIO = 2.4  # Whisper's own threshold: text that compresses this well is mostly repeats
+
+# Glossary second pass (spec: "Glossary context")
+TERM_MATCH_THRESHOLD = 0.7  # syllable similarity a window of first-pass text needs to count as a term
+SHORT_TERM_MATCH_THRESHOLD = 0.8  # stricter for 1–2 syllable terms, which otherwise match common phrases
+MAX_TERMS_PER_SEGMENT = 3  # a long context makes the ASR worse on the terms and lets it copy them in
+# Onsets longest first, each mapped to a sound group, so onsets that sound alike (in the Southern accent too) match
+ONSETS = [
+    ("ngh", "ng"), ("ng", "ng"), ("nh", "nh"), ("ch", "ch"), ("tr", "ch"), ("gh", "g"), ("gi", "d"), ("kh", "kh"),
+    ("ph", "ph"), ("qu", "c"), ("th", "th"), ("b", "b"), ("c", "c"), ("k", "c"), ("q", "c"), ("d", "d"),
+    ("r", "d"), ("v", "d"), ("g", "g"), ("h", "h"), ("l", "l"), ("m", "m"), ("n", "n"), ("p", "p"),
+    ("s", "s"), ("x", "s"), ("t", "t"),
+]
 
 log = logging.getLogger("transcribe_audio")
 
@@ -232,6 +260,25 @@ def join_close(pieces: list[Span]) -> list[Span]:
     return joined
 
 
+def fit_whisper_window(segments: list[Span]) -> list[Span]:
+    """Cut each Segment still longer than WHISPER_WINDOW_S (no usable pause) into equal parts that fit it."""
+    fitted: list[Span] = []
+    for segment in segments:
+        parts = int(np.ceil(segment.duration / WHISPER_WINDOW_S))
+        if parts <= 1:
+            fitted.append(segment)
+            continue
+        log.warning(
+            "Forced %d cuts in %s–%s (%.1fs) to fit PhoWhisper's 30 s window",
+            parts - 1, format_time(segment.start), format_time(segment.end), segment.duration,
+        )
+        step = segment.duration / parts
+        fitted.extend(
+            Span(segment.start + k * step, segment.start + (k + 1) * step, segment.speaker) for k in range(parts)
+        )
+    return fitted
+
+
 def build_segments(audio: np.ndarray, turns: list[Span] | None) -> list[Span]:
     from silero_vad import load_silero_vad
 
@@ -254,31 +301,35 @@ def is_unexpected_language(language: str) -> bool:
     return bool(language) and not set(language.split(",")) <= ALLOWED_LANGUAGES
 
 
-def transcribe_segments(audio: np.ndarray, segments: list[Span], context: str) -> list[str]:
+def load_asr_model():
     from qwen_asr import Qwen3ASRModel
 
-    model = Qwen3ASRModel.from_pretrained(
+    return Qwen3ASRModel.from_pretrained(
         ASR_MODEL,
         dtype=torch.bfloat16,
         device_map="cuda:0",
         max_inference_batch_size=ASR_BATCH_SIZE,
         max_new_tokens=ASR_MAX_NEW_TOKENS,
     )
+
+
+def clip_of(audio: np.ndarray, segment: Span) -> tuple[np.ndarray, int]:
+    return audio[int(segment.start * SAMPLE_RATE):int(segment.end * SAMPLE_RATE)], SAMPLE_RATE
+
+
+def transcribe_segments(model, audio: np.ndarray, segments: list[Span]) -> list[str]:
+    """First pass: every Segment with an empty context."""
     texts: list[str] = []
     for i in range(0, len(segments), ASR_BATCH_SIZE):
         batch = segments[i:i + ASR_BATCH_SIZE]
-        clips = [
-            (audio[int(s.start * SAMPLE_RATE):int(s.end * SAMPLE_RATE)], SAMPLE_RATE) for s in batch
-        ]
+        clips = [clip_of(audio, s) for s in batch]
         # language=None: auto-detect, so Vietnamese with English/French mixed in stays as spoken
-        results = model.transcribe(audio=clips, context=context, language=None)
+        results = model.transcribe(audio=clips, context="", language=None)
         batch_texts = [r.text.strip() for r in results]
         # A short clip is sometimes heard as another language (e.g. Cantonese); redo those as Vietnamese
         redo = [j for j, r in enumerate(results) if is_unexpected_language(r.language)]
         if redo:
-            forced = model.transcribe(
-                audio=[clips[j] for j in redo], context=context, language=FALLBACK_LANGUAGE,
-            )
+            forced = model.transcribe(audio=[clips[j] for j in redo], context="", language=FALLBACK_LANGUAGE)
             for j, r in zip(redo, forced):
                 log.info(
                     "Redid %s–%s as %s (detected %s)",
@@ -287,6 +338,156 @@ def transcribe_segments(audio: np.ndarray, segments: list[Span], context: str) -
                 batch_texts[j] = r.text.strip()
         texts.extend(batch_texts)
         log.info("Transcribed %d/%d segments", len(texts), len(segments))
+    return texts
+
+
+def load_phowhisper():
+    from transformers import WhisperForConditionalGeneration, WhisperProcessor
+
+    processor = WhisperProcessor.from_pretrained(PHOWHISPER_MODEL)
+    model = WhisperForConditionalGeneration.from_pretrained(PHOWHISPER_MODEL, dtype=torch.bfloat16).to("cuda:0")
+    return processor, model
+
+
+def is_repetitive(text: str) -> bool:
+    data = text.encode("utf-8")
+    return len(data) / len(zlib.compress(data)) > REPETITIVE_COMPRESSION_RATIO
+
+
+def transcribe_segments_phowhisper(processor, model, audio: np.ndarray, segments: list[Span]) -> list[str]:
+    """Every Segment as Vietnamese; a Segment whose text is still mostly repeats is logged but kept."""
+    texts: list[str] = []
+    for i in range(0, len(segments), ASR_BATCH_SIZE):
+        batch = segments[i:i + ASR_BATCH_SIZE]
+        clips = [clip_of(audio, s)[0] for s in batch]
+        features = processor(clips, sampling_rate=SAMPLE_RATE, return_tensors="pt").input_features
+        with torch.inference_mode():
+            ids = model.generate(
+                features.to("cuda:0", torch.bfloat16),
+                language="vi",
+                task="transcribe",
+                max_new_tokens=WHISPER_MAX_NEW_TOKENS,
+                no_repeat_ngram_size=WHISPER_NO_REPEAT_NGRAM,
+            )
+        batch_texts = [text.strip() for text in processor.batch_decode(ids, skip_special_tokens=True)]
+        for segment, text in zip(batch, batch_texts):
+            if is_repetitive(text):
+                log.warning(
+                    "Mostly repeats in %s–%s, kept as is: %s",
+                    format_time(segment.start), format_time(segment.end), text[:120],
+                )
+        texts.extend(batch_texts)
+        log.info("Transcribed %d/%d segments", len(texts), len(segments))
+    return texts
+
+
+def read_glossary(path: Path) -> list[str]:
+    """Terms separated by commas or newlines."""
+    terms = re.split(r"[,\n]", path.read_text(encoding="utf-8"))
+    return [term.strip() for term in terms if term.strip()]
+
+
+def syllables(text: str) -> list[str]:
+    """Lowercased, accent-free syllables (đ → d), so a misspelt term can still be compared with the right one."""
+    stripped = "".join(
+        c for c in unicodedata.normalize("NFD", text.lower().replace("đ", "d"))
+        if unicodedata.category(c) != "Mn"
+    )
+    return re.findall(r"\w+", stripped)
+
+
+def split_syllable(syllable: str) -> tuple[str, str]:
+    """(onset sound group, rhyme), e.g. "nguyet" → ("ng", "uyet")."""
+    for onset, group in ONSETS:
+        if syllable.startswith(onset) and len(syllable) > len(onset):
+            return group, syllable[len(onset):]
+    return "", syllable
+
+
+def syllable_similarity(a: str, b: str) -> float:
+    """Some credit for the same onset sound, more for how alike the rhymes are: a mishearing usually keeps one."""
+    onset_a, rhyme_a = split_syllable(a)
+    onset_b, rhyme_b = split_syllable(b)
+    return 0.3 * (onset_a == onset_b) + 0.7 * difflib.SequenceMatcher(None, rhyme_a, rhyme_b).ratio()
+
+
+def match_term(term: list[str], text: list[str]) -> tuple[int, float]:
+    """How many non-overlapping k-syllable windows in the text sound like the k-syllable term, and the best score.
+
+    A window's score is the mean similarity of its syllables paired with the term's, since a mishearing usually
+    swaps single syllables ("tông kỳ của độ" for "Tam Kỳ Phổ Độ").
+    """
+    k = len(term)
+    threshold = SHORT_TERM_MATCH_THRESHOLD if k <= 2 else TERM_MATCH_THRESHOLD
+    candidates = []
+    for start in range(len(text) - k + 1):
+        window = text[start:start + k]
+        score = sum(syllable_similarity(a, b) for a, b in zip(window, term)) / k
+        if score >= threshold:
+            candidates.append((score, start, start + k))
+    taken: list[tuple[int, int]] = []
+    for _, start, end in sorted(candidates, reverse=True):
+        if all(end <= a or start >= b for a, b in taken):
+            taken.append((start, end))
+    return len(taken), max((score for score, _, _ in candidates), default=0.0)
+
+
+def exact_count(term: list[str], text: list[str]) -> int:
+    k = len(term)
+    return sum(text[start:start + k] == term for start in range(len(text) - k + 1))
+
+
+def terms_for(text: str, glossary: list[str]) -> dict[str, int]:
+    """The Segment's best-matching terms (at most MAX_TERMS_PER_SEGMENT), each with its match count."""
+    words = syllables(text)
+    scored = []
+    for term in glossary:
+        count, score = match_term(syllables(term), words)
+        if count:
+            scored.append((score, term, count))
+    return {term: count for _, term, count in sorted(scored, reverse=True)[:MAX_TERMS_PER_SEGMENT]}
+
+
+def leaked_term(text: str, matched: dict[str, int]) -> str | None:
+    """A context term the second pass wrote more often than the first pass matched it, i.e. one it copied in."""
+    words = syllables(text)
+    for term, count in matched.items():
+        if exact_count(syllables(term), words) > count:
+            return term
+    return None
+
+
+def apply_glossary(model, audio: np.ndarray, segments: list[Span], texts: list[str], glossary: list[str]) -> list[str]:
+    """Second pass: redo each Segment that sounds like some glossary terms, with just those terms as context.
+
+    Never the whole glossary: a long list makes the ASR worse on the terms and lets it copy them into the text.
+    """
+    jobs = []
+    for i, text in enumerate(texts):
+        matched = terms_for(text, glossary)
+        words = syllables(text)
+        if any(exact_count(syllables(term), words) < count for term, count in matched.items()):
+            jobs.append((i, matched))
+    log.info("Redoing %d segments with glossary terms", len(jobs))
+
+    texts = list(texts)
+    for b in range(0, len(jobs), ASR_BATCH_SIZE):
+        batch = jobs[b:b + ASR_BATCH_SIZE]
+        results = model.transcribe(
+            audio=[clip_of(audio, segments[i]) for i, _ in batch],
+            context=[", ".join(matched) for _, matched in batch],
+            language=None,
+        )
+        for (i, matched), r in zip(batch, results):
+            span = f"{format_time(segments[i].start)}–{format_time(segments[i].end)}"
+            text = r.text.strip()
+            leaked = leaked_term(text, matched)
+            if not text or is_unexpected_language(r.language) or leaked:
+                reason = f"copied in {leaked!r}" if leaked else f"empty or detected {r.language!r}"
+                log.info("Kept first pass for %s with %s (%s)", span, list(matched), reason)
+                continue
+            log.info("Redid %s with %s", span, list(matched))
+            texts[i] = text
     return texts
 
 
@@ -327,6 +528,10 @@ def main() -> None:
         "--context", type=Path,
         help="text file of terms the speakers use (names, foreign phrases), given to the ASR so it spells them right",
     )
+    parser.add_argument(
+        "--phowhisper", action="store_true",
+        help=f"transcribe with {PHOWHISPER_MODEL} (Vietnamese only, no --context) instead of {ASR_MODEL}",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -334,6 +539,8 @@ def main() -> None:
         sys.exit(f"[ERROR] Audio file not found: {args.audio}")
     if args.context is not None and not args.context.is_file():
         sys.exit(f"[ERROR] Context file not found: {args.context}")
+    if args.phowhisper and args.context is not None:
+        sys.exit("[ERROR] --context is Qwen3-ASR only; drop it to run with --phowhisper.")
     if not torch.cuda.is_available():
         sys.exit("[ERROR] No GPU visible. Run this on a compute node with a GPU.")
 
@@ -354,10 +561,17 @@ def main() -> None:
     segments = build_segments(audio, turns)
     log.info("Cut into %d segments", len(segments))
 
-    context = args.context.read_text(encoding="utf-8").strip() if args.context is not None else ""
-    texts = transcribe_segments(audio, segments, context)
+    if args.phowhisper:
+        segments = fit_whisper_window(segments)
+        texts = transcribe_segments_phowhisper(*load_phowhisper(), audio, segments)
+    else:
+        model = load_asr_model()
+        texts = transcribe_segments(model, audio, segments)
+        if args.context is not None:
+            texts = apply_glossary(model, audio, segments, texts, read_glossary(args.context))
 
-    out_path = args.audio.with_name(f"{args.audio.stem}.transcript.txt")
+    suffix = ".phowhisper.transcript.txt" if args.phowhisper else ".transcript.txt"
+    out_path = args.audio.with_name(f"{args.audio.stem}{suffix}")
     count = write_transcript(out_path, segments, texts)
     log.info("Wrote %d lines to %s", count, out_path)
 
