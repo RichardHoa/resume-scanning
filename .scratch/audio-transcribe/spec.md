@@ -1,4 +1,4 @@
-Status: implemented (uncommitted). Next: Qwen3-Omni review pass (implemented, uncommitted; not yet run on the compute machine). Next: PhoWhisper option `--phowhisper` (implemented, uncommitted; not yet run on the compute machine)
+Status: implemented (uncommitted). Next: Qwen3-Omni review pass (implemented, uncommitted; not yet run on the compute machine). Next: PhoWhisper option `--phowhisper` (implemented, uncommitted; not yet run on the compute machine). Next: v2, two-model fusion, names pass and scoring (implemented, uncommitted; not yet run on the compute machine)
 
 # Audio Transcribe: timestamped, speaker-labelled transcript of one recording
 
@@ -114,7 +114,7 @@ Qwen3-ASR's 1.7B decoder only writes down what it hears. The fix is a second mod
   - The model is set in the job script, not added to `model_profiles.sh`, so it doesn't join the profile list the other jobs and the bias suite use.
   - At most 16 requests are in flight.
 - **One request per Segment.** Each line of `1.transcript.txt` is one Segment. Its clip is cut from `1.m4a` at the line's timestamps, decoded to 16 kHz mono with `imageio-ffmpeg`, and sent as a WAV `input_audio` part. With it go:
-  - a short topic note: an interview in Vietnamese with an elderly Southern-accented Cao Đài follower, with English and French words mixed in;
+  - a short topic note: an interview in Vietnamese with an elderly Southern-accented Cao Đài follower (Bác Cảnh; both speakers are men), with English and French words mixed in;
   - the whole glossary from `1.context.txt`;
   - the text of the line before and the line after, marked as read-only context;
   - the line's draft text.
@@ -166,6 +166,146 @@ An optional flag, `--phowhisper`, makes `transcribe_audio.py` transcribe with `v
   - Guide: a short `--phowhisper` paragraph in `docs/audio-transcribe.md`.
 - **Not done.** No scoring or reference transcript, no glossary pass, no ADR (an optional flag is easy to reverse), and no glossary entry.
 
+## Next: two-model fusion, names pass and scoring (v2)
+
+The Qwen3-ASR + Qwen3-Omni review output is not acceptable. Compared with the developer's corrected first 5 minutes (`grouth_truth.txt`), 60 of 706 words are wrong. The errors are of four kinds:
+
+1. **Made-up text on loud, clipped speech.** At 00:04:44 and 00:04:51, 25 of 48 words are wrong. These are the loudest lines (−11 dB RMS against about −17 dB elsewhere) and the most clipped (734 and 4,278 samples at full scale; 13,875 in the whole 5 minutes). The recording's two channels are identical, so it is really mono.
+2. **Southern accent and an elderly voice.** For example: võng → "giống", vò → "vào"/"gò", "chứ hông có" → "giống".
+3. **Names heard as common words.** For example: Đức Hộ Pháp → "đứa Phật", Victor Go → "Peter Gô", Cao Đài → "có tài".
+4. **Words missing at a line's start.** "ra dô" at 00:01:22.0 and "lãnh" at 00:03:16.1.
+
+The Omni review can't fix these:
+- Qwen3-ASR is built on Qwen3-Omni, so both models mishear the same way.
+- It gets one draft and is told to keep the draft's word when unsure.
+- The 0.5 kept-share guard would reject the correct 00:04:44 fix, which keeps about 1 of 15 draft words.
+- It sees only one line on each side, too little to resolve a name.
+
+v2 makes five changes. All of them use only Qwen3-ASR-1.7B, PhoWhisper-large and Qwen3-Omni, which are already set up; no new model is installed.
+
+### 1. Repair the audio before anyone hears it
+
+- `transcribe_audio.py` and `review_transcript.py` decode the audio the same way:
+  1. take one channel (`-ac 1`; the two are identical);
+  2. run ffmpeg's `adeclip` at the original 44.1 kHz;
+  3. resample to 16 kHz.
+- Everything downstream (diarization, VAD, both ASR models, the Omni review) uses the repaired audio. Repair and resampling happen in one ffmpeg call, with the ffmpeg binary from `imageio-ffmpeg` as now.
+- Loudness is not normalised. Both ASR models normalise their own input, and boosting quiet stretches would raise the noise floor (−41 dB).
+- `--no-declip` on both scripts turns the repair off. It exists only for the A/B comparison in step 5. The SLURM job runs without it, unless that comparison shows the repair makes things worse.
+
+### 2. Both ASR models on the same Segments (`--with-phowhisper`)
+
+- A new flag on `transcribe_audio.py`, `--with-phowhisper`, runs the Qwen3-ASR pass (with `--context`, the language guard and the glossary second pass, all unchanged) and then a PhoWhisper-large pass on **the same Segments**. Each model is loaded, run and freed in turn.
+- It writes two files with identical lines and timestamps: `<stem>.transcript.txt` (Qwen) and `<stem>.phowhisper.transcript.txt`.
+  - A Segment Qwen heard nothing in is left out of both files.
+  - A Segment where only PhoWhisper heard nothing keeps its line, with empty PhoWhisper text.
+- **Segments over 30 s.** A Segment longer than Whisper's window is cut into equal parts for PhoWhisper only. Each part is transcribed and the texts are joined with a space, so the Segment is still one line. This uses `fit_whisper_window`'s rule, logged the same way, but the Segment list itself is not changed.
+- **Clip padding (error kind 4).** Each Segment's clip goes to both models with up to `ASR_CONTEXT_PAD_S = 0.5` s of extra audio on each side. On each side, the padding stops at the midpoint of the gap to the neighbouring Segment, so a neighbour's words never get in. Timestamps stay the Segment's own.
+  - This adds to the existing 0.2 s VAD padding.
+  - The cause of the missing words is not yet confirmed; step 5 shows whether the padding helps.
+  - The padded clip is what the 30 s rule above measures: parts are sized to the window less the Segment's own padding.
+  - The padding applies to `--phowhisper` on its own as well; its Segments are padded before they are cut to fit the window.
+- The existing `--phowhisper` (PhoWhisper alone) stays as it is. `--with-phowhisper` together with `--phowhisper` is an error.
+
+### 3. Omni fuses the two transcripts (replaces the one-draft review)
+
+- `review_transcript.py` takes a second transcript, `--second <stem>.phowhisper.transcript.txt`. The two files must have the same lines with the same timestamps and speakers, or the script stops with an error naming the first line that differs.
+- **What the model is given for each Segment:**
+  - the clip, repaired and padded as in steps 1 and 2;
+  - the topic note and the whole glossary, as now;
+  - the two lines before and the two lines after, from transcript A, marked as context only;
+  - the two candidates:
+    - **A (Qwen3-ASR):** better on English and French, and has had the glossary pass;
+    - **B (PhoWhisper):** Vietnamese-tuned and Vietnamese only, so foreign words come out spelt by sound;
+  - a merged view of the two, built with `difflib` on syllables. Words both candidates agree on are shown as they are; where they differ, the view shows `{A: … | B: …}`. For example: `Đức Hộ Pháp nằm {A: giống | B: võng} tới`.
+- **New instructions.** These replace "where unsure, keep the draft's word":
+  - Listen to the clip. Where A and B differ, write the one you hear, or what you hear if neither is right.
+  - Where A and B agree, keep their words unless you clearly hear something else; both can mishear the same word.
+  - Write what was said, in the language it was said, as now. Keep fillers and repeats. Spell glossary terms exactly, only where they are heard.
+  - Write a name the way the speaker says it. The glossary lists both the formal name and the speaker's own forms (see "Glossary: the speaker's own forms" below), and the form heard is the one written.
+  - A stretch you can't make out is written as `[? best guess]`. If there is no guess at all, write `[?]`. Never invent fluent text.
+  - An answer that is only `[?]` (nothing made out in the whole line) passes the guard and is written as `[? <draft A>]`, so the line's words aren't lost.
+  - Thinking, temperature, retries and the JSON schema are unchanged.
+- **New guard.** This replaces the 0.5 kept-share rule. The answer replaces A only if all of these hold:
+  - it isn't empty;
+  - for a line of 4 or more syllables, at most `MAX_UNSUPPORTED_SHARE = 0.3` of its syllables appear in neither A, B nor the glossary. Syllables are compared lowercased, with accents kept and punctuation and `[?` markers dropped. This blocks invented text but allows a full rewrite made of the two candidates' words.
+  - its syllable count is between 0.6× and 1.5× the mean of A's and B's. This blocks a summary or a padded answer.
+
+  Otherwise A is kept and the reason is logged. A line under 4 syllables is not guarded, as now.
+- **Output.** The output is `<stem>.reviewed.transcript.txt` as now. `<stem>.review.jsonl` gains a `second` field (B's text) and a `merged` field (the merged view).
+
+### 4. Names pass over the whole interview (text only, Qwen3-Omni)
+
+- This is a new script, `src/cli/fix_names.py`, run after the review on the **same vLLM server**, with Qwen3-Omni used for text only. No second model is served.
+- **Input.** `<stem>.reviewed.transcript.txt` and the glossary. Lines are sent in chunks of `CHUNK_LINES = 20`.
+  - With each chunk go the `CONTEXT_LINES = 60` lines before it and the 60 after, so the model sees how a name is said elsewhere in the interview. A whole 47-minute transcript doesn't fit `VLLM_MAX_MODEL_LEN` (32,768 tokens) with room to spare.
+  - vLLM's prefix caching reuses the shared context.
+- **What it fixes.** Only names, titles, Cao Đài terms and foreign words that came out as common words or as garbled sounds, e.g. "có tài" → Cao Đài, "đứa Phật" → Đức Hộ Pháp. It never rewords ordinary speech.
+- **The speaker's own forms stay.** The speaker says some names his own way, e.g. "Việt Tâm Chân Nhân" for Nguyệt Tâm Chơn Nhơn, and "Victor Go" or "Vigo" as well as "Victor Hugo". These are what he said and are never changed to the formal name. The model is told:
+  - a name is written in the form the speaker uses, never moved towards the formal glossary spelling;
+  - where the interview shows him using more than one form of a name (e.g. "Peter Gô" could be "Victor Go" or "Victor Hugo"), the edit is unsure, so it comes out as `[? …]` for the developer to decide by ear.
+- **Answer.** JSON constrained by a schema: a list of edits, each `{line, old, new, sure}`. `line` is the line's number within the chunk and `sure` is a boolean.
+- **Applying edits.** An edit is applied only if all of these hold:
+  - `old` occurs exactly once in that line;
+  - `old` is at most 8 syllables;
+  - `new` is at most 8 syllables.
+
+  A `sure` edit replaces `old` with `new`. An unsure one replaces it with `[? new]`. Rejected edits are logged and not applied.
+- **Output.**
+  - `<stem>.final.transcript.txt`: same lines, timestamps and speakers.
+  - `<stem>.names.jsonl`: every edit with its line, `old`, `new`, `sure` and whether it was applied.
+- **Where it lives.** The code is in `src/cli/fix_names.py`, and the prompt and schema in `src/prompts/transcript_names_prompts.py`.
+
+### 5. Scoring against the reference
+
+This reverses the earlier "no reference, no scoring" decision: without a score we can't tell which of the changes above helps.
+
+- **Reference.** `vsc-project/audio-transcribe/grouth_truth.txt`, the first 5 minutes in the usual line format, fact-checked by the developer against the audio.
+  - Its names are spelt as the speaker said them (e.g. "Đức Việt Tâm Chân Nhân", "Victor Go", "Đức Nguyên Giả Tông"). That is correct, not a leftover model error.
+  - A longer reference can be added later in the same format.
+- **Script.** `src/cli/score_transcript.py <reference> <hypothesis>...` prints, for each hypothesis file:
+  - **Syllable error rate.** The text of all lines starting before the reference's last end time is joined and compared with the joined reference text (lowercased, accents kept, punctuation dropped, `[?` markers stripped but their words kept). Joining makes the score independent of where the lines are cut, so runs with and without `--no-declip` or padding, whose Segments may differ, can be compared.
+  - **Term recall.** For each glossary term (formal or the speaker's own form) found in the reference, how many of its occurrences appear exactly in the hypothesis.
+  - **The count of `[?` marks.**
+
+  It writes no files.
+- **What is compared.** Each stage's output:
+  - `1.transcript.txt`;
+  - `1.phowhisper.transcript.txt`;
+  - `1.reviewed.transcript.txt`;
+  - `1.final.transcript.txt`.
+
+  There is also one by-hand run with `--no-declip`, to decide the default in step 1.
+
+### SLURM job (`scripts/submit_transcript.sh`, still no flags)
+
+1. Transcribe with `--context 1.context.txt --with-phowhisper` in the audio venv. Each existing output, the Qwen transcript and the PhoWhisper transcript, is first renamed with a time suffix, as now.
+2. Serve Qwen3-Omni and run `review_transcript.py ... --second 1.phowhisper.transcript.txt`.
+3. On the same server, run `fix_names.py`, then stop the server.
+4. If `grouth_truth.txt` exists, run `score_transcript.py` on the four outputs into the job log.
+
+### Docs
+
+`docs/audio-transcribe.md` gets:
+- the new steps;
+- the `--with-phowhisper`, `--second` and `--no-declip` flags;
+- the `[? …]` convention;
+- how the reference is used, and how to list the speaker's own forms in the glossary.
+
+### Not done in v2
+
+- Any new ASR model (Zipformer, ChunkFormer and others were considered; the developer doesn't want another model installed).
+- A glossary pass for PhoWhisper.
+- Cloud models (e.g. Gemini): a narrator's recording would leave the machine.
+- Changes to diarization or speaker labels.
+
+### Glossary: the speaker's own forms
+
+`1.context.txt` gets the speaker's own forms of names, next to the formal ones, taken from `grouth_truth.txt`. These are: Việt Tâm Chân Nhân, Victor Go, Vigo, Đức Nguyên Giả Tông, Đức Ngạn Ung Minh Chiêu, Trưởng Đạo and Missions Étrangères de Caodaïs.
+- Without them, the Qwen3-ASR glossary pass, the Omni review and the names pass all pull a name towards the formal spelling, which isn't what he said.
+- The developer edits the file (it isn't tracked) and adds further forms as later minutes are checked.
+- `transcribe_audio.py` needs no change: a form matches by sound like any other term. Each form also counts towards the per-segment cap of 3 terms.
+
 ## Out of Scope
 
 - Translation.
@@ -209,3 +349,5 @@ An optional flag, `--phowhisper`, makes `transcribe_audio.py` transcribe with `v
   - SEA-LION was dropped because it can't hear the audio. PhoWhisper and the comparison were dropped as not needed for now.
   - This reverses the earlier "no LLM cleanup": the review is a separate step with its own output file, and the unreviewed transcript stays next to it.
   - The review runs in the root `requirements.txt` venv, so the ASR venv gets no heavy additions.
+- 2026-10-20: The Qwen3-Omni review output was compared with the developer's corrected first 5 minutes (`grouth_truth.txt`); 60 of 706 words differ, half of them on the two loudest, most clipped lines. It was judged not acceptable. Decided: v2 (repair clipping, Qwen3-ASR + PhoWhisper on the same Segments, Omni fuses the two, a whole-interview names pass, scoring against a reference). Only Qwen3-ASR and PhoWhisper are used: no new ASR model is installed.
+- 2026-10-20: The developer confirmed that `grouth_truth.txt` is fact-checked against the audio, and that its names are spelt the way the speaker says them. Decided: it is the scoring reference (no new reference is typed). The names pass keeps the speaker's own forms, and those forms are added to `1.context.txt`.

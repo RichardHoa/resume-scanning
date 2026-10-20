@@ -8,7 +8,8 @@ Turns one recording into a transcript with timestamps and speaker labels:
 
 - **Transcription:** `Qwen/Qwen3-ASR-1.7B`, with the language auto-detected. Vietnamese with English or French mixed in stays as spoken.
 - **Speakers:** `pyannote/speaker-diarization-community-1`, with 2 to 4 speakers. They are numbered **Person 1**, **Person 2**, … in the order they are first heard.
-- **Cutting:** Silero VAD. The audio is only ever cut inside a pause, so no word is split.
+- **Audio repair:** clipped peaks are repaired with ffmpeg's `adeclip` before anything hears the audio, since the loudest, clipped speech is where the models made up text. `--no-declip` turns this off, for comparison.
+- **Cutting:** Silero VAD. The audio is only ever cut inside a pause, so no word is split. Each model hears up to 0.5 s more on each side of a line (never past the middle of the gap to the next line), so first and last words aren't dropped. The timestamps stay the line's own.
 - **Language guard:** a segment detected as a language other than Vietnamese, English or French (e.g. a short clip heard as Cantonese) is transcribed again as Vietnamese. The log names each segment that was redone.
 - **Glossary (optional):** segments that sound like terms from a `--context` file are transcribed again with just those terms (see below).
 
@@ -89,12 +90,13 @@ This writes `vsc-project/audio-transcribe/1.phowhisper.transcript.txt`, next to 
 
 - Every segment is transcribed as Vietnamese, so English and French words come out however the model hears them.
 - `--context` can't be combined with it; the script stops with an error.
+- `--with-phowhisper` runs Qwen3-ASR as usual (with `--context`), then PhoWhisper on **the same lines**, and writes both `1.transcript.txt` and `1.phowhisper.transcript.txt`. A line longer than 30 s is transcribed by PhoWhisper in parts, whose texts are joined back into the one line. A line PhoWhisper heard nothing in stays, with empty text. The review pass needs both files. It can't be combined with `--phowhisper`.
 - Whisper hears only 30 s at a time, so a segment longer than that (no pause to cut at) is cut into equal parts, with a warning in the log.
 - A segment whose text is mostly the same phrase repeated (a Whisper failure on silence or noise) is logged but kept.
 
 The first run downloads PhoWhisper-large, about 6 GB, into the same cache.
 
-## Review pass with Qwen3-Omni (SLURM)
+## Full job: two drafts, Qwen3-Omni review, names pass, score (SLURM)
 
 `scripts/submit_transcript.sh` runs the whole job for `vsc-project/audio-transcribe/1.m4a` in one go. It takes no flags:
 
@@ -102,20 +104,58 @@ The first run downloads PhoWhisper-large, about 6 GB, into the same cache.
 sbatch scripts/submit_transcript.sh
 ```
 
-1. It transcribes the recording with `1.context.txt` in the audio venv (`~/venvs/audio-transcribe`), as above. An existing `1.transcript.txt` is first renamed to `1.transcript.<time>.txt`, so hand-written notes in it are kept.
-2. It serves `Qwen/Qwen3-Omni-30B-A3B-Instruct` with vLLM in `resume_env`. For each line, the model hears the line's clip, reads the draft, the lines before and after, and the glossary, then fixes misheard words.
+1. **Two drafts.** It transcribes the recording with `1.context.txt` and `--with-phowhisper` in the audio venv (`~/venvs/audio-transcribe`). Draft A is `1.transcript.txt` (Qwen3-ASR) and draft B is `1.phowhisper.transcript.txt`. Existing copies are first renamed to `<name>.<time>.txt`, so hand-written notes in them are kept.
+2. **Review.** It serves `Qwen/Qwen3-Omni-30B-A3B-Instruct` with vLLM in `resume_env` and runs `src/cli/review_transcript.py 1.m4a 1.transcript.txt --second 1.phowhisper.transcript.txt` (`--second` is draft B, and must have the same lines as draft A). For each line, the model:
+   - hears the line's clip, repaired and padded the way the transcriber heard it;
+   - reads both drafts, a merged view of where they differ (`Đức Hộ Pháp nằm {A: giống | B: võng} tới`), the two lines before and after, and the glossary;
+   - writes what it hears.
+3. **Names.** On the same server, `src/cli/fix_names.py` reads the reviewed transcript 20 lines at a time, with 60 lines of context on each side. It fixes only names and terms that came out as common words (e.g. "có tài" → Cao Đài), never the speaker's own forms of names.
+4. **Score.** If `grouth_truth.txt` exists, the four transcripts are scored against it in the job log (see "Scoring" below).
 
 It writes next to the audio:
 
 - `1.reviewed.transcript.txt`: the same lines, timestamps and speakers, with the reviewed text.
-- `1.review.jsonl`: per line, the draft, the reviewed text and a status:
+- `1.review.jsonl`: per line, both drafts, the merged view, the reviewed text and a status:
   - `same` or `changed`;
-  - `kept draft: …` when the answer was empty, or kept less than half of a draft of 4+ syllables;
+  - `kept draft: …` when draft A was kept. That happens when the answer was empty, more than 30% of it was in neither draft nor the glossary, or its length was outside 0.6–1.5× the drafts'. Lines under 4 syllables are not checked;
   - `failed: …` when the request failed.
+- `1.final.transcript.txt`: the reviewed transcript with the names fixed. **This is the one to read.**
+- `1.names.jsonl`: every names edit with its line, `old`, `new`, `sure`, and whether it was applied (or why not). An edit is applied only if `old` appears exactly once in the line and neither side is over 8 syllables.
 
-Submit from a shell where `HF_TOKEN` is set. `resume_env` needs the root `requirements.txt`, which includes the audio packages vLLM reads input with (`av`, `soundfile`, `soxr`) and `imageio-ffmpeg`.
+### `[? …]` marks
 
-The first run downloads Qwen3-Omni, about 60–70 GB, into the HF cache. To delete it afterwards:
+A stretch the review model couldn't make out is written as `[? best guess]`. When it can make out nothing in a line, the line becomes `[? draft A]`. An unsure name fix is written as `[? new name]`; `1.names.jsonl` holds the old text. Search for `[?` and check those spots by ear.
+
+### The speaker's own forms of names
+
+The speaker says some names his own way (e.g. "Việt Tâm Chân Nhân" for Nguyệt Tâm Chơn Nhơn, "Victor Go" or "Vigo" as well as "Victor Hugo"). Those are what he said and are kept. List them in `1.context.txt` next to the formal names, so the glossary doesn't pull every model towards the formal spelling:
+
+```
+Victor Hugo, Victor Go, Vigo, Nguyệt Tâm Chơn Nhơn, Việt Tâm Chân Nhân, ...
+```
+
+Add further forms as you check later minutes.
+
+### Scoring
+
+`grouth_truth.txt` is the reference: the first 5 minutes, checked by hand against the audio, with names spelt as spoken. To score any transcripts against it (standard library only, so this runs anywhere, including a laptop):
+
+```bash
+python3 src/cli/score_transcript.py vsc-project/audio-transcribe/grouth_truth.txt \
+  vsc-project/audio-transcribe/1.transcript.txt vsc-project/audio-transcribe/1.final.transcript.txt \
+  --context vsc-project/audio-transcribe/1.context.txt
+```
+
+For each file it prints:
+- the syllable error rate over the reference's time span (lines are joined, so files cut into different lines still compare);
+- term recall for the glossary terms the reference holds;
+- the count of `[?` marks.
+
+To check whether the audio repair helps, run `transcribe_audio.py` once by hand with `--no-declip` and score both outputs.
+
+The job needs `HF_TOKEN` set in the shell you submit from. `resume_env` needs the root `requirements.txt`, which includes the audio packages vLLM reads input with (`av`, `soundfile`, `soxr`) and `imageio-ffmpeg`.
+
+The first run downloads Qwen3-Omni (about 60–70 GB) and PhoWhisper-large (about 6 GB) into the HF cache. To delete Qwen3-Omni afterwards:
 
 ```bash
 rm -rf "$HF_HOME/hub/models--Qwen--Qwen3-Omni-30B-A3B-Instruct"

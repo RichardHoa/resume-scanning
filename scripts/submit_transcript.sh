@@ -11,12 +11,17 @@
 #SBATCH --error=logging/slurm_transcript_%j.err
 
 # -----------------------------------------------------------------------------
-# Transcript of vsc-project/audio-transcribe/1.m4a, reviewed by Qwen3-Omni (docs/audio-transcribe.md)
+# Transcript of vsc-project/audio-transcribe/1.m4a, fused and checked by Qwen3-Omni (docs/audio-transcribe.md)
 #
-#   1. Qwen3-ASR transcribes the recording with its glossary (src/cli/transcribe_audio.py, in the audio venv),
-#      writing 1.transcript.txt. An existing 1.transcript.txt is first renamed to 1.transcript.<time>.txt.
-#   2. Qwen3-Omni, served by vLLM in resume_env, hears each line's clip and fixes misheard words
+#   1. Qwen3-ASR (with the glossary) and PhoWhisper transcribe the same Segments (src/cli/transcribe_audio.py
+#      --with-phowhisper, in the audio venv), writing 1.transcript.txt and 1.phowhisper.transcript.txt. Existing
+#      ones are first renamed to <name>.<time>.txt.
+#   2. Qwen3-Omni, served by vLLM in resume_env, hears each line's clip and writes what it hears from the two drafts
 #      (src/cli/review_transcript.py), writing 1.reviewed.transcript.txt and 1.review.jsonl.
+#   3. On the same server, it fixes misheard names over the whole interview (src/cli/fix_names.py), writing
+#      1.final.transcript.txt and 1.names.jsonl.
+#   4. If the reference grouth_truth.txt exists, the four transcripts are scored against it
+#      (src/cli/score_transcript.py) into the job log.
 #
 # Usage (no flags; HF_TOKEN must be set in the shell you submit from):
 #   sbatch scripts/submit_transcript.sh
@@ -27,6 +32,7 @@ REVIEW_CONCURRENCY=16
 AUDIO_VENV="$HOME/venvs/audio-transcribe"
 AUDIO_REL="vsc-project/audio-transcribe/1.m4a"
 CONTEXT_REL="vsc-project/audio-transcribe/1.context.txt"
+REFERENCE_REL="vsc-project/audio-transcribe/grouth_truth.txt"
 
 INITIAL_CWD="$(pwd)"
 
@@ -73,9 +79,13 @@ fi
 cd "$PROJECT_ROOT" || exit 1
 AUDIO="$PROJECT_ROOT/$AUDIO_REL"
 CONTEXT="$PROJECT_ROOT/$CONTEXT_REL"
+REFERENCE="$PROJECT_ROOT/$REFERENCE_REL"
 TRANSCRIPT="${AUDIO%.*}.transcript.txt"
+SECOND="${AUDIO%.*}.phowhisper.transcript.txt"
+REVIEWED="${AUDIO%.*}.reviewed.transcript.txt"
+FINAL="${AUDIO%.*}.final.transcript.txt"
 
-# Check everything step 1 needs before renaming the old transcript
+# Check everything step 1 needs before renaming the old transcripts
 for f in "$AUDIO" "$CONTEXT" "$AUDIO_VENV/bin/activate"; do
   if [ ! -f "$f" ]; then
     echo "[ERROR] Not found: $f (see docs/audio-transcribe.md)" >&2
@@ -110,17 +120,19 @@ echo "====================================================================="
 nvidia-smi 2>/dev/null || echo "nvidia-smi not available"
 echo "====================================================================="
 
-echo "[$(date +'%H:%M:%S')] STEP 2: Transcribing $AUDIO_REL with Qwen3-ASR (audio venv)..."
-if [ -f "$TRANSCRIPT" ]; then
-  BACKUP="${TRANSCRIPT%.txt}.$(date +'%Y%m%d-%H%M%S').txt"
-  mv "$TRANSCRIPT" "$BACKUP"
-  echo "[$(date +'%H:%M:%S')] Renamed the existing transcript to $BACKUP"
-fi
+echo "[$(date +'%H:%M:%S')] STEP 2: Transcribing $AUDIO_REL with Qwen3-ASR and PhoWhisper (audio venv)..."
+STAMP="$(date +'%Y%m%d-%H%M%S')"
+for f in "$TRANSCRIPT" "$SECOND"; do
+  if [ -f "$f" ]; then
+    mv "$f" "${f%.txt}.$STAMP.txt"
+    echo "[$(date +'%H:%M:%S')] Renamed the existing $(basename "$f") to $(basename "${f%.txt}.$STAMP.txt")"
+  fi
+done
 source "$AUDIO_VENV/bin/activate"
-python -u "$PROJECT_ROOT/src/cli/transcribe_audio.py" "$AUDIO" --context "$CONTEXT"
+python -u "$PROJECT_ROOT/src/cli/transcribe_audio.py" "$AUDIO" --context "$CONTEXT" --with-phowhisper
 STATUS=$?
 deactivate
-if [ $STATUS -ne 0 ] || [ ! -f "$TRANSCRIPT" ]; then
+if [ $STATUS -ne 0 ] || [ ! -f "$TRANSCRIPT" ] || [ ! -f "$SECOND" ]; then
   echo "[ERROR] Transcription failed (exit $STATUS); no review." >&2
   exit 1
 fi
@@ -147,11 +159,27 @@ start_vllm_server "$MODEL" "$PORT" "$PROJECT_ROOT/logs/vllm_transcript.log" || e
 
 echo "=== vLLM Server Ready! STEP 4: Reviewing $TRANSCRIPT ==="
 python3 -u "$PROJECT_ROOT/src/cli/review_transcript.py" "$AUDIO" "$TRANSCRIPT" \
+  --second "$SECOND" \
   --context "$CONTEXT" \
   --model-name "$MODEL" \
   --vllm-url "http://127.0.0.1:$PORT/v1"
 STATUS=$?
 
+if [ $STATUS -eq 0 ]; then
+  echo "=== STEP 5: Fixing names in $REVIEWED ==="
+  python3 -u "$PROJECT_ROOT/src/cli/fix_names.py" "$REVIEWED" \
+    --context "$CONTEXT" \
+    --model-name "$MODEL" \
+    --vllm-url "http://127.0.0.1:$PORT/v1"
+  STATUS=$?
+fi
+
 stop_vllm_server
+
+if [ $STATUS -eq 0 ] && [ -f "$REFERENCE" ]; then
+  echo "=== STEP 6: Scoring against $REFERENCE_REL ==="
+  python3 -u "$PROJECT_ROOT/src/cli/score_transcript.py" "$REFERENCE" \
+    "$TRANSCRIPT" "$SECOND" "$REVIEWED" "$FINAL" --context "$CONTEXT"
+fi
 echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Transcript Review Finished ==="
 exit $STATUS

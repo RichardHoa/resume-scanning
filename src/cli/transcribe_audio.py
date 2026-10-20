@@ -3,13 +3,14 @@
 Standalone: runs in its own venv (requirements-audio.txt), imports nothing from src. Guide: docs/audio-transcribe.md.
 
 Pipeline (see .scratch/audio-transcribe/spec.md):
-  1. Decode the audio to 16 kHz mono with ffmpeg.
+  1. Decode the audio to 16 kHz mono with ffmpeg, repairing clipped peaks (adeclip) unless --no-declip.
   2. pyannote finds who speaks when (2 to 4 speakers, exclusive turns).
   3. Silero VAD finds the speech, so cuts only ever fall inside pauses.
   4. Speech is split at speaker changes (moved to the nearest pause), long stretches are split at their longest
      pause, and close pieces of the same speaker are joined into Segments of up to ~30 s.
   5. Qwen3-ASR transcribes each Segment; a Segment detected as a language other than Vietnamese/English/French is
-     redone as Vietnamese. The Segment's own start/end are its timestamps.
+     redone as Vietnamese. The Segment's own start/end are its timestamps, but the model hears up to
+     ASR_CONTEXT_PAD_S more on each side (never past the middle of the gap to a neighbour).
   6. With a glossary, a Segment whose text sounds like some glossary terms is transcribed again with just those
      terms as context, and the new text is kept only if it passes the leak guard.
 
@@ -18,6 +19,9 @@ Output: <input-stem>.transcript.txt next to the input, one line per Segment:
 
 With --phowhisper, step 5 uses PhoWhisper-large instead (always Vietnamese), Segments over 30 s are cut to fit its
 window, there is no glossary pass, and the output is <input-stem>.phowhisper.transcript.txt.
+
+With --with-phowhisper, steps 5–6 run as usual and PhoWhisper-large then transcribes the same Segments, writing both
+files with identical lines: a Segment over 30 s is cut into parts for PhoWhisper only and its texts joined.
 """
 
 import argparse
@@ -52,6 +56,7 @@ MIN_SPLIT_SIDE_S = 2.0  # a split pause must leave at least this much speech on 
 FINE_PAUSE_MS = 100  # shortest pause a long stretch or a speaker change may be cut in
 SPEAKER_SNAP_S = 1.0  # a speaker-change cut moves to the nearest pause within this distance
 MIN_SPEAKER_PIECE_S = 0.5  # a shorter speaker piece (e.g. a quick "ừ") joins its longer neighbour's line
+ASR_CONTEXT_PAD_S = 0.5  # extra audio the ASR hears on each side of a Segment, so its first and last words stay in
 
 ASR_BATCH_SIZE = 16
 ASR_MAX_NEW_TOKENS = 512
@@ -86,6 +91,8 @@ class Span:
     start: float
     end: float
     speaker: str | None = None
+    pad_before: float = 0.0  # extra audio the ASR hears before start (a Segment only; see pad_segments)
+    pad_after: float = 0.0
 
     @property
     def duration(self) -> float:
@@ -96,17 +103,19 @@ class Span:
         return (self.start + self.end) / 2
 
 
-def decode_audio(path: Path) -> np.ndarray:
+def decode_audio(path: Path, declip: bool) -> np.ndarray:
     """Decode any ffmpeg-readable file to a 16 kHz mono float32 waveform.
 
-    Uses the ffmpeg binary bundled with imageio-ffmpeg, since the compute machine has no system ffmpeg.
+    With declip, clipped peaks are repaired (ffmpeg's adeclip) at the original sample rate, before resampling: the
+    loudest speech is where the ASR made up text. Uses the ffmpeg binary bundled with imageio-ffmpeg, since the compute
+    machine has no system ffmpeg. review_transcript.py decodes the same way.
     """
     from imageio_ffmpeg import get_ffmpeg_exe
 
-    cmd = [
-        get_ffmpeg_exe(), "-nostdin", "-loglevel", "error", "-i", str(path),
-        "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "f32le", "-",
-    ]
+    cmd = [get_ffmpeg_exe(), "-nostdin", "-loglevel", "error", "-i", str(path)]
+    if declip:
+        cmd += ["-af", "aformat=channel_layouts=mono,adeclip"]
+    cmd += ["-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "f32le", "-"]
     raw = subprocess.run(cmd, check=True, capture_output=True).stdout
     return np.frombuffer(raw, dtype=np.float32).copy()
 
@@ -260,23 +269,41 @@ def join_close(pieces: list[Span]) -> list[Span]:
     return joined
 
 
+def whisper_parts(segment: Span) -> list[Span]:
+    """The Segment cut into equal parts that fit WHISPER_WINDOW_S with their padding, or the Segment itself if it fits.
+
+    Only the outer parts keep the Segment's padding; the inner ones touch each other. Sizing parts by the window less
+    both paddings keeps the outer parts, padding included, inside the window too.
+    """
+    parts = int(np.ceil(segment.duration / (WHISPER_WINDOW_S - segment.pad_before - segment.pad_after)))
+    if parts <= 1:
+        return [segment]
+    log.warning(
+        "Forced %d cuts in %s–%s (%.1fs) to fit PhoWhisper's 30 s window",
+        parts - 1, format_time(segment.start), format_time(segment.end), segment.duration,
+    )
+    step = segment.duration / parts
+    cut = [Span(segment.start + k * step, segment.start + (k + 1) * step, segment.speaker) for k in range(parts)]
+    cut[0].pad_before, cut[-1].pad_after = segment.pad_before, segment.pad_after
+    return cut
+
+
 def fit_whisper_window(segments: list[Span]) -> list[Span]:
-    """Cut each Segment still longer than WHISPER_WINDOW_S (no usable pause) into equal parts that fit it."""
-    fitted: list[Span] = []
-    for segment in segments:
-        parts = int(np.ceil(segment.duration / WHISPER_WINDOW_S))
-        if parts <= 1:
-            fitted.append(segment)
-            continue
-        log.warning(
-            "Forced %d cuts in %s–%s (%.1fs) to fit PhoWhisper's 30 s window",
-            parts - 1, format_time(segment.start), format_time(segment.end), segment.duration,
-        )
-        step = segment.duration / parts
-        fitted.extend(
-            Span(segment.start + k * step, segment.start + (k + 1) * step, segment.speaker) for k in range(parts)
-        )
-    return fitted
+    """Cut each Segment still too long for Whisper's window (no usable pause) into equal parts, each its own line."""
+    return [part for segment in segments for part in whisper_parts(segment)]
+
+
+def pad_segments(segments: list[Span], length: float) -> None:
+    """Let the ASR hear up to ASR_CONTEXT_PAD_S beyond each Segment, stopping at the middle of the gap to a neighbour.
+
+    A Segment's first or last word can fall just outside its VAD edges and get dropped. The middle-of-gap limit keeps
+    a neighbour's words out. Timestamps stay the Segment's own.
+    """
+    for i, segment in enumerate(segments):
+        earliest = (segments[i - 1].end + segment.start) / 2 if i > 0 else 0.0
+        latest = (segment.end + segments[i + 1].start) / 2 if i + 1 < len(segments) else length
+        segment.pad_before = max(0.0, min(ASR_CONTEXT_PAD_S, segment.start - earliest))
+        segment.pad_after = max(0.0, min(ASR_CONTEXT_PAD_S, latest - segment.end))
 
 
 def build_segments(audio: np.ndarray, turns: list[Span] | None) -> list[Span]:
@@ -314,7 +341,9 @@ def load_asr_model():
 
 
 def clip_of(audio: np.ndarray, segment: Span) -> tuple[np.ndarray, int]:
-    return audio[int(segment.start * SAMPLE_RATE):int(segment.end * SAMPLE_RATE)], SAMPLE_RATE
+    """The audio the ASR hears for a Segment: the Segment and its padding."""
+    start = max(0, int((segment.start - segment.pad_before) * SAMPLE_RATE))
+    return audio[start:int((segment.end + segment.pad_after) * SAMPLE_RATE)], SAMPLE_RATE
 
 
 def transcribe_segments(model, audio: np.ndarray, segments: list[Span]) -> list[str]:
@@ -355,10 +384,19 @@ def is_repetitive(text: str) -> bool:
 
 
 def transcribe_segments_phowhisper(processor, model, audio: np.ndarray, segments: list[Span]) -> list[str]:
-    """Every Segment as Vietnamese; a Segment whose text is still mostly repeats is logged but kept."""
-    texts: list[str] = []
-    for i in range(0, len(segments), ASR_BATCH_SIZE):
-        batch = segments[i:i + ASR_BATCH_SIZE]
+    """Every Segment as Vietnamese; a part whose text is still mostly repeats is logged but kept.
+
+    A Segment too long for Whisper's window is transcribed in parts (whisper_parts) and their texts joined.
+    """
+    owners, parts = [], []
+    for n, segment in enumerate(segments):
+        for part in whisper_parts(segment):
+            owners.append(n)
+            parts.append(part)
+
+    part_texts: list[str] = []
+    for i in range(0, len(parts), ASR_BATCH_SIZE):
+        batch = parts[i:i + ASR_BATCH_SIZE]
         clips = [clip_of(audio, s)[0] for s in batch]
         features = processor(clips, sampling_rate=SAMPLE_RATE, return_tensors="pt").input_features
         with torch.inference_mode():
@@ -370,14 +408,18 @@ def transcribe_segments_phowhisper(processor, model, audio: np.ndarray, segments
                 no_repeat_ngram_size=WHISPER_NO_REPEAT_NGRAM,
             )
         batch_texts = [text.strip() for text in processor.batch_decode(ids, skip_special_tokens=True)]
-        for segment, text in zip(batch, batch_texts):
+        for part, text in zip(batch, batch_texts):
             if is_repetitive(text):
                 log.warning(
                     "Mostly repeats in %s–%s, kept as is: %s",
-                    format_time(segment.start), format_time(segment.end), text[:120],
+                    format_time(part.start), format_time(part.end), text[:120],
                 )
-        texts.extend(batch_texts)
-        log.info("Transcribed %d/%d segments", len(texts), len(segments))
+        part_texts.extend(batch_texts)
+        log.info("Transcribed %d/%d parts", len(part_texts), len(parts))
+
+    texts = [""] * len(segments)
+    for n, text in zip(owners, part_texts):
+        texts[n] = f"{texts[n]} {text}".strip() if text else texts[n]
     return texts
 
 
@@ -507,12 +549,12 @@ def person_names(segments: list[Span]) -> dict[str, str]:
     return names
 
 
-def write_transcript(path: Path, segments: list[Span], texts: list[str]) -> int:
-    """Write one line per Segment; a Segment the ASR heard nothing in is left out."""
+def write_transcript(path: Path, segments: list[Span], texts: list[str], keep: list[bool] | None = None) -> int:
+    """Write one line per Segment in keep (default: each Segment the ASR heard something in)."""
     names = person_names(segments)
     lines = []
-    for segment, text in zip(segments, texts):
-        if not text:
+    for segment, text, kept in zip(segments, texts, keep or [bool(t) for t in texts]):
+        if not kept:
             continue
         prefix = f"{names[segment.speaker]}: " if segment.speaker is not None else ""
         lines.append(f"[{format_time(segment.start)} → {format_time(segment.end)}] {prefix}{text}")
@@ -532,6 +574,11 @@ def main() -> None:
         "--phowhisper", action="store_true",
         help=f"transcribe with {PHOWHISPER_MODEL} (Vietnamese only, no --context) instead of {ASR_MODEL}",
     )
+    parser.add_argument(
+        "--with-phowhisper", action="store_true",
+        help=f"also transcribe the same Segments with {PHOWHISPER_MODEL}, into a second file with identical lines",
+    )
+    parser.add_argument("--no-declip", action="store_true", help="don't repair clipped peaks before transcribing")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -541,13 +588,15 @@ def main() -> None:
         sys.exit(f"[ERROR] Context file not found: {args.context}")
     if args.phowhisper and args.context is not None:
         sys.exit("[ERROR] --context is Qwen3-ASR only; drop it to run with --phowhisper.")
+    if args.phowhisper and args.with_phowhisper:
+        sys.exit("[ERROR] --phowhisper and --with-phowhisper can't be combined; pick one.")
     if not torch.cuda.is_available():
         sys.exit("[ERROR] No GPU visible. Run this on a compute node with a GPU.")
 
     pipeline = None if args.no_speakers else load_diarization_pipeline()
 
-    log.info("Decoding %s", args.audio)
-    audio = decode_audio(args.audio)
+    log.info("Decoding %s%s", args.audio, "" if args.no_declip else ", repairing clipped peaks")
+    audio = decode_audio(args.audio, declip=not args.no_declip)
     log.info("Audio length: %s", format_time(len(audio) / SAMPLE_RATE))
 
     turns = None
@@ -561,19 +610,33 @@ def main() -> None:
     segments = build_segments(audio, turns)
     log.info("Cut into %d segments", len(segments))
 
+    pad_segments(segments, len(audio) / SAMPLE_RATE)
     if args.phowhisper:
         segments = fit_whisper_window(segments)
-        texts = transcribe_segments_phowhisper(*load_phowhisper(), audio, segments)
-    else:
-        model = load_asr_model()
-        texts = transcribe_segments(model, audio, segments)
-        if args.context is not None:
-            texts = apply_glossary(model, audio, segments, texts, read_glossary(args.context))
 
-    suffix = ".phowhisper.transcript.txt" if args.phowhisper else ".transcript.txt"
-    out_path = args.audio.with_name(f"{args.audio.stem}{suffix}")
-    count = write_transcript(out_path, segments, texts)
-    log.info("Wrote %d lines to %s", count, out_path)
+    qwen_path = args.audio.with_name(f"{args.audio.stem}.transcript.txt")
+    phowhisper_path = args.audio.with_name(f"{args.audio.stem}.phowhisper.transcript.txt")
+    if args.phowhisper:
+        texts = transcribe_segments_phowhisper(*load_phowhisper(), audio, segments)
+        count = write_transcript(phowhisper_path, segments, texts)
+        log.info("Wrote %d lines to %s", count, phowhisper_path)
+        return
+
+    model = load_asr_model()
+    texts = transcribe_segments(model, audio, segments)
+    if args.context is not None:
+        texts = apply_glossary(model, audio, segments, texts, read_glossary(args.context))
+    count = write_transcript(qwen_path, segments, texts)
+    log.info("Wrote %d lines to %s", count, qwen_path)
+    if not args.with_phowhisper:
+        return
+
+    del model
+    torch.cuda.empty_cache()
+    second = transcribe_segments_phowhisper(*load_phowhisper(), audio, segments)
+    # The same lines as the Qwen file, so the review can pair them: a line only PhoWhisper heard nothing in stays
+    count = write_transcript(phowhisper_path, segments, second, keep=[bool(t) for t in texts])
+    log.info("Wrote %d lines to %s", count, phowhisper_path)
 
 
 if __name__ == "__main__":
