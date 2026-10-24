@@ -29,10 +29,9 @@ logging.getLogger("dspy").setLevel(logging.WARNING)
 
 from src.core.config import (
     MATCH_THRESHOLDS, DIMENSION_WEIGHTS, DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, MAX_NEW_TOKENS, DSPY_MAX_TOKENS,
-    HR_CHECK_ITEMS_KEY, EXTRACTION_JSON_DIR
+    HR_CHECK_ITEMS_KEY, EXTRACTION_JSON_DIR, CATEGORY_LABELS
 )
 from src.prompts.evaluator_prompts import get_evaluator_system_prompt
-from src.pipelines.evaluator_backend import CATEGORY_LABELS
 from src.pipelines.evaluator_utils import extract_relevant_resume_field
 
 logger = logging.getLogger(__name__)

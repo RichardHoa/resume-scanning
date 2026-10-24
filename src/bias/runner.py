@@ -15,7 +15,7 @@ from typing import Dict, List, Any, Tuple, Optional
 from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, RAG_DIR, CATEGORY_EVAL_MAX_TOKENS
 from src.core.json_utils import clean_and_parse_json
 from src.pipelines.evaluator import ResumeEvaluator
-from src.pipelines.evaluator_utils import validate_category_evaluation
+from src.pipelines.scoring import score_run
 from src.prompts.evaluator_prompts import get_evaluator_system_prompt, CATEGORY_EVALUATION_SCHEMA
 from src.bias.base import BaseCategoryBiasBuilder
 from src.bias.registry import get_bias_builder
@@ -346,7 +346,7 @@ def run_single_category_bias_test(
                 raw_response = evaluator._call_vllm_backend(messages, json_schema=CATEGORY_EVALUATION_SCHEMA, max_tokens=CATEGORY_EVAL_MAX_TOKENS, step=f"bias_{category_key}").text
 
             parsed = clean_and_parse_json(raw_response)
-            validated = validate_category_evaluation(parsed)
+            validated = score_run(parsed)
             is_valid = bool(validated is not None)
             score = validated.get("score", 0) if is_valid else 0
             raw_criteria = validated.get("criteria_evaluations", []) if is_valid else []

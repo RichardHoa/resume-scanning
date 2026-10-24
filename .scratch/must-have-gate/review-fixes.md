@@ -2,7 +2,7 @@ Status: ready-for-agent
 
 # Must-have gate: fixes from code review
 
-Follow-up to `spec.md` in this folder. The must-have gate is implemented (uncommitted, in the working tree), and a code review found the problems below. The user has decided each fix. Read `spec.md`, `docs/adr/0011-must-have-rejection.md` and the **Must-have Rejection** / **Importance** entries in `CONTEXT.md` first.
+Follow-up to `spec.md` in this folder. The must-have gate is implemented (uncommitted, in the working tree), and a code review found the problems below. The user has decided each fix. Read `spec.md`, `docs/adr/0011-must-have-rejection.md` and the **Must-have Rejection** / **Importance** entries in `GLOSSARY.md` first.
 
 Project rules: never commit, never add tests or check in a browser (verify by reasoning; `python3 -m py_compile` and `node --check` are fine).
 

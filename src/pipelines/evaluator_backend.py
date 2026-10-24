@@ -8,8 +8,7 @@ import re
 from typing import Dict, List, Any, NamedTuple, Optional
 
 from src.core.config import (
-    DIMENSION_WEIGHTS, FALLBACK_ERROR_SCORE, MATCH_THRESHOLDS, MAX_NEW_TOKENS,
-    REQUIREMENTS_DECOMPOSITION_MAX_TOKENS, HR_CHECK_ITEMS_KEY,
+    CATEGORY_LABELS, MAX_NEW_TOKENS, REQUIREMENTS_DECOMPOSITION_MAX_TOKENS, HR_CHECK_ITEMS_KEY,
     SCRUTINY_TEMPERATURE, SCRUTINY_MAX_QUESTIONS_PER_FIELD
 )
 from src.core.logger import log_broken_json, HR_RAG_LOG_NAME
@@ -30,15 +29,6 @@ class LLMReply(NamedTuple):
     # Set only by the vLLM backend, which reports why generation stopped and how many tokens it produced
     finish_reason: Optional[str] = None
     completion_tokens: Optional[int] = None
-
-
-CATEGORY_LABELS = {
-    "seniority_title": "Position & Seniority Match",
-    "technical_skills": "Technical Skills & Competencies",
-    "work_experience": "Work Experience & Project Relevance",
-    "education_certifications": "Education & Certifications",
-    "hidden_culture": "HR Hidden Requirements & Culture Fit"
-}
 
 
 def call_vllm_backend(
@@ -192,141 +182,6 @@ def scrutinize_requirements_with_llm(
 
     log_broken_json(prompt, reply.text, "requirements_scrutiny", resume_name, attempt=max_retries, error_reason=f"Max retries ({max_retries}) reached", finish_reason=reply.finish_reason, completion_tokens=reply.completion_tokens, log_dir=log_dir)
     raise RuntimeError(f"Requirement scrutiny failed to produce valid output after {max_retries} attempts.")
-
-
-def aggregate_evaluation_results(
-    cat_eval_outputs: Dict[str, Any],
-    resume_name: str,
-    num_evaluations: int
-) -> tuple:
-    """
-    Helper to aggregate dimension scores and calculate final overall score & recommendation.
-    Also returns the keys of the Categories that failed; any failure makes this a Failed Evaluation.
-    """
-    dimension_results = {}
-    category_timings = {}
-    weighted_total = 0.0
-    any_evaluation_failed = False
-    failed_category_names = []
-    failed_category_keys = []
-
-    # 1. Identify categories existing vs non-existing in RAG
-    existing_cat_keys = []
-    non_existing_cat_keys = []
-
-    for cat_key in CATEGORY_LABELS.keys():
-        if cat_key in cat_eval_outputs:
-            _, cat_res, retrieved, _ = cat_eval_outputs[cat_key]
-            if retrieved and len(retrieved) > 0:
-                existing_cat_keys.append(cat_key)
-            else:
-                non_existing_cat_keys.append(cat_key)
-        else:
-            non_existing_cat_keys.append(cat_key)
-
-    # 2. Calculate adjusted weights
-    # Divide the percentage sum of non-existing categories equally among existing categories
-    non_existing_weight_sum = sum(DIMENSION_WEIGHTS.get(ck, 0.20) for ck in non_existing_cat_keys)
-
-    adjusted_weights = {}
-    if non_existing_cat_keys and existing_cat_keys:
-        addon = non_existing_weight_sum / len(existing_cat_keys)
-        for ck in CATEGORY_LABELS.keys():
-            if ck in existing_cat_keys:
-                adjusted_weights[ck] = DIMENSION_WEIGHTS.get(ck, 0.20) + addon
-            else:
-                adjusted_weights[ck] = 0.0
-    else:
-        for ck in CATEGORY_LABELS.keys():
-            adjusted_weights[ck] = DIMENSION_WEIGHTS.get(ck, 0.20)
-
-    # 3. Process each category with adjusted weights
-    for cat_key, cat_name in CATEGORY_LABELS.items():
-        if cat_key in cat_eval_outputs:
-            cat_name, cat_res, retrieved, elapsed_cat = cat_eval_outputs[cat_key]
-        else:
-            cat_res = {
-                "score": FALLBACK_ERROR_SCORE,
-                "strengths": [],
-                "gaps": ["Lỗi xử lý mục đánh giá"],
-                "evidence_quotes": [],
-                "reasoning_summary": "Evaluation error.",
-                "all_scores": [],
-                "median_score": float(FALLBACK_ERROR_SCORE),
-                "failed": True
-            }
-            retrieved = []
-            elapsed_cat = 0.0
-
-        if cat_res.get("failed", False):
-            any_evaluation_failed = True
-            failed_category_names.append(cat_name)
-            failed_category_keys.append(cat_key)
-
-        category_timings[cat_key] = round(elapsed_cat, 2)
-        weight = round(adjusted_weights.get(cat_key, 0.20), 4)
-
-        if cat_key in non_existing_cat_keys:
-            score = 0
-            weighted_score = 0.0
-        else:
-            score = cat_res.get("score", FALLBACK_ERROR_SCORE)
-            weighted_score = round(score * weight, 2)
-        
-        dimension_results[cat_key] = {
-            "category_name": cat_name,
-            "weight": weight,
-            "score": score,
-            "weighted_score": weighted_score,
-            "strengths": cat_res.get("strengths", []),
-            "gaps": cat_res.get("gaps", []),
-            "evidence_quotes": cat_res.get("evidence_quotes", []),
-            "reasoning_summary": cat_res.get("reasoning_summary", ""),
-            # Per-criterion verdicts with the resume quotes given for each, from the median run
-            "criteria_evaluations": cat_res.get("criteria_evaluations", []),
-            # The Nice-to-haves met pushed that run past the Category's 100, so the gauge is capped below its rows
-            "bonus_capped": cat_res.get("bonus_capped", False),
-            # How many runs gave each must-have Criterion NO_EVIDENCE; a majority makes a Must-have Rejection
-            "must_have_no_evidence_counts": cat_res.get("must_have_no_evidence_counts", []),
-            "retrieved_criteria": retrieved,
-            "processing_time_seconds": round(elapsed_cat, 2),
-            "evaluation_runs_count": num_evaluations,
-            "all_run_scores": cat_res.get("all_scores", []),
-            "median_score": cat_res.get("median_score", float(score))
-        }
-        # A Not Applicable Category: HR's requirements gave it no Criterion, so it is never shown to HR
-        if cat_res.get("not_applicable"):
-            dimension_results[cat_key]["not_applicable"] = True
-        weighted_total += score * weight
-
-    if any_evaluation_failed:
-        failed_cats_str = ", ".join(failed_category_names)
-        print(f"[FAILED EVALUATION] Evaluation failed in categories: [{failed_cats_str}] for resume '{resume_name}'. Failed categories zeroed; partial scores kept for debugging.", file=sys.stderr)
-        for cat_key, cat_data in dimension_results.items():
-            if cat_data.get("score") == FALLBACK_ERROR_SCORE and cat_key in [
-                ck for ck, cn in CATEGORY_LABELS.items() if cn in failed_category_names
-            ]:
-                dimension_results[cat_key]["score"] = 0
-                dimension_results[cat_key]["weighted_score"] = 0.0
-                dimension_results[cat_key]["median_score"] = 0.0
-                dimension_results[cat_key]["all_run_scores"] = []
-
-    # Recompute weighted_total from final dimension scores (post-failure adjustment)
-    weighted_total = sum(
-        d["score"] * d["weight"] for d in dimension_results.values()
-    )
-
-    overall_score = round(weighted_total, 1)
-    if overall_score >= MATCH_THRESHOLDS["STRONG"]:
-        recommendation = "STRONG_MATCH"
-    elif overall_score >= MATCH_THRESHOLDS["POTENTIAL"]:
-        recommendation = "POTENTIAL_MATCH"
-    elif overall_score >= MATCH_THRESHOLDS["LOW"]:
-        recommendation = "LOW_MATCH"
-    else:
-        recommendation = "REJECT"
-
-    return dimension_results, category_timings, overall_score, recommendation, failed_category_keys
 
 
 def evaluation_report_filename(resume_name: str) -> str:

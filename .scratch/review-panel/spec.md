@@ -182,7 +182,7 @@ The pipeline also defaults to a model (Qwen3.5-35B-A3B) that is no longer the te
 ## Further Notes
 
 - The foundation paper's evaluator scores different sections (self-evaluation, skills, work experience, basic info, education). This pipeline's Review Panel works on this repo's five Categories instead.
-- The paper's CEO, CTO and HR agents became Leadership, Domain Expertise and People & Culture: "CTO" doesn't fit non-technical roles, and "HR" in this project always means the human HR user. See the Panelist entry in `CONTEXT.md`.
+- The paper's CEO, CTO and HR agents became Leadership, Domain Expertise and People & Culture: "CTO" doesn't fit non-technical roles, and "HR" in this project always means the human HR user. See the Panelist entry in `GLOSSARY.md`.
 - New glossary terms: Review Panel, Panelist, Rebuttal Round, Coordinator, Candidate Feedback, Failed Evaluation.
 - ADR 0002 records why Agent Framework is limited to the Review Panel.
 - Before implementing, confirm the current Agent Framework Python API for an OpenAI-compatible client with a custom base URL and for structured output against vLLM, since the framework is still evolving.

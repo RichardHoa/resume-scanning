@@ -11,7 +11,7 @@
 - **Self-contained reports.** Every evaluation report also stores the Standard Requirements text, the Hidden Requirements text, and the path to the extracted resume.
 - **Candidate Pool.** Error reports show "Lỗi – cần chạy lại" and are left out of ranking and score display. HR reruns a failed candidate by selecting it and clicking Evaluate again.
 
-See `.scratch/review-panel/spec.md` and the Failed Evaluation entry in `CONTEXT.md`.
+See `.scratch/review-panel/spec.md` and the Failed Evaluation entry in `GLOSSARY.md`.
 
 **Blocked by:** None (can start immediately)
 

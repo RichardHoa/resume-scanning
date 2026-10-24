@@ -85,6 +85,15 @@ for d in [RAG_DIR, APPROVED_DIR, SERVER_STATE_DIR, RUN_LOGS_DIR, PROMPT_LOGS_DIR
           EXTRACTION_JSON_DIR, EVALUATION_JSON_DIR, RESUME_PDF_DIR]:
     os.makedirs(d, exist_ok=True)
 
+# The five Categories every resume is judged on, by key and display name
+CATEGORY_LABELS = {
+    "seniority_title": "Position & Seniority Match",
+    "technical_skills": "Technical Skills & Competencies",
+    "work_experience": "Work Experience & Project Relevance",
+    "education_certifications": "Education & Certifications",
+    "hidden_culture": "HR Hidden Requirements & Culture Fit"
+}
+
 # Weight distribution for 5 evaluation dimensions
 DIMENSION_WEIGHTS = {
     "seniority_title": 0.22,

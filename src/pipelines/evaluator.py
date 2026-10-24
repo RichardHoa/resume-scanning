@@ -11,17 +11,17 @@ if _PROJECT_ROOT not in sys.path:
 
 import json
 import time
-import statistics
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 from src.core.config import (
-    DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, FALLBACK_ERROR_SCORE, MAX_NEW_TOKENS,
+    DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, MAX_NEW_TOKENS,
     CATEGORY_EVAL_MAX_TOKENS, CATEGORY_EVAL_RETRY_TEMPERATURE, CATEGORY_EVAL_SAMPLE_TEMPERATURE,
-    DEFAULT_NUM_EVALUATIONS, SCRUTINY_MAX_QUESTIONS_PER_FIELD, HR_CHECK_ITEMS_KEY
+    DEFAULT_NUM_EVALUATIONS, SCRUTINY_MAX_QUESTIONS_PER_FIELD, HR_CHECK_ITEMS_KEY, CATEGORY_LABELS
 )
 from src.core.logger import log_llm_call, log_broken_json, HR_RAG_LOG_NAME
 from src.core.json_utils import clean_and_parse_json
+from src.core.language import is_english
 from src.providers.rag_engine import LocalCriteriaRAG
 from src.prompts.evaluator_prompts import (
     get_evaluator_system_prompt,
@@ -34,29 +34,20 @@ from src.pipelines.evaluator_mocks import (
     get_mock_category_response
 )
 from src.pipelines.evaluator_utils import (
-    clean_and_deduplicate_list,
-    validate_category_evaluation,
     extract_relevant_resume_field,
     is_missing_position,
     is_scanned_resume,
-    collect_must_have_rejection,
-    count_must_have_no_evidence,
     SCANNED_RESUME_KEY
 )
 from src.pipelines.evaluator_backend import (
-    CATEGORY_LABELS,
     LLMReply,
     call_vllm_backend,
     decompose_requirements_with_llm,
     scrutinize_requirements_with_llm,
-    aggregate_evaluation_results,
     save_evaluation_report
 )
+from src.pipelines.scoring import CategoryOutcome, score_run, score_candidate
 from src.pipelines.review_panel import create_review_panel
-
-# Backwards-compatibility aliases for module-level functions
-_clean_and_deduplicate_list = clean_and_deduplicate_list
-_validate_category_evaluation = validate_category_evaluation
 
 class ResumeEvaluator:
     """
@@ -214,7 +205,7 @@ class ResumeEvaluator:
                 json_schema=json_schema, log_dir=log_dir, max_tokens=CATEGORY_EVAL_MAX_TOKENS
             )
             parsed = clean_and_parse_json(reply.text)
-            validated = validate_category_evaluation(parsed, importance_map=importance_map)
+            validated = score_run(parsed, importance_map=importance_map)
 
             if validated is not None:
                 validated["failed"] = False
@@ -231,7 +222,7 @@ class ResumeEvaluator:
             prompt, reply.text, category, resume_name, attempt=max_retries, error_reason=f"Max retries ({max_retries}) reached",
             run_index=run_index, finish_reason=reply.finish_reason, completion_tokens=reply.completion_tokens, log_dir=log_dir
         )
-        is_en = eff_language.lower() in ("english", "en")
+        is_en = is_english(eff_language)
         gap_msg = f"Failed to parse evaluation data from model (Invalid JSON/Score after {max_retries} attempts)" if is_en else f"Không thể phân tích dữ liệu đánh giá từ mô hình (Format JSON/Score không hợp lệ sau {max_retries} lần thử)"
         reason_msg = f"DATA FAILURE: Unable to parse valid JSON after {max_retries} attempts." if is_en else f"THẤT BẠI DỮ LIỆU: Không thể phân tích JSON hợp lệ sau {max_retries} lần thử."
         return {
@@ -252,9 +243,8 @@ class ResumeEvaluator:
         num_evaluations: int,
         language: Optional[str] = None,
         log_dir: Optional[str] = None
-    ):
+    ) -> CategoryOutcome:
         eff_language = language or self.language
-        is_en = eff_language.lower() in ("english", "en")
         t_cat_start = time.time()
         query_context = json.dumps(self._extract_relevant_resume_field(cat_key, resume_data), ensure_ascii=False)
         retrieved = self.rag.retrieve(cat_key, query_context, top_k=None)
@@ -267,19 +257,9 @@ class ResumeEvaluator:
                 f"The vector store's Criteria for '{cat_key}' differ from the stored HR RAG. Save the HR RAG again on the RAG page."
             )
 
+        eval_runs: List[Dict[str, Any]] = []
         if not retrieved:
             print(f"[Evaluation] Category '{cat_name}' has no criteria in RAG. Setting 0% weight (not applicable).", file=sys.stderr)
-            reasoning_msg = "No HR requirements specified for this dimension in RAG (Not applicable)." if is_en else "Không có tiêu chí từ HR trong RAG cho mục này (Không áp dụng)."
-            cat_res = {
-                "score": 0,
-                "strengths": [],
-                "gaps": [],
-                "evidence_quotes": [],
-                "reasoning_summary": reasoning_msg,
-                "all_scores": [0] * num_evaluations,
-                "median_score": 0.0,
-                "not_applicable": True
-            }
         else:
             if num_evaluations > 1:
                 from concurrent.futures import ThreadPoolExecutor
@@ -300,26 +280,7 @@ class ResumeEvaluator:
                     for run_i in range(1, num_evaluations + 1)
                 ]
 
-            has_category_failure = any(r.get("failed", False) for r in eval_runs)
-            scores = [r.get("score", FALLBACK_ERROR_SCORE) for r in eval_runs]
-            sorted_runs = sorted(eval_runs, key=lambda r: r.get("score", FALLBACK_ERROR_SCORE))
-            # The lower median, so with an even run count the score is the shown run's own, matching its Criterion
-            # Points and cap note
-            med_score = int(statistics.median_low(scores))
-            median_idx = (len(sorted_runs) - 1) // 2
-            
-            cat_res = dict(sorted_runs[median_idx])
-            # The Must-have gate counts NO_EVIDENCE across every run, not just the median one shown to HR
-            cat_res["must_have_no_evidence_counts"] = count_must_have_no_evidence(eval_runs)
-            cat_res["score"] = med_score
-            cat_res["median_score"] = float(med_score)
-            cat_res["all_scores"] = scores
-            if has_category_failure:
-                cat_res["failed"] = True
-
-        elapsed_cat = time.time() - t_cat_start
-        print(f"[Timing Log] [{resume_name}] Category '{cat_name}' ({cat_key}) evaluation took: {elapsed_cat:.2f}s (Median Score: {cat_res.get('score')})", file=sys.stderr)
-        return cat_key, cat_name, cat_res, retrieved, elapsed_cat
+        return CategoryOutcome(name=cat_name, retrieved=retrieved, runs=eval_runs, elapsed=time.time() - t_cat_start)
 
     def _evaluate_all_categories(
         self,
@@ -328,54 +289,28 @@ class ResumeEvaluator:
         num_evaluations: int,
         language: Optional[str] = None,
         log_dir: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, CategoryOutcome]:
         eff_language = language or self.language
-        cat_eval_outputs = {}
+        outcomes = {}
 
         def _evaluate_dimension_task(item):
             cat_key, cat_name = item
             try:
-                ck, cn, cat_res, retrieved, elapsed = self._evaluate_single_category(
+                return cat_key, self._evaluate_single_category(
                     cat_key, cat_name, resume_data, resume_name, num_evaluations, language=eff_language, log_dir=log_dir
                 )
-                return ck, (cn, cat_res, retrieved, elapsed)
             except Exception as e:
                 import traceback
                 print(f"[Category Eval Error] Exception during execution for '{cat_name}': {e}\n{traceback.format_exc()}", file=sys.stderr)
-                is_en = eff_language.lower() in ("english", "en")
-                err_gap = f"Evaluation dimension processing error: {e}" if is_en else f"Lỗi xử lý mục đánh giá: {e}"
-                return cat_key, (
-                    cat_name,
-                    {
-                        "score": FALLBACK_ERROR_SCORE,
-                        "strengths": [],
-                        "gaps": [err_gap],
-                        "evidence_quotes": [],
-                        "reasoning_summary": f"Evaluation execution error: {e}",
-                        "error": str(e),
-                        "all_scores": [],
-                        "median_score": float(FALLBACK_ERROR_SCORE),
-                        "failed": True
-                    },
-                    [],
-                    0.0
-                )
+                return cat_key, CategoryOutcome(name=cat_name, retrieved=[], runs=[], elapsed=0.0, error=str(e))
 
         from concurrent.futures import ThreadPoolExecutor
         categories_items = list(CATEGORY_LABELS.items())
         with ThreadPoolExecutor(max_workers=len(categories_items)) as executor:
-            for ck, res_tuple in executor.map(_evaluate_dimension_task, categories_items):
-                cat_eval_outputs[ck] = res_tuple
+            for ck, outcome in executor.map(_evaluate_dimension_task, categories_items):
+                outcomes[ck] = outcome
 
-        return cat_eval_outputs
-
-    def _aggregate_evaluation_results(
-        self,
-        cat_eval_outputs: Dict[str, Any],
-        resume_name: str,
-        num_evaluations: int
-    ) -> tuple:
-        return aggregate_evaluation_results(cat_eval_outputs, resume_name, num_evaluations)
+        return outcomes
 
     def _save_evaluation_report(
         self,
@@ -449,12 +384,17 @@ class ResumeEvaluator:
                                                output_path, resume_path, eff_language)
 
         # 2. Evaluate each category
-        cat_eval_outputs = self._evaluate_all_categories(resume_data, resume_name, num_evaluations, language=eff_language, log_dir=log_dir)
+        outcomes = self._evaluate_all_categories(resume_data, resume_name, num_evaluations, language=eff_language, log_dir=log_dir)
 
-        # 3. Aggregate results
-        dimension_results, category_timings, overall_score, recommendation, failed_categories = self._aggregate_evaluation_results(
-            cat_eval_outputs, resume_name, num_evaluations
-        )
+        # 3. Score the candidate
+        scored = score_candidate(outcomes, num_evaluations, eff_language)
+        for cat_key, outcome in outcomes.items():
+            # A crashed Category logged its error instead
+            if outcome.error is None:
+                print(f"[Timing Log] [{resume_name}] Category '{outcome.name}' ({cat_key}) evaluation took: {outcome.elapsed:.2f}s (Median Score: {scored.dimension_scores[cat_key]['score']})", file=sys.stderr)
+        if scored.failed_categories:
+            failed_cats_str = ", ".join(scored.dimension_scores[ck]["category_name"] for ck in scored.failed_categories)
+            print(f"[FAILED EVALUATION] Evaluation failed in categories: [{failed_cats_str}] for resume '{resume_name}'. Failed categories zeroed; partial scores kept for debugging.", file=sys.stderr)
 
         total_resume_time = time.time() - start_resume_time
         print(f"[Timing Log] [{resume_name}] Total Resume Evaluation Completed in: {total_resume_time:.2f}s", file=sys.stderr)
@@ -464,35 +404,29 @@ class ResumeEvaluator:
         basic_info = basic_info if isinstance(basic_info, dict) else {}
         candidate_name = basic_info.get("full_name") or basic_info.get("name") or basic_info.get("email") or resume_name
 
-        # A Failed Evaluation keeps its partial scores for debugging, but is never ranked or shown as a result.
-        # The Must-have gate applies only to a fully scored evaluation: a Failed Evaluation needs a rerun first
-        must_have_rejection = [] if failed_categories else collect_must_have_rejection(dimension_results)
-
         evaluation_output = {
-            "status": "error" if failed_categories else "ok",
+            "status": scored.status,
             "resume_name": resume_name,
             "candidate_identifier": candidate_name,
             # Copied from the extraction for display only; stripped from every LLM input
             "candidate_name": str(basic_info.get("full_name") or basic_info.get("name") or "").strip(),
-            "overall_score": overall_score,
-            # A Must-have Rejection replaces the recommendation, so every consumer sees the candidate is out;
-            # the overall and Category scores stay as computed for HR to see
-            "match_recommendation": "MUST_HAVE_REJECTED" if must_have_rejection else recommendation,
+            "overall_score": scored.overall_score,
+            "match_recommendation": scored.match_recommendation,
             "evaluated_at": datetime.now().isoformat(),
             "execution_timings": {
                 "total_resume_evaluation_seconds": round(total_resume_time, 2),
-                "category_timings_seconds": category_timings
+                "category_timings_seconds": scored.category_timings
             },
-            "dimension_scores": dimension_results,
-            "hidden_requirements_assessment": dimension_results.get("hidden_culture", {}),
+            "dimension_scores": scored.dimension_scores,
+            "hidden_requirements_assessment": scored.dimension_scores.get("hidden_culture", {}),
             # Not scored: HR checks these by hand. The Review Panel sees them only so it can leave them out
             HR_CHECK_ITEMS_KEY: self.rag.get_hr_check_items(),
             # Must-have Rejection: the must-have Criteria with NO_EVIDENCE. Any one rejects the candidate, who keeps
             # every score for HR to see but is never ranked and gets no Candidate Feedback
-            "must_have_rejection": must_have_rejection,
+            "must_have_rejection": scored.must_have_rejection,
             "summary": {
-                "total_strengths": sum([len(v["strengths"]) for v in dimension_results.values()]),
-                "total_gaps": sum([len(v["gaps"]) for v in dimension_results.values()])
+                "total_strengths": sum([len(v["strengths"]) for v in scored.dimension_scores.values()]),
+                "total_gaps": sum([len(v["gaps"]) for v in scored.dimension_scores.values()])
             },
             # Self-contained: everything needed to revisit this evaluation is in the report
             "standard_requirements": standard_req,
@@ -500,15 +434,15 @@ class ResumeEvaluator:
             "resume_path": os.path.abspath(resume_path) if resume_path else None,
             "language": eff_language
         }
-        if failed_categories:
-            evaluation_output["failed_categories"] = failed_categories
+        if scored.failed_categories:
+            evaluation_output["failed_categories"] = scored.failed_categories
 
         if "warning" in resume_data:
             evaluation_output["warning"] = resume_data["warning"]
 
         # 5. Candidate Feedback, only for a fully scored evaluation that passed the Must-have gate. The panel returns a
         # separate object and never touches the scores; a panel failure is recorded in it and the evaluation is still saved
-        if not failed_categories and not must_have_rejection:
+        if not scored.failed_categories and not scored.must_have_rejection:
             if generate_feedback:
                 evaluation_output["candidate_feedback"] = self.review_panel.review(
                     evaluation_output, resume_data, standard_req, hidden_req,

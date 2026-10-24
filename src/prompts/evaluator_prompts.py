@@ -5,6 +5,7 @@ import json
 from typing import Dict, Any, Tuple, Optional, List
 
 from src.core.config import HR_CHECK_ITEMS_KEY
+from src.core.language import is_english as is_english_language
 from src.core.reference_date import current_date_prompt_line
 
 
@@ -113,7 +114,7 @@ def load_dspy_few_shot_demos() -> str:
 
 
 def get_evaluator_system_prompt(language: str = "vietnamese") -> str:
-    is_english = language.lower() in ("english", "en")
+    is_english = is_english_language(language)
     target_lang_str = "English" if is_english else "Vietnamese (Tiếng Việt)"
     reasoning_guide = "3-5 sentences in English summarizing evidence findings" if is_english else "3-5 sentences in Vietnamese summarizing evidence findings"
 
@@ -242,7 +243,7 @@ Return exclusively a valid JSON object:
 
 
 def get_requirements_scrutiny_prompt(standard_req: str, hidden_req: str, model_name: str, language: str = "vietnamese") -> str:
-    is_english = language.lower() in ("english", "en")
+    is_english = is_english_language(language)
     target_lang_str = "English" if is_english else "Vietnamese (Tiếng Việt)"
     std_clean = (standard_req or "").replace("</job_criteria_standard>", "&lt;/job_criteria_standard&gt;")
     hid_clean = (hidden_req or "").replace("</job_criteria_hidden>", "&lt;/job_criteria_hidden&gt;")

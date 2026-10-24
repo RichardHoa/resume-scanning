@@ -5,11 +5,12 @@ import json
 from typing import Any, Dict, List
 
 from src.core.config import HR_CHECK_ITEMS_KEY
+from src.core.language import is_english as is_english_language
 
 
 def get_mock_category_response(category: str, language: str = "vietnamese") -> str:
     """Returns mock JSON response string for a given evaluation category."""
-    is_english = language.lower() in ("english", "en")
+    is_english = is_english_language(language)
     if is_english:
         mock_data = {
             "seniority_title": {
@@ -105,7 +106,7 @@ def get_mock_category_response(category: str, language: str = "vietnamese") -> s
 
 def get_mock_scrutiny_response(standard_req: str, hidden_req: str, language: str = "vietnamese", max_questions: int = 5) -> Dict[str, List[Dict[str, str]]]:
     """Generates a mock Implicit Assumption / Clarification Question response via simple keyword heuristics."""
-    is_english = language.lower() in ("english", "en")
+    is_english = is_english_language(language)
     vague_terms = ["senior", "junior", "good", "strong", "fast-paced", "flexible", "team player", "cấp cao", "tốt", "linh hoạt"]
 
     def _find_assumptions(text: str) -> List[Dict[str, str]]:

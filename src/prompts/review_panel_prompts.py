@@ -6,6 +6,7 @@ import json
 from typing import Any, Dict
 
 from src.core.config import HR_CHECK_ITEMS_KEY
+from src.core.language import is_english
 from src.core.reference_date import current_date_prompt_line
 
 # Shared by every Panelist and the Coordinator
@@ -65,7 +66,7 @@ COORDINATOR_SCHEMA = {
 
 
 def _target_language(language: str) -> str:
-    return "English" if language.lower() in ("english", "en") else "Vietnamese (Tiếng Việt)"
+    return "English" if is_english(language) else "Vietnamese (Tiếng Việt)"
 
 
 def _context_block(report: Dict[str, Any], standard_req: str, hidden_req: str) -> str:

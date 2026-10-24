@@ -11,6 +11,7 @@ if _PROJECT_ROOT not in sys.path:
 
 import json
 from src.core.json_utils import load_schema_from_file
+from src.core.language import is_english
 from src.core.reference_date import current_date_prompt_line
 
 
@@ -19,7 +20,7 @@ def get_system_prompt(language: str = "vietnamese", combined: bool = False) -> s
     qwen_schema = load_schema_from_file("qwen")
     schema_str = json.dumps(qwen_schema, ensure_ascii=False, indent=2)
 
-    target_lang = "English" if language.lower() in ("english", "en") else "Vietnamese"
+    target_lang = "English" if is_english(language) else "Vietnamese"
 
     # Images give the layout, the extracted text gives the words: values read only from pixels fail the fidelity check
     page_images_directive = (

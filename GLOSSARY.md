@@ -45,11 +45,23 @@ How much one Criterion counts inside its Category: Must-have (weight 2), Standar
 _Avoid_: priority, weight (alone)
 
 **Criterion Points**:
-How much of its Category's 100 points one Criterion is worth, and how much a candidate earned on it, shown to HR so they can see where a Category score comes from. The Must-have and Standard Criteria share the Category's 100 by Importance. A Nice-to-have is worth bonus points on top, and the Category never goes above 100. A Partial earns half a Criterion's points. Shares of the candidate's overall score are not Criterion Points: those are a Category's weight.
+How much of its Category's 100 points one Criterion is worth, and how much a candidate earned on it, shown to HR so they can see where a Category Score comes from. The Must-have and Standard Criteria share the Category's 100 by Importance. A Nice-to-have is worth bonus points on top, and the Category never goes above 100. A Partial earns half a Criterion's points. Shares of the candidate's Overall Score are not Criterion Points: those are a Category's weight.
 _Avoid_: criterion score, weight (alone)
 
+**Category Score**:
+A candidate's 0–100 result in one Category. In each run, the Must-have and Standard Verdicts (Strong 1, Partial ½, No Evidence 0), weighted by Importance, make up the 100, and met Nice-to-haves add on top, capped at 100. The Category Score is the lower median of the runs' scores, and HR is shown that median run's Verdicts and Criterion Points. A Not Applicable Category has none.
+_Avoid_: dimension score, criterion score
+
+**Overall Score**:
+The candidate's 0–100 result: each Category Score times its Category's weight (22% each, 12% for `hidden_culture`), with a Not Applicable Category's weight split equally among the others. A Failed Evaluation still has one, but it is never ranked or shown.
+_Avoid_: total score, final score
+
+**Match Recommendation**:
+The band the Overall Score falls in: `STRONG_MATCH` (≥ 85), `POTENTIAL_MATCH` (≥ 70), `LOW_MATCH` (≥ 55) or `REJECT`. For a Must-have Rejection it is replaced by `MUST_HAVE_REJECTED`, whatever the score.
+_Avoid_: match level, tier (tier is the Evaluation Order's)
+
 **Must-have Rejection**:
-An evaluation in which at least one Must-have Criterion got No Evidence in most of its Category's runs; it names which ones, and its match recommendation is `MUST_HAVE_REJECTED`. The candidate is out: still scored in every Category so HR can see the scores, but never ranked and given no Candidate Feedback, and listed apart from the ranked candidates. A Must-have with Partial evidence never rejects. HR un-rejects a candidate only by changing that Criterion's Importance and re-evaluating. A Failed Evaluation is never a Must-have Rejection: it needs a rerun first.
+An evaluation in which at least one Must-have Criterion got No Evidence in most of its Category's runs; it names which ones, and its Match Recommendation is `MUST_HAVE_REJECTED`. The candidate is out: still scored in every Category so HR can see the scores, but never ranked and given no Candidate Feedback, and listed apart from the ranked candidates. A Must-have with Partial evidence never rejects. HR un-rejects a candidate only by changing that Criterion's Importance and re-evaluating. A Failed Evaluation is never a Must-have Rejection: it needs a rerun first.
 _Avoid_: Missing Must-Have, dealbreaker
 
 **HR RAG**:

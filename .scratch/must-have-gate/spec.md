@@ -35,5 +35,5 @@ Today a Must-have Criterion is just a heavier weight (×3, against Standard ×2 
 
 ## To do when this is built
 
-- `CONTEXT.md`: replace **Missing Must-Have** with **Must-have Rejection** (keep "Missing Must-Have" under _Avoid_), and update **Importance** (decided only by HR, Must-have ×2 like Standard, the gate).
+- `GLOSSARY.md`: replace **Missing Must-Have** with **Must-have Rejection** (keep "Missing Must-Have" under _Avoid_), and update **Importance** (decided only by HR, Must-have ×2 like Standard, the gate).
 - New ADR superseding ADR 0006 on auto-reject, the ×3 weight and decomposer-proposed Importance. The reason: a must-have is a requirement, not a preference, and the "resumes omit things" risk is handled by HR choosing every Must-have themselves, with a warning in the UI.

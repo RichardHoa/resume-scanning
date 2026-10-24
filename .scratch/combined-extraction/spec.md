@@ -37,5 +37,5 @@ Testing is manual and done by the developer; no automated tests are added.
 ## To do when this is built
 
 - New ADR: page images may be shown to the extractor for layout only, behind `--combined`; values must come from the text layer, and the fidelity check enforces it. It revisits ADR 0007's no-OCR rule (images are read by the model, but nothing read only from pixels is accepted) and leaves its Scanned Resume rejection unchanged. Note that it does not supersede ADR 0008: PyMuPDF4LLM is still the parser.
-- `CONTEXT.md`: add **Combined Extraction** (extraction that sees page images and the PyMuPDF text; values only from the text).
+- `GLOSSARY.md`: add **Combined Extraction** (extraction that sees page images and the PyMuPDF text; values only from the text).
 - Update the usage comments of the two job scripts and the `model_profiles.sh` header (`VLLM_VISION`).

@@ -204,5 +204,5 @@ The RAG Vector Database Workbench is read-only. To fix a single Criterion, HR ha
 ## Further Notes
 
 - **Two meanings of "category".** In conversation, "category" was used for the Standard/Hidden split. In this codebase's glossary, Category means one of the five fixed buckets, and Standard/Hidden are *fields*. This spec uses the glossary terms.
-- **Glossary update.** The clarify-once rule is recorded in `CONTEXT.md` under **Clarification Question**.
+- **Glossary update.** The clarify-once rule is recorded in `GLOSSARY.md` under **Clarification Question**.
 - **Suggested order of work.** Rough dependency order: stored original requirements and duration tracking on the server → background batch job → shared waiting screen → shared Criteria editor → intake flow changes → Vietnamese translation last, so strings are translated once in their final place.

@@ -314,7 +314,7 @@ This reverses the earlier "no reference, no scoring" decision: without a score w
 - Speaker naming beyond Person 1 / Person 2.
 - An LLM cleanup pass in `transcribe_audio.py` itself (it would quietly change what was said). An LLM review as a separate step after it is in "Next: Qwen3-Omni review pass".
 - Normalising punctuation or capitalisation: the model's output is kept as is, even though it varies from segment to segment.
-- Glossary entries: the root `CONTEXT.md` is the resume-pipeline glossary and stays untouched.
+- Glossary entries: the root `GLOSSARY.md` is the resume-pipeline glossary and stays untouched.
 
 ## Comments
 
