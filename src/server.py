@@ -32,14 +32,20 @@ PARENT_DIR = os.path.dirname(SCRIPT_DIR)
 if PARENT_DIR not in sys.path:
     sys.path.insert(0, PARENT_DIR)
 
-# The website writes only to its own run folder, one per resume set (docs/adr/0010-run-folders.md). Set before
-# any src import, since src.core.config builds every path from it when first imported
-os.environ["RUN_DIR"] = "full-web-tech" if "--tech" in sys.argv[1:] else "full-web-cnb"
+# The website writes only to its own run folder, one per resume set, or runs/web with no resume set
+# (docs/adr/0010-run-folders.md). Set before any src import, since src.core.config builds every path from it when
+# first imported
+if "--tech" in sys.argv[1:]:
+    os.environ["RUN_DIR"] = "web-tech"
+elif "--cnb" in sys.argv[1:]:
+    os.environ["RUN_DIR"] = "web-cnb"
+else:
+    os.environ["RUN_DIR"] = "web"
 
 from step_1_extractor import ResumeExtractor
 from step_2_evaluate import ResumeEvaluator
 from src.core.state import state
-from src.core.evaluation_order import load_evaluation_order, set_tech_mode
+from src.core.evaluation_order import load_evaluation_order, set_resume_set, CNB_RESUME_SET, TECH_RESUME_SET
 from src.core.reference_date import set_reference_date, TECH_REFERENCE_DATE
 from src.api import include_api_routers
 
@@ -55,14 +61,19 @@ parser.add_argument("--host", type=str, default="0.0.0.0",
                     help="Host bind address")
 parser.add_argument("--port", type=int, default=8005,
                     help="Port bind number")
-parser.add_argument("--tech", action="store_true",
-                    help=f"Tech resume set: rank by evaluation_order_tech.txt and use the set's Reference Date ({TECH_REFERENCE_DATE})")
+resume_set_group = parser.add_mutually_exclusive_group()
+resume_set_group.add_argument("--cnb", action="store_true",
+                              help="CnB resume set: rank by evaluation_order.txt")
+resume_set_group.add_argument("--tech", action="store_true",
+                              help=f"Tech resume set: rank by evaluation_order_tech.txt and use the set's Reference Date ({TECH_REFERENCE_DATE})")
 
 # Use parse_known_args so that uvicorn flags like --reload do not crash our parser
 args, unknown_args = parser.parse_known_args()
 
-# Before any prompt is built: the Tech resume set is ranked by its own secret file and read as of December 2015
-set_tech_mode(args.tech)
+# Before any prompt is built: each resume set is ranked by its own secret file, and the Tech one is read as of
+# December 2015. With neither flag no dataset is loaded, so no secret file is read
+resume_set = TECH_RESUME_SET if args.tech else CNB_RESUME_SET if args.cnb else None
+set_resume_set(resume_set)
 if args.tech:
     set_reference_date(TECH_REFERENCE_DATE)
 
@@ -86,12 +97,14 @@ async def lifespan(app: FastAPI):
     print("----------------------------------------------------------------", file=sys.stderr)
     print("Initializing Resume Extraction & Evaluation Server", file=sys.stderr)
     print(f"Mock Mode: {args.mock}", file=sys.stderr)
-    print(f"Tech Mode: {args.tech}", file=sys.stderr)
+    print(f"Resume Set: {resume_set or 'none (no dataset loaded)'}", file=sys.stderr)
     print("----------------------------------------------------------------", file=sys.stderr)
     
     # Load secret evaluation order file on server startup
     startup_order = load_evaluation_order()
-    if startup_order.get("file_found"):
+    if resume_set is None:
+        print("[SERVER EVALUATION ORDER] No resume set given (--cnb or --tech): no evaluation order is loaded.", file=sys.stderr)
+    elif startup_order.get("file_found"):
         print(f"[SERVER EVALUATION ORDER] Secret order loaded from '{startup_order.get('file_path')}': Tier 1={len(startup_order.get('tier1', []))} items, Tier 2={len(startup_order.get('tier2', []))} items", file=sys.stderr)
     else:
         order_name = "evaluation_order_tech.txt" if args.tech else "evaluation_order.txt"

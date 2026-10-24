@@ -22,10 +22,12 @@ SERVER_STATE_DIR = os.path.join(ROOT_DIR, "server_state")
 # A pipeline job wipes its folder before it starts; the website's folder is never wiped. The scripts in scripts/
 # repeat these folder and subfolder names
 RUNS_DIR = os.path.join(ROOT_DIR, "runs")
-DEFAULT_RUN_FOLDER = "full-cnb"
+DEFAULT_RUN_FOLDER = "batch-cnb"
+# The website's folder when it is started without a resume set: it reads no pipeline run folder
+WEB_NO_SET_RUN_FOLDER = "web"
 # Each website run folder and the pipeline run folder of the same resume set, which the website also reads, read-only
-WEB_TO_PIPELINE_RUN_FOLDER = {"full-web-cnb": "full-cnb", "full-web-tech": "full-tech"}
-RUN_FOLDER_NAMES = ("full-cnb", "full-tech", *WEB_TO_PIPELINE_RUN_FOLDER)
+WEB_TO_PIPELINE_RUN_FOLDER = {"web-cnb": "batch-cnb", "web-tech": "batch-tech"}
+RUN_FOLDER_NAMES = ("batch-cnb", "batch-tech", WEB_NO_SET_RUN_FOLDER, *WEB_TO_PIPELINE_RUN_FOLDER)
 
 LOGS_SUBDIR = "logs"
 PROMPT_LOGS_SUBDIR = "prompt_logs"
@@ -39,7 +41,7 @@ TOKEN_USAGE_FILENAME = "token_usage.jsonl"
 def _resolve_run_dir() -> str:
     """
     The active run folder from RUN_DIR (an absolute path, a path from the repo root, or a bare folder name under
-    runs/), or runs/full-cnb when unset.
+    runs/), or runs/batch-cnb when unset.
     """
     raw = os.environ.get("RUN_DIR") or DEFAULT_RUN_FOLDER
     if os.path.isabs(raw):

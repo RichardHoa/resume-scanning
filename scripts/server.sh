@@ -17,21 +17,28 @@
 #   ./scripts/server.sh --status        -> Checks status of all running services
 #   ./scripts/server.sh --help          -> Shows detailed usage information
 #
-# Add --tech (anywhere among the arguments) to a start action to serve the Tech resume set: the web server ranks
-# candidates by evaluation_order_tech.txt and reads resumes as of the set's Reference Date (December 2015).
-# The website writes everything to runs/full-web-cnb (runs/full-web-tech with --tech), never wiped, and also
-# shows the results of the matching pipeline run folder (runs/full-cnb or runs/full-tech), read-only.
+# Add --cnb or --tech (anywhere among the arguments) to a start action to serve that resume set: the web server
+# ranks candidates by evaluation_order.txt (evaluation_order_tech.txt with --tech, which also reads resumes as of
+# the set's Reference Date, December 2015). The website writes everything to runs/web-cnb (runs/web-tech with
+# --tech), never wiped, and also shows the results of the matching pipeline run folder (runs/batch-cnb or
+# runs/batch-tech), read-only. With neither flag it loads no dataset: no evaluation order and no pipeline results,
+# and it writes to runs/web.
 # -----------------------------------------------------------------------------
 
-TECH_ARGS=()
+SET_ARGS=()
 POSITIONAL_ARGS=()
 for arg in "$@"; do
   case "$arg" in
-    --tech) TECH_ARGS=(--tech) ;;
+    --cnb|--tech) SET_ARGS+=("$arg") ;;
     *) POSITIONAL_ARGS+=("$arg") ;;
   esac
 done
 set -- "${POSITIONAL_ARGS[@]}"
+
+if [ ${#SET_ARGS[@]} -gt 1 ]; then
+  echo "[server.sh] ERROR: Pass at most one of --cnb or --tech." >&2
+  exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
@@ -48,12 +55,13 @@ VLLM_PORT_FILE="logs/vllm.port"
 VLLM_LOG_FILE="logs/vllm_server.log"
 
 WEB_PID_FILE="logs/web.pid"
-# The website's run folder (docs/adr/0010-run-folders.md), never wiped; src/server.py picks the same one from --tech
-if [ ${#TECH_ARGS[@]} -gt 0 ]; then
-  WEB_RUN_DIR="runs/full-web-tech"
-else
-  WEB_RUN_DIR="runs/full-web-cnb"
-fi
+# The website's run folder (docs/adr/0010-run-folders.md), never wiped; src/server.py picks the same one from
+# --cnb or --tech
+case "${SET_ARGS[0]}" in
+  --cnb) WEB_RUN_DIR="runs/web-cnb"; RESUME_SET_LABEL="CnB" ;;
+  --tech) WEB_RUN_DIR="runs/web-tech"; RESUME_SET_LABEL="Tech" ;;
+  *) WEB_RUN_DIR="runs/web"; RESUME_SET_LABEL="none (no dataset loaded)" ;;
+esac
 WEB_LOG_FILE="$WEB_RUN_DIR/logs/web_server.log"
 
 DAEMON_PID_FILE="logs/server.pid"
@@ -239,7 +247,7 @@ start_web() {
   echo "[$(date +'%Y-%m-%d %H:%M:%S')] Starting Resume Extraction Web Server (FastAPI)..."
   echo "  ├─ Connecting to vLLM: http://127.0.0.1:$PORT/v1"
   echo "  ├─ Web Port:  $WEB_PORT"
-  echo "  ├─ Tech Mode: $([ ${#TECH_ARGS[@]} -gt 0 ] && echo yes || echo no)"
+  echo "  ├─ Resume Set: $RESUME_SET_LABEL"
   echo "  ├─ Run Folder: $WEB_RUN_DIR"
   echo "  └─ Log:       $WEB_LOG_FILE"
   echo "====================================================================="
@@ -249,7 +257,7 @@ start_web() {
     --vllm-url "http://127.0.0.1:$PORT/v1" \
     --host 0.0.0.0 \
     --port "$WEB_PORT" \
-    "${TECH_ARGS[@]}" \
+    "${SET_ARGS[@]}" \
     > "$WEB_LOG_FILE" 2>&1 &
 
   local SERVER_PID=$!
@@ -311,7 +319,9 @@ show_help() {
   echo "  --stop-web, stop-web           Stop ONLY the FastAPI Web Server"
   echo "  --status, status               Show current running status of all services"
   echo "  --help, -h                     Show this help message"
+  echo "  --cnb                          With a start action: serve the CnB resume set (evaluation_order.txt)"
   echo "  --tech                         With a start action: serve the Tech resume set (evaluation_order_tech.txt, December 2015)"
+  echo "                                 With neither, no dataset is loaded and the website writes to runs/web"
   echo ""
 }
 
@@ -364,7 +374,7 @@ case "$1" in
     echo "====================================================================="
     # The daemon's log and PID file live in logs/, which setup_environment only creates later inside the daemon
     mkdir -p logs
-    nohup bash "$SCRIPT_DIR/server.sh" __internal_daemon "${TECH_ARGS[@]}" > "$DAEMON_LOG_FILE" 2>&1 &
+    nohup bash "$SCRIPT_DIR/server.sh" __internal_daemon "${SET_ARGS[@]}" > "$DAEMON_LOG_FILE" 2>&1 &
     DAEMON_PID=$!
     echo "$DAEMON_PID" > "$DAEMON_PID_FILE"
 

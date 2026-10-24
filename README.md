@@ -40,7 +40,7 @@ python3 src/step_1_extractor.py --pdf pdfs/sample_resume.pdf --output output.jso
 
 **Process a whole folder of PDF resumes:**
 ```bash
-python3 src/step_1_extractor.py --dir pdfs/ --output runs/full-cnb/extraction_json/
+python3 src/step_1_extractor.py --dir pdfs/ --output runs/batch-cnb/extraction_json/
 ```
 
 ### 2. Run the Web Application
@@ -55,9 +55,10 @@ Then open your browser and navigate to `http://localhost:8005`.
 
 ### Where outputs go
 
-Every output lives in one run folder under `runs/` (see `docs/adr/0010-run-folders.md`): `full-cnb` and `full-tech`
-for the SLURM pipeline jobs (`--tech` picks the second), `full-web-cnb` and `full-web-tech` for the website. Each
-holds `logs/`, `prompt_logs/<resume>/<category>/`, `extraction_markdown/`, `extraction_json/`, `evaluation_json/`
+Every output lives in one run folder under `runs/` (see `docs/adr/0010-run-folders.md`): `batch-cnb` and
+`batch-tech` for the SLURM pipeline jobs (which must be given `--cnb` or `--tech`), `web-cnb` and `web-tech` for the
+website (`server.sh --cnb` or `--tech`), and `web` for a website started with neither flag, which loads no dataset:
+no evaluation order and no pipeline results. Each holds `logs/`, `prompt_logs/<resume>/<category>/`, `extraction_markdown/`, `extraction_json/`, `evaluation_json/`
 and `resumes_pdf/`. A pipeline job wipes its run folder before it starts; the website's is never wiped. The
 website also shows the matching pipeline run folder's results, read-only, and each candidate's "Chi tiết cho nhà
 phát triển" panel shows everything stored for that resume.
@@ -67,7 +68,7 @@ phát triển" panel shows everything stored for that resume.
 To score your extracted JSON files against ground truth files:
 
 ```bash
-python3 src/evaluate.py --extracted runs/full-cnb/extraction_json/ --ground-truth approved_jsons/
+python3 src/evaluate.py --extracted runs/batch-cnb/extraction_json/ --ground-truth approved_jsons/
 ```
 
 ### 4. AI Proofreading Pass (scanned books)
@@ -149,5 +150,5 @@ module load miniconda3
 source activate resume_env
 
 # Process a directory of resumes
-python3 src/step_1_extractor.py --dir pdfs/ --output runs/full-cnb/extraction_json/
+python3 src/step_1_extractor.py --dir pdfs/ --output runs/batch-cnb/extraction_json/
 ```

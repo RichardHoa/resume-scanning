@@ -13,26 +13,34 @@
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script for High-Speed vLLM Resume Batch Extraction
 #
-# Usage: sbatch scripts/submit_extract_vllm.sh [pdf_dir] [model] [--tech] [--combined]
+# Usage: sbatch scripts/submit_extract_vllm.sh [pdf_dir] [model] --cnb|--tech [--combined]
 #
-# Wipes the run folder (runs/full-cnb, or runs/full-tech with --tech) and extracts every PDF into it
+# Wipes the run folder (runs/batch-cnb with --cnb, runs/batch-tech with --tech) and extracts every PDF into it
 # (docs/adr/0010-run-folders.md). --tech reads Vietnamese-dataset/Tech as of its Reference Date (December 2015);
 # an explicit PDF dir argument still overrides the dataset folder.
 # --combined runs Combined Extraction: vLLM is served with vision on and the extractor also sees each page's image,
 # for layout only (values still come from the PDF text). It needs a profile that can see images (VLLM_VISION=1).
 # -----------------------------------------------------------------------------
 
-DATASET="CnB"
+DATASET=""
+SET_FLAGS=0
 COMBINED=0
 POSITIONAL_ARGS=()
 for arg in "$@"; do
   case "$arg" in
-    --tech) DATASET="Tech" ;;
+    --cnb) DATASET="CnB"; SET_FLAGS=$((SET_FLAGS + 1)) ;;
+    --tech) DATASET="Tech"; SET_FLAGS=$((SET_FLAGS + 1)) ;;
     --combined) COMBINED=1 ;;
     *) POSITIONAL_ARGS+=("$arg") ;;
   esac
 done
 set -- "${POSITIONAL_ARGS[@]}"
+
+# The resume set is never defaulted, so a job never lands in the wrong run folder
+if [ "$SET_FLAGS" -ne 1 ]; then
+  echo "[ERROR] Pass exactly one of --cnb or --tech to pick the resume set." >&2
+  exit 1
+fi
 
 if [ "$DATASET" = "Tech" ]; then
   REFERENCE_DATE="2015-12-31"

@@ -33,14 +33,14 @@ require_hr_rag() {
   return 1
 }
 
-# Run folders (docs/adr/0010-run-folders.md): every output of one pipeline job lives in runs/full-cnb, or
-# runs/full-tech for the Tech resume set. Exports RUN_DIR (which src/core/config.py builds every path from) and
+# Run folders (docs/adr/0010-run-folders.md): every output of one pipeline job lives in runs/batch-cnb, or
+# runs/batch-tech for the Tech resume set. Exports RUN_DIR (which src/core/config.py builds every path from) and
 # the folder's subfolders. Call with the dataset, "CnB" or "Tech"
 use_pipeline_run_dir() {
   if [ "$1" = "Tech" ]; then
-    export RUN_DIR="$PROJECT_ROOT/runs/full-tech"
+    export RUN_DIR="$PROJECT_ROOT/runs/batch-tech"
   else
-    export RUN_DIR="$PROJECT_ROOT/runs/full-cnb"
+    export RUN_DIR="$PROJECT_ROOT/runs/batch-cnb"
   fi
   RUN_LOGS_DIR="$RUN_DIR/logs"
   PROMPT_LOGS_DIR="$RUN_DIR/prompt_logs"
@@ -51,9 +51,9 @@ use_pipeline_run_dir() {
 # Refuses any folder but the two pipeline run folders, so a wrong or empty RUN_DIR never reaches rm -rf
 _require_pipeline_run_dir() {
   case "$RUN_DIR" in
-    "$PROJECT_ROOT/runs/full-cnb"|"$PROJECT_ROOT/runs/full-tech") return 0 ;;
+    "$PROJECT_ROOT/runs/batch-cnb"|"$PROJECT_ROOT/runs/batch-tech") return 0 ;;
   esac
-  echo "[CRITICAL ERROR] Refusing to wipe '$RUN_DIR': not runs/full-cnb or runs/full-tech under $PROJECT_ROOT." >&2
+  echo "[CRITICAL ERROR] Refusing to wipe '$RUN_DIR': not runs/batch-cnb or runs/batch-tech under $PROJECT_ROOT." >&2
   return 1
 }
 

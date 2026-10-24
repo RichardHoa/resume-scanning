@@ -13,22 +13,30 @@
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script for High-Speed vLLM Resume Evaluation Server
 #
-# Usage: sbatch scripts/submit_eval_vllm.sh [model] [--tech]
+# Usage: sbatch scripts/submit_eval_vllm.sh [model] --cnb|--tech
 #
-# Evaluates the extractions already in the run folder (runs/full-cnb, or runs/full-tech with --tech). Only the
-# folder's evaluations are wiped first (their JSONs, prompt logs, token usage and logs); the extractions stay
+# Evaluates the extractions already in the run folder (runs/batch-cnb with --cnb, runs/batch-tech with --tech).
+# Only the folder's evaluations are wiped first (their JSONs, prompt logs, token usage and logs); the extractions stay
 # (docs/adr/0010-run-folders.md). With no extractions yet, the dataset's PDFs are extracted first.
 # -----------------------------------------------------------------------------
 
-DATASET="CnB"
+DATASET=""
+SET_FLAGS=0
 POSITIONAL_ARGS=()
 for arg in "$@"; do
   case "$arg" in
-    --tech) DATASET="Tech" ;;
+    --cnb) DATASET="CnB"; SET_FLAGS=$((SET_FLAGS + 1)) ;;
+    --tech) DATASET="Tech"; SET_FLAGS=$((SET_FLAGS + 1)) ;;
     *) POSITIONAL_ARGS+=("$arg") ;;
   esac
 done
 set -- "${POSITIONAL_ARGS[@]}"
+
+# The resume set is never defaulted, so a job never lands in the wrong run folder
+if [ "$SET_FLAGS" -ne 1 ]; then
+  echo "[ERROR] Pass exactly one of --cnb or --tech to pick the resume set." >&2
+  exit 1
+fi
 
 if [ "$DATASET" = "Tech" ]; then
   REFERENCE_DATE="2015-12-31"

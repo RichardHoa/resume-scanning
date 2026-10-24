@@ -13,19 +13,19 @@
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script for Extraction & Evaluation in One Job with vLLM
 #
-# Usage: sbatch scripts/submit_extract_eval_vllm.sh [pdf_dir] [model] [--tech] [--combined]
+# Usage: sbatch scripts/submit_extract_eval_vllm.sh [pdf_dir] [model] --cnb|--tech [--combined]
 #
-# Wipes the run folder (runs/full-cnb, or runs/full-tech with --tech), spins up a vLLM server instance, runs batch
-# extraction (Step 1), and then runs batch evaluation (Step 2) using the active vLLM server. Every output of the
-# job goes into the run folder: its logs, prompt logs, extraction markdown and JSON, evaluation JSON and resume
-# PDFs (docs/adr/0010-run-folders.md). SLURM's own .out/.err files stay in logging/.
+# Wipes the run folder (runs/batch-cnb with --cnb, runs/batch-tech with --tech), spins up a vLLM server instance,
+# runs batch extraction (Step 1), and then runs batch evaluation (Step 2) using the active vLLM server. Every
+# output of the job goes into the run folder: its logs, prompt logs, extraction markdown and JSON, evaluation JSON
+# and resume PDFs (docs/adr/0010-run-folders.md). SLURM's own .out/.err files stay in logging/.
 #
 # Evaluation uses the HR RAG as HR set it on the website's RAG page, and never builds,
 # changes or clears it: set the HR RAG for the job before submitting, or the job stops
 # before it starts the server.
 #
-# Dataset: CnB by default (Vietnamese-dataset/CnB). Pass --tech (anywhere among the
-# arguments) for Vietnamese-dataset/Tech; the HR RAG must then hold the Tech job's
+# Dataset: pass --cnb (Vietnamese-dataset/CnB) or --tech (Vietnamese-dataset/Tech), anywhere among the
+# arguments; one is required. With --tech the HR RAG must then hold the Tech job's
 # requirements (hr-requirement-tech.txt). An explicit PDF dir argument still overrides.
 # The Tech resumes are old, so --tech also sets the Reference Date (the date the prompts treat as today)
 # to December 2015.
@@ -34,17 +34,25 @@
 # for layout only (values still come from the PDF text). It needs a profile that can see images (VLLM_VISION=1).
 # -----------------------------------------------------------------------------
 
-DATASET="CnB"
+DATASET=""
+SET_FLAGS=0
 COMBINED=0
 POSITIONAL_ARGS=()
 for arg in "$@"; do
   case "$arg" in
-    --tech) DATASET="Tech" ;;
+    --cnb) DATASET="CnB"; SET_FLAGS=$((SET_FLAGS + 1)) ;;
+    --tech) DATASET="Tech"; SET_FLAGS=$((SET_FLAGS + 1)) ;;
     --combined) COMBINED=1 ;;
     *) POSITIONAL_ARGS+=("$arg") ;;
   esac
 done
 set -- "${POSITIONAL_ARGS[@]}"
+
+# The resume set is never defaulted, so a job never lands in the wrong run folder
+if [ "$SET_FLAGS" -ne 1 ]; then
+  echo "[ERROR] Pass exactly one of --cnb or --tech to pick the resume set." >&2
+  exit 1
+fi
 
 if [ "$DATASET" = "Tech" ]; then
   REFERENCE_DATE="2015-12-31"

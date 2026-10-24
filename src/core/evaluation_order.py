@@ -12,14 +12,20 @@ from src.core.config import ROOT_DIR, RESUME_JSON_DIRS, EVALUATION_JSON_DIRS
 SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # The Tech resume set has its own secret file, evaluation_order_tech.txt: the top 10 candidates' emails in rank
-# order, with everyone else outside the list. A server started with --tech reads only that file; any other server
-# never reads it, so neither dataset is ranked by the other's answer key
+# order, with everyone else outside the list. A server started with --tech reads only that file and one started
+# with --cnb only evaluation_order.txt, so neither dataset is ranked by the other's answer key. A server started
+# with neither has no resume set and reads no order file at all
+CNB_RESUME_SET = "cnb"
+TECH_RESUME_SET = "tech"
+_resume_set: Optional[str] = None
 _tech_mode = False
 
 
-def set_tech_mode(enabled: bool) -> None:
-    global _tech_mode
-    _tech_mode = bool(enabled)
+def set_resume_set(resume_set: Optional[str]) -> None:
+    """The server's resume set: CNB_RESUME_SET, TECH_RESUME_SET, or None for no dataset."""
+    global _resume_set, _tech_mode
+    _resume_set = resume_set
+    _tech_mode = resume_set == TECH_RESUME_SET
 
 
 def is_tech_mode() -> bool:
@@ -40,8 +46,11 @@ def load_evaluation_order() -> dict:
     """
     Locates and reads the secret file 'evaluation_order.txt' (or 'evaluation_order_tech.txt' in tech mode)
     from project root, cwd, or subdirectories.
-    Returns parsed tier1 and tier2 email/name/filename lists.
+    Returns parsed tier1 and tier2 email/name/filename lists, both empty when the server has no resume set.
     """
+    if _resume_set is None:
+        return {"tier1": [], "tier2": [], "file_found": False, "file_path": None, "tech_mode": False}
+
     search_dirs = [
         ROOT_DIR,
         os.getcwd(),
