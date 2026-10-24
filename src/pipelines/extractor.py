@@ -97,6 +97,16 @@ def is_text_in_markdown(val: str, norm_markdown: str, words_markdown: str) -> bo
     return False
 
 
+# Every Fidelity Warning starts with this; the other entries in an extraction's "warning" list are PDF Notes, or the
+# Repaired Extraction warning below
+FIDELITY_WARNING_PREFIX = "Extraction text at "
+# Added to a Repaired Extraction: every retry gave broken JSON and the last answer was patched, so fields may be missing
+REPAIRED_EXTRACTION_WARNING = (
+    "Repaired Extraction: every retry gave broken JSON and the model's last answer was patched; "
+    "fields after the cut may be missing."
+)
+
+
 def check_extracted_fields_in_markdown(extracted_dict: dict, markdown_content: str) -> list[str]:
     """
     Traverses extracted JSON and checks all text values against source markdown
@@ -121,7 +131,7 @@ def check_extracted_fields_in_markdown(extracted_dict: dict, markdown_content: s
         elif isinstance(obj, str):
             val_str = obj.strip()
             if val_str and not is_text_in_markdown(val_str, norm_markdown, words_markdown):
-                warnings.append(f"Extraction text at '{path}' ('{val_str}') not found in markdown")
+                warnings.append(f"{FIDELITY_WARNING_PREFIX}'{path}' ('{val_str}') not found in markdown")
 
     traverse(extracted_dict, "")
     return warnings
@@ -262,9 +272,12 @@ class ResumeExtractor:
 
     def extract_single_pass(
         self, resume_text: str, pdf_path: str, language: str = "vietnamese", max_retries: int = 5,
-        page_images: Optional[list[PageImage]] = None
+        page_images: Optional[list[PageImage]] = None, log_dir: Optional[str] = None
     ) -> tuple[Optional[dict], str]:
-        """Runs a single LLM extraction pass with retry logic for invalid JSON, with the page images when given."""
+        """
+        Runs a single LLM extraction pass with retry logic for invalid JSON, with the page images when given.
+        Prompt logs go under log_dir when given, else under the run folder's prompt_logs/.
+        """
         last_raw_result = ""
         # Named like the extraction JSON and the evaluation, so all of one resume's logs sit together
         resume_name = os.path.splitext(os.path.basename(pdf_path))[0] if pdf_path else "resume"
@@ -280,18 +293,22 @@ class ResumeExtractor:
                 )
 
             last_raw_result = result
-            log_llm_call(full_prompt, result, EXTRACTION_LOG_CATEGORY, resume_name, run_index=attempt)
+            log_llm_call(full_prompt, result, EXTRACTION_LOG_CATEGORY, resume_name, run_index=attempt, log_dir=log_dir)
             parsed_dict = clean_and_parse_json(result)
             if parsed_dict is not None and isinstance(parsed_dict, dict) and len(parsed_dict) > 0:
                 return parsed_dict, last_raw_result
 
             print(f"[Extract Retry] Attempt {attempt}/{max_retries} failed to produce valid JSON. Retrying LLM call...", file=sys.stderr)
-            log_broken_json(full_prompt, result, EXTRACTION_LOG_CATEGORY, resume_name, attempt=attempt, error_reason="Step 1 extraction JSON parse failed")
+            log_broken_json(
+                full_prompt, result, EXTRACTION_LOG_CATEGORY, resume_name, attempt=attempt,
+                error_reason="Step 1 extraction JSON parse failed", log_dir=log_dir
+            )
 
         return None, last_raw_result
 
-    def extract(self, pdf_path: str, language: str = "vietnamese", max_retries: int = 5) -> str:
+    def extract(self, pdf_path: str, language: str = "vietnamese", max_retries: int = 5, log_dir: Optional[str] = None) -> str:
         pdf_warnings = []
+        repaired = False
         page_images = None
         if self.mock:
             # The mock has no server to send page images to, so --combined changes nothing here
@@ -316,15 +333,16 @@ class ResumeExtractor:
                 return json.dumps({"error": error_msg}, ensure_ascii=False, indent=2)
 
         final_dict, raw_result = self.extract_single_pass(
-            resume_text, pdf_path, language=language, max_retries=max_retries, page_images=page_images
+            resume_text, pdf_path, language=language, max_retries=max_retries, page_images=page_images, log_dir=log_dir
         )
         if final_dict is None:
             # Fallback if every retry failed to produce clean JSON
             print("Warning: Extraction failed to produce clean JSON. Attempting auto-repair...", file=sys.stderr)
             clean_result = extract_json_substring(raw_result)
-            repaired = repair_truncated_json(clean_result)
+            repaired_json = repair_truncated_json(clean_result)
             try:
-                final_dict = json.loads(repaired)
+                final_dict = json.loads(repaired_json)
+                repaired = True
             except json.JSONDecodeError:
                 print("  Auto-repair failed. Returning raw substring.", file=sys.stderr)
                 return clean_result
@@ -335,6 +353,8 @@ class ResumeExtractor:
             warnings = check_extracted_fields_in_markdown(final_dict, resume_text)
             if pdf_warnings:
                 warnings.extend(pdf_warnings)
+            if repaired:
+                warnings.append(REPAIRED_EXTRACTION_WARNING)
             final_dict["warning"] = warnings
 
             return json.dumps(final_dict, ensure_ascii=False, indent=2)

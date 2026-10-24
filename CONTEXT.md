@@ -92,6 +92,18 @@ _Avoid_: OCR resume, image PDF, unreadable resume
 Extraction in which the model sees each page's image as well as the PyMuPDF text, turned on with `--combined`. The images show only the layout (columns, table rows, which entry a date or company belongs to); every value is still copied from the PDF's text, and the fidelity check rejects anything read only from an image. It needs a model that can see images, and never applies to a Scanned Resume.
 _Avoid_: vision extraction, OCR extraction
 
+**Fidelity Warning**:
+A note attached to an extracted resume saying that one value the extractor produced cannot be found in the resume's text, so the model changed or invented it instead of copying it. It is an extraction error for HR or a developer to look at; nothing fixes it automatically, and evaluation does not read it. Distinct from a PDF Note, which describes the file itself (pages without text, broken characters) and is the same however often the resume is extracted.
+_Avoid_: warning (alone), validation error
+
+**PDF Note**:
+A note attached to an extracted resume about the PDF itself rather than the model's output: pages without text that were not read, pages left out of Combined Extraction, or corrupted or unmappable characters. It is not an extraction error.
+_Avoid_: warning (alone)
+
+**Repaired Extraction**:
+An extraction in which the model never gave a complete answer, even after every retry, so its last, cut-off answer was patched into shape. It is kept and marked, so HR is warned on the website that fields may be missing. The extractor consistency check counts it as a failed run.
+_Avoid_: partial extraction, auto-repair (alone)
+
 **Missing Position**:
 A flag on a resume that states no position the candidate is applying for. The resume is still evaluated, ranked and given Candidate Feedback like any other, as if applying for the job the HR requirement describes (every resume in a run is assumed to be for that one job); the flag only tells HR, on the website, that the position was missing. Having no stated position is not evidence against the candidate.
 _Avoid_: no position, error, unevaluated

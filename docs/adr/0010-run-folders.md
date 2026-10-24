@@ -13,4 +13,4 @@ Outputs used to be scattered over about ten root folders (`logging/`, `logs/`, `
 - The HR RAG (`rag/`), the ground truth (`approved_jsons/`), `schemas/`, the datasets and the server's pid/port files stay outside the run folders and are never wiped. The extract and evaluate job used to wipe `approved_jsons/`; it no longer does.
 - The pipeline scripts no longer take output or evaluation directory arguments, and refuse to wipe any folder other than the two pipeline run folders.
 - SLURM's own `.out`/`.err` files stay in `logging/`, because `#SBATCH --output` is fixed at submit time. The job's tee'd log in the run folder has the same content.
-- The bias and consistency checks are unchanged and still use their old paths.
+- The bias check is unchanged and still uses its old paths. The extractor consistency check (`scripts/check_extractor_consistency.sh`) has its own two folders, `consistency-cnb` and `consistency-tech`, wiped when the job starts; the website never reads them.

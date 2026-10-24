@@ -12,6 +12,6 @@ So run 1 stays greedy (`temperature=0.0`) and every later run samples at `CATEGO
 ## Consequences
 
 - A single run is unchanged and still deterministic. The bias runner has its own call path at `temperature=0.0`, so the bias suite is unaffected.
-- `scripts/run_consistency.py` goes through the same code with 20 runs, so its runs 2–20 now sample: it measures the spread of sampled judgements, not only vLLM's run-to-run noise at temperature 0. Results from before this change are not directly comparable.
+- `scripts/run_consistency.py` goes through the same code with 20 runs, so its runs 2–20 now sample: it measures the spread of sampled judgements, not only vLLM's run-to-run noise at temperature 0. Results from before this change are not directly comparable. (That evaluator consistency check has since been replaced by an extractor-only one.)
 - Each resume makes up to three times as many Category calls, all under the one shared limit on in-flight requests, so a large batch takes about three times as long.
 - Any one run that runs out of retries fails its Category, so three runs give a Failed Evaluation slightly more chances to happen.

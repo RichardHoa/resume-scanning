@@ -48,12 +48,27 @@ use_pipeline_run_dir() {
   EVALUATION_JSON_DIR="$RUN_DIR/evaluation_json"
 }
 
-# Refuses any folder but the two pipeline run folders, so a wrong or empty RUN_DIR never reaches rm -rf
+# The extractor consistency check's run folder: runs/consistency-cnb, or runs/consistency-tech for the Tech resume
+# set. Exports the same variables as use_pipeline_run_dir. Call with the dataset, "CnB" or "Tech"
+use_consistency_run_dir() {
+  if [ "$1" = "Tech" ]; then
+    export RUN_DIR="$PROJECT_ROOT/runs/consistency-tech"
+  else
+    export RUN_DIR="$PROJECT_ROOT/runs/consistency-cnb"
+  fi
+  RUN_LOGS_DIR="$RUN_DIR/logs"
+  PROMPT_LOGS_DIR="$RUN_DIR/prompt_logs"
+  EXTRACTION_JSON_DIR="$RUN_DIR/extraction_json"
+  EVALUATION_JSON_DIR="$RUN_DIR/evaluation_json"
+}
+
+# Refuses any folder but the pipeline and consistency run folders, so a wrong or empty RUN_DIR never reaches rm -rf
 _require_pipeline_run_dir() {
   case "$RUN_DIR" in
     "$PROJECT_ROOT/runs/batch-cnb"|"$PROJECT_ROOT/runs/batch-tech") return 0 ;;
+    "$PROJECT_ROOT/runs/consistency-cnb"|"$PROJECT_ROOT/runs/consistency-tech") return 0 ;;
   esac
-  echo "[CRITICAL ERROR] Refusing to wipe '$RUN_DIR': not runs/batch-cnb or runs/batch-tech under $PROJECT_ROOT." >&2
+  echo "[CRITICAL ERROR] Refusing to wipe '$RUN_DIR': not a runs/batch-* or runs/consistency-* folder under $PROJECT_ROOT." >&2
   return 1
 }
 
