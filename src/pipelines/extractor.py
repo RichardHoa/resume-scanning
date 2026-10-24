@@ -294,7 +294,8 @@ class ResumeExtractor:
 
             last_raw_result = result
             log_llm_call(full_prompt, result, EXTRACTION_LOG_CATEGORY, resume_name, run_index=attempt, log_dir=log_dir)
-            parsed_dict = clean_and_parse_json(result)
+            # Strict: a cut-off answer is retried, then patched and marked as a Repaired Extraction by extract()
+            parsed_dict = clean_and_parse_json(result, strict=True)
             if parsed_dict is not None and isinstance(parsed_dict, dict) and len(parsed_dict) > 0:
                 return parsed_dict, last_raw_result
 

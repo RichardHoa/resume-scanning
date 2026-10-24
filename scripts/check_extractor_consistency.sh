@@ -177,12 +177,18 @@ start_vllm_server "$MODEL" "$PORT" "$VLLM_LOG" || exit 1
 FAILED_SETS=()
 for DATASET in "${DATASETS[@]}"; do
   use_consistency_run_dir "$DATASET"
+  JOB_LOG="$RUN_LOGS_DIR/consistency.log"
+  # A server that died during the previous set would fail every extraction of this one
+  if ! kill -0 "$VLLM_PID" 2>/dev/null; then
+    echo "[ERROR] vLLM server (PID $VLLM_PID) is no longer running; skipping $DATASET. See $VLLM_LOG." | tee -a "$JOB_LOG" >&2
+    FAILED_SETS+=("$DATASET")
+    continue
+  fi
   if [ "$DATASET" = "Tech" ]; then
     REFERENCE_DATE="2015-12-31"
   else
     REFERENCE_DATE=""
   fi
-  JOB_LOG="$RUN_LOGS_DIR/consistency.log"
 
   echo "=====================================================================" | tee -a "$JOB_LOG"
   echo "[$(date +'%Y-%m-%d %H:%M:%S')] === Extractor Consistency: $DATASET ===" | tee -a "$JOB_LOG"

@@ -337,11 +337,14 @@ def _string_is_key(text: str, start: int) -> bool:
     return False
 
 
-def clean_and_parse_json(text: str) -> Optional[Dict[str, Any]]:
+def clean_and_parse_json(text: str, strict: bool = False) -> Optional[Dict[str, Any]]:
     """
     Safely extracts and parses JSON dict from LLM string output.
     Strips thinking tags (<think>...</think>), markdown code blocks, fixes unescaped newlines,
     and isolates JSON candidate blocks from right-to-left.
+    `strict` accepts only one whole JSON object, from the first '{' to the last '}' when text surrounds it: no
+    search for inner blocks (on a cut-off answer it finds the last complete nested object) and no truncation
+    repair, so a cut-off answer gives None.
     """
     if not text or not text.strip():
         return None
@@ -416,6 +419,9 @@ def clean_and_parse_json(text: str) -> Optional[Dict[str, Any]]:
     res = _try_parse(cleaned)
     if res:
         return res
+    if strict:
+        start_idx, end_idx = cleaned.find('{'), cleaned.rfind('}')
+        return _try_parse(cleaned[start_idx:end_idx + 1]) if start_idx != -1 and end_idx > start_idx else None
 
     # Step 2: Extract candidate JSON object blocks by finding '{' from right to left
     brace_indices = [m.start() for m in re.finditer(r'\{', cleaned)]

@@ -13,6 +13,7 @@ import re
 import argparse
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
 # Ensure repository root is in sys.path for 'src' package imports and set CWD
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -57,12 +58,14 @@ def is_scanned_pdf(pdf_path: str) -> bool:
 def run_extraction(extractor: ResumeExtractor, pdf_path: str, out_dir: str, run: int) -> dict:
     """
     One extraction run, saved to out_dir, its prompt logs under prompt_logs/run-<n>/ so the runs never overwrite
-    each other's. Returns {"run", "data"} or {"run", "error"} for a failed run.
+    each other's. Returns {"run", "data"} or {"run", "error"} for a failed run; "raised" marks a run whose request
+    failed (server down, timeout, or rejected, e.g. a prompt over the context length), which says nothing about the
+    model's answers.
     """
     try:
         text = extractor.extract(pdf_path, log_dir=os.path.join(PROMPT_LOGS_DIR, f"run-{run}"))
     except Exception as e:
-        return {"run": run, "error": f"extraction raised: {e}"}
+        return {"run": run, "error": f"extraction raised: {e}", "raised": True}
     try:
         data = json.loads(text)
     except (json.JSONDecodeError, TypeError):
@@ -265,30 +268,31 @@ def main():
 
     for name, _ in to_extract:
         os.makedirs(os.path.join(EXTRACTION_JSON_DIR, name), exist_ok=True)
-    # Every resume's run 1, then every run 2, ...: one resume's runs are not in flight together, so they never
-    # write its extraction markdown at the same time
-    jobs = [
-        (name, pdf_path, os.path.join(EXTRACTION_JSON_DIR, name), run)
-        for run in range(1, RUNS_PER_RESUME + 1)
-        for name, pdf_path in to_extract
-    ]
-    print(f"[{args.set_name}] {len(to_extract)} resumes x {RUNS_PER_RESUME} runs = {len(jobs)} extractions.", file=sys.stderr)
+    total = len(to_extract) * RUNS_PER_RESUME
+    print(f"[{args.set_name}] {len(to_extract)} resumes x {RUNS_PER_RESUME} runs = {total} extractions.", file=sys.stderr)
 
     results = {name: [] for name, _ in to_extract}
     done = 0
     start = time.time()
 
-    def _job(job):
-        name, pdf_path, out_dir, run = job
-        return name, run_extraction(extractor, pdf_path, out_dir, run)
+    def _submit(executor, name, pdf_path, run):
+        return executor.submit(run_extraction, extractor, pdf_path, os.path.join(EXTRACTION_JSON_DIR, name), run)
 
-    from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=max(1, args.workers)) as executor:
-        for name, result in executor.map(_job, jobs):
-            results[name].append(result)
-            done += 1
-            status = "ok" if "data" in result else f"FAILED ({result['error']})"
-            print(f"[{done}/{len(jobs)}] {name} run {result['run']}: {status}", file=sys.stderr)
+        # A resume's next run is submitted only when its previous run finishes: one resume's runs are never in
+        # flight together, so they never write its extraction markdown at the same time
+        pending = {_submit(executor, name, pdf_path, 1): (name, pdf_path) for name, pdf_path in to_extract}
+        while pending:
+            finished, _ = wait(pending, return_when=FIRST_COMPLETED)
+            for future in finished:
+                name, pdf_path = pending.pop(future)
+                result = future.result()
+                results[name].append(result)
+                done += 1
+                status = "ok" if "data" in result else f"FAILED ({result['error']})"
+                print(f"[{done}/{total}] {name} run {result['run']}: {status}", file=sys.stderr)
+                if result["run"] < RUNS_PER_RESUME:
+                    pending[_submit(executor, name, pdf_path, result["run"] + 1)] = (name, pdf_path)
 
     mode = "Combined Extraction" if args.combined else "Text-only extraction"
     compared = [compare_resume(name, sorted(runs, key=lambda r: r["run"])) for name, runs in results.items()]
@@ -306,6 +310,13 @@ def main():
           f"{counts['with_differences']} with differences, {counts['with_errors']} with errors, "
           f"{counts['with_failed_run']} with a failed run.", file=sys.stderr)
     print(f"[{args.set_name}] Report: {md_path}", file=sys.stderr)
+
+    # A run whose request failed measures the server, not the model: the report is kept, the job fails
+    raised = sum(1 for runs in results.values() for r in runs if r.get("raised"))
+    if raised:
+        print(f"[{args.set_name}] [Error] {raised}/{total} extraction requests failed (server down, timeout, or "
+              f"rejected; see the report's failed runs for each error).", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
