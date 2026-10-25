@@ -6,7 +6,7 @@
 #SBATCH --mem=32G
 #SBATCH --partition=student9696
 #SBATCH --gres=gpu:nvidia_rtx_pro_6000_blackwell_server_edition_4g.96gb:1
-#SBATCH --time=6:00:00
+#SBATCH --time=3:00:00
 #SBATCH --output=logging/slurm_extract_consistency_%j.out
 #SBATCH --error=logging/slurm_extract_consistency_%j.err
 
@@ -17,9 +17,9 @@
 #
 # Extracts every resume of both resume sets, CnB then Tech, 5 times on one vLLM server, and writes a report of
 # what changes between the runs, with every Fidelity Warning and failed run (.scratch/extractor-consistency/spec.md).
-# Wipes runs/consistency-cnb and runs/consistency-tech first; each holds its set's 5 extraction JSONs per resume
-# and consistency_report.md / .json. No evaluation runs, so no HR RAG is needed. The Tech set's Reference Date is
-# December 2015, as in the extract and evaluate job.
+# Wipes runs/extractor-consistency-cnb and runs/extractor-consistency-tech first; each holds its set's 5 extraction
+# JSONs per resume and consistency_report.md / .json. No evaluation runs, so no HR RAG is needed. The Tech set's
+# Reference Date is December 2015, as in the extract and evaluate job.
 #
 # Combined Extraction (page images) is the default, so the model must be able to see images (VLLM_VISION=1);
 # --text runs text-only extraction instead.
@@ -114,19 +114,19 @@ done
 # STEP 4: Wipe Both Consistency Run Folders
 # -----------------------------------------------------------------------------
 echo "====================================================================="
-echo "[$(date +'%Y-%m-%d %H:%M:%S')] STEP 4: Wiping runs/consistency-cnb and runs/consistency-tech..."
+echo "[$(date +'%Y-%m-%d %H:%M:%S')] STEP 4: Wiping runs/extractor-consistency-cnb and runs/extractor-consistency-tech..."
 echo "====================================================================="
 
 mkdir -p "$PROJECT_ROOT/logging"
 for DATASET in "${DATASETS[@]}"; do
-  use_consistency_run_dir "$DATASET"
+  use_consistency_run_dir extractor "$DATASET"
   reset_run_dir || exit 1
 done
 
 # -----------------------------------------------------------------------------
 # STEP 5: Server Startup (its log goes in the CnB folder, which runs first)
 # -----------------------------------------------------------------------------
-use_consistency_run_dir CnB
+use_consistency_run_dir extractor CnB
 VLLM_LOG="$RUN_LOGS_DIR/vllm.log"
 
 echo "====================================================================="
@@ -150,7 +150,7 @@ start_vllm_server "$MODEL" "$PORT" "$VLLM_LOG" || exit 1
 # -----------------------------------------------------------------------------
 FAILED_SETS=()
 for DATASET in "${DATASETS[@]}"; do
-  use_consistency_run_dir "$DATASET"
+  use_consistency_run_dir extractor "$DATASET"
   JOB_LOG="$RUN_LOGS_DIR/consistency.log"
   # A server that died during the previous set would fail every extraction of this one
   if ! kill -0 "$VLLM_PID" 2>/dev/null; then
@@ -188,8 +188,8 @@ done
 stop_vllm_server
 
 echo "====================================================================="
-echo "Reports: $PROJECT_ROOT/runs/consistency-cnb/consistency_report.md"
-echo "         $PROJECT_ROOT/runs/consistency-tech/consistency_report.md"
+echo "Reports: $PROJECT_ROOT/runs/extractor-consistency-cnb/consistency_report.md"
+echo "         $PROJECT_ROOT/runs/extractor-consistency-tech/consistency_report.md"
 if [ "${#FAILED_SETS[@]}" -gt 0 ]; then
   echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Extractor Consistency Job Finished; failed: ${FAILED_SETS[*]} ===" >&2
   exit 1

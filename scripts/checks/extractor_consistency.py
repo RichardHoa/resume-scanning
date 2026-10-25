@@ -75,16 +75,22 @@ def run_extraction(extractor: ResumeExtractor, pdf_path: str, out_dir: str, run:
 
     with open(os.path.join(out_dir, f"run-{run}.json"), "w", encoding="utf-8") as f:
         f.write(text)
+    error = extraction_error(data)
+    return {"run": run, "error": error} if error else {"run": run, "data": data}
+
+
+def extraction_error(data) -> str | None:
+    """Why a parsed extraction cannot be used, or None when it can."""
     if not isinstance(data, dict):
-        return {"run": run, "error": "extraction is not a JSON object"}
+        return "extraction is not a JSON object"
     if data.get(SCANNED_RESUME_KEY):
-        return {"run": run, "error": "rejected as a Scanned Resume"}
+        return "rejected as a Scanned Resume"
     if "error" in data:
-        return {"run": run, "error": str(data["error"])}
-    # A Repaired Extraction is cut off: comparing it would only show the fields it lost
+        return str(data["error"])
+    # A Repaired Extraction is cut off: using it would only show the fields it lost
     if REPAIRED_EXTRACTION_WARNING in (data.get("warning") or []):
-        return {"run": run, "error": "invalid JSON after all retries; the last answer was patched (Repaired Extraction)"}
-    return {"run": run, "data": data}
+        return "invalid JSON after all retries; the last answer was patched (Repaired Extraction)"
+    return None
 
 
 def leaf_values(obj, path: str = "", out: dict = None) -> dict:

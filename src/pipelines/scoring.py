@@ -354,6 +354,9 @@ def score_candidate(outcomes: Dict[str, CategoryOutcome], num_evaluations: int, 
         # A Not Applicable Category: HR's requirements gave it no Criterion, so it is never shown to HR
         if cat_res.get("not_applicable"):
             dimension_results[cat_key]["not_applicable"] = True
+        # A crashed Category (e.g. the vLLM request failed) keeps its exception text, unlike one that ran out of retries
+        if cat_res.get("error"):
+            dimension_results[cat_key]["error"] = cat_res["error"]
         weighted_total += score * weight
 
     if any_evaluation_failed:

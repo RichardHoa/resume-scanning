@@ -37,24 +37,21 @@ require_hr_rag() {
 # runs/batch-tech for the Tech resume set. Exports RUN_DIR (which src/core/config.py builds every path from) and
 # the folder's subfolders. Call with the dataset, "CnB" or "Tech"
 use_pipeline_run_dir() {
-  if [ "$1" = "Tech" ]; then
-    export RUN_DIR="$PROJECT_ROOT/runs/batch-tech"
-  else
-    export RUN_DIR="$PROJECT_ROOT/runs/batch-cnb"
-  fi
-  RUN_LOGS_DIR="$RUN_DIR/logs"
-  PROMPT_LOGS_DIR="$RUN_DIR/prompt_logs"
-  EXTRACTION_JSON_DIR="$RUN_DIR/extraction_json"
-  EVALUATION_JSON_DIR="$RUN_DIR/evaluation_json"
+  _use_run_dir batch "$1"
 }
 
-# The extractor consistency check's run folder: runs/consistency-cnb, or runs/consistency-tech for the Tech resume
-# set. Exports the same variables as use_pipeline_run_dir. Call with the dataset, "CnB" or "Tech"
+# A consistency check's run folder: runs/<check>-consistency-cnb, or -tech for the Tech resume set. Exports the same
+# variables as use_pipeline_run_dir. Call with the check, "extractor" or "evaluator", and the dataset
 use_consistency_run_dir() {
-  if [ "$1" = "Tech" ]; then
-    export RUN_DIR="$PROJECT_ROOT/runs/consistency-tech"
+  _use_run_dir "$1-consistency" "$2"
+}
+
+# Exports RUN_DIR as runs/<prefix>-cnb or runs/<prefix>-tech, and its subfolders
+_use_run_dir() {
+  if [ "$2" = "Tech" ]; then
+    export RUN_DIR="$PROJECT_ROOT/runs/$1-tech"
   else
-    export RUN_DIR="$PROJECT_ROOT/runs/consistency-cnb"
+    export RUN_DIR="$PROJECT_ROOT/runs/$1-cnb"
   fi
   RUN_LOGS_DIR="$RUN_DIR/logs"
   PROMPT_LOGS_DIR="$RUN_DIR/prompt_logs"
@@ -66,9 +63,10 @@ use_consistency_run_dir() {
 _require_pipeline_run_dir() {
   case "$RUN_DIR" in
     "$PROJECT_ROOT/runs/batch-cnb"|"$PROJECT_ROOT/runs/batch-tech") return 0 ;;
-    "$PROJECT_ROOT/runs/consistency-cnb"|"$PROJECT_ROOT/runs/consistency-tech") return 0 ;;
+    "$PROJECT_ROOT/runs/extractor-consistency-cnb"|"$PROJECT_ROOT/runs/extractor-consistency-tech") return 0 ;;
+    "$PROJECT_ROOT/runs/evaluator-consistency-cnb"|"$PROJECT_ROOT/runs/evaluator-consistency-tech") return 0 ;;
   esac
-  echo "[CRITICAL ERROR] Refusing to wipe '$RUN_DIR': not a runs/batch-* or runs/consistency-* folder under $PROJECT_ROOT." >&2
+  echo "[CRITICAL ERROR] Refusing to wipe '$RUN_DIR': not a runs/batch-* or runs/*-consistency-* folder under $PROJECT_ROOT." >&2
   return 1
 }
 

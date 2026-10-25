@@ -116,6 +116,10 @@ _Avoid_: warning (alone)
 An extraction in which the model never gave a complete answer, even after every retry, so its last, cut-off answer was patched into shape. It is kept and marked, so HR is warned on the website that fields may be missing. The extractor consistency check counts it as a failed run.
 _Avoid_: partial extraction, auto-repair (alone)
 
+**Repeat Evaluation**:
+One of the 5 full evaluations of the same extraction in the evaluator consistency check, each judged exactly as HR's evaluations are, with its own Category runs. Comparing them shows whether re-evaluating a candidate changes what HR sees.
+_Avoid_: run (a run is one of a Category's evaluation runs), round, iteration
+
 **Missing Position**:
 A flag on a resume that states no position the candidate is applying for. The resume is still evaluated, ranked and given Candidate Feedback like any other, as if applying for the job the HR requirement describes (every resume in a run is assumed to be for that one job); the flag only tells HR, on the website, that the position was missing. Having no stated position is not evidence against the candidate.
 _Avoid_: no position, error, unevaluated

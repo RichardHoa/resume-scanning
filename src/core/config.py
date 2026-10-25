@@ -27,8 +27,10 @@ DEFAULT_RUN_FOLDER = "batch-cnb"
 WEB_NO_SET_RUN_FOLDER = "web"
 # Each website run folder and the pipeline run folder of the same resume set, which the website also reads, read-only
 WEB_TO_PIPELINE_RUN_FOLDER = {"web-cnb": "batch-cnb", "web-tech": "batch-tech"}
-# The extractor consistency check's folders, one per resume set; the website never reads them
-CONSISTENCY_RUN_FOLDERS = ("consistency-cnb", "consistency-tech")
+# The extractor and evaluator consistency checks' folders, one per check and resume set; the website never reads them
+CONSISTENCY_RUN_FOLDERS = (
+    "extractor-consistency-cnb", "extractor-consistency-tech", "evaluator-consistency-cnb", "evaluator-consistency-tech"
+)
 RUN_FOLDER_NAMES = ("batch-cnb", "batch-tech", WEB_NO_SET_RUN_FOLDER, *WEB_TO_PIPELINE_RUN_FOLDER, *CONSISTENCY_RUN_FOLDERS)
 
 LOGS_SUBDIR = "logs"
