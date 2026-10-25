@@ -1,18 +1,19 @@
 """
-Per-model bias summary (CSV + text table).
+Bias Check summary (CSV + text table).
 
-Rebuilds bias-result/<MODEL_KEY>/bias_summary.csv (and a readable report.txt and report.html of the same numbers)
+Rebuilds runs/bias-cnb/bias_summary.csv (and a readable report.txt and report.html of the same numbers)
 from every bias_detection_<category>.csv in that folder: one row per (category, shuffle kind) plus an ALL row
 per category, answering "what % of runs differ from the Baseline, and by how many points".
 
-Backfill existing results without re-running:
-  python3 -m src.bias.summary bias-result/<MODEL_KEY>
+Rebuild from existing results without re-running:
+  python3 -m src.bias.summary runs/bias-cnb
 """
 import os
 import sys
 import csv
 from typing import Dict, List, Any, Optional
 
+from src.core.config import DEFAULT_LLM_MODEL
 from src.bias.registry import get_all_category_keys
 from src.bias.report_html import HTML_FILENAME, write_report_html
 
@@ -48,8 +49,8 @@ def _pct(count: int, total: int) -> Optional[float]:
 
 def summarize_shuffle_kind(runs: List[Dict[str, Any]], baseline_valid: Dict[int, bool]) -> Dict[str, Any]:
     """
-    Summarizes shuffled runs against the Baseline of the same iteration.
-    A run counts as failed if its own output was invalid or its iteration's Baseline was invalid
+    Summarizes shuffled runs against the Baseline of the same Bias Repetition.
+    A run counts as failed if its own output was invalid or its Bias Repetition's Baseline was invalid
     (no trustworthy score to compare against). Percentages are over non-failed runs.
     """
     changes = [
@@ -114,7 +115,7 @@ def format_category_table(category: str, rows: List[Dict[str, Any]]) -> str:
     lines = [
         "=" * width,
         f" 📊 BIAS SUMMARY: [{category}]",
-        f" Baseline score in each repeat: {rows[0]['baseline_scores'] if rows else '-'}",
+        f" Baseline score in each Bias Repetition: {rows[0]['baseline_scores'] if rows else '-'}",
         f" Points moved from the Baseline (% of non-failed runs):",
         "-" * width,
         header,
@@ -133,12 +134,12 @@ def format_category_table(category: str, rows: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def write_model_summary(model_dir: str) -> Optional[str]:
+def write_bias_summary(model_dir: str) -> Optional[str]:
     """
     Rebuilds <model_dir>/bias_summary.csv, report.txt and report.html from all category CSVs in it.
-    Returns the CSV path, or None if no category CSV exists.
+    Returns the CSV path, or None if no category CSV exists. The Bias Check only runs the default model.
     """
-    model = os.path.basename(os.path.normpath(model_dir))
+    model = DEFAULT_LLM_MODEL
     known = get_all_category_keys()
     present = [
         f[len("bias_detection_"):-len(".csv")]
@@ -170,10 +171,10 @@ def write_model_summary(model_dir: str) -> Optional[str]:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python3 -m src.bias.summary bias-result/<MODEL_KEY> [bias-result/<MODEL_KEY> ...]", file=sys.stderr)
+        print("Usage: python3 -m src.bias.summary runs/bias-cnb", file=sys.stderr)
         sys.exit(1)
     for d in sys.argv[1:]:
-        path = write_model_summary(d)
+        path = write_bias_summary(d)
         if path:
             print(path)
             print(os.path.join(d, REPORT_FILENAME))

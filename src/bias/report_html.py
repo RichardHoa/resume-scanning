@@ -1,18 +1,20 @@
 """
-Per-model bias report page (HTML).
+Bias Check report page (HTML).
 
-Renders bias-result/<MODEL_KEY>/report.html from the bias_summary.csv and report.txt that src/bias/summary.py
+Renders runs/bias-cnb/report.html from the bias_summary.csv and report.txt that src/bias/summary.py
 writes: one bar chart per category showing how many points each shuffle kind moved the score from the Baseline,
 plus the raw report.txt and bias_summary.csv as tabs. The page is self-contained (no network), so it opens offline.
 
 Rebuild from an existing summary without re-running:
-  python3 -m src.bias.report_html bias-result/<MODEL_KEY>
+  python3 -m src.bias.report_html runs/bias-cnb
 """
 import os
 import sys
 import csv
 import json
 from typing import Dict, List, Any, Optional
+
+from src.core.config import DEFAULT_LLM_MODEL
 
 SUMMARY_FILENAME = "bias_summary.csv"
 REPORT_FILENAME = "report.txt"
@@ -66,7 +68,8 @@ def write_report_html(model_dir: str) -> Optional[str]:
             report_txt = f.read()
 
     data = {
-        "model": os.path.basename(os.path.normpath(model_dir)),
+        "model": DEFAULT_LLM_MODEL,
+        "folder": os.path.basename(os.path.normpath(model_dir)),
         "categories": load_summary_categories(csv_path),
         "report_txt": report_txt,
         "summary_csv": summary_csv,
@@ -84,7 +87,7 @@ def write_report_html(model_dir: str) -> Optional[str]:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python3 -m src.bias.report_html bias-result/<MODEL_KEY> [bias-result/<MODEL_KEY> ...]", file=sys.stderr)
+        print("Usage: python3 -m src.bias.report_html runs/bias-cnb", file=sys.stderr)
         sys.exit(1)
     for d in sys.argv[1:]:
         path = write_report_html(d)

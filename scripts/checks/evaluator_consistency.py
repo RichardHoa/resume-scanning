@@ -49,8 +49,6 @@ def parse_args():
                         help="Repeat Evaluations running at once (default: the vLLM request limit, which does the throttling)")
     parser.add_argument("--reference-date", type=str, default="",
                         help="Date (YYYY-MM-DD) the prompts treat as today, for old resume sets (default: the real date)")
-    parser.add_argument("--combined", action="store_true",
-                        help="Combined Extraction: also show the model the page images (needs a vision model)")
     return parser.parse_args()
 
 
@@ -379,7 +377,7 @@ def main():
             to_extract.append((name, os.path.join(args.dir, fname)))
 
     start = time.time()
-    extractor = ResumeExtractor(model_name=args.model_name, vllm_url=args.vllm_url, combined=args.combined)
+    extractor = ResumeExtractor(model_name=args.model_name, vllm_url=args.vllm_url)
     extractor.load_model()
     print(f"[{args.set_name}] Extracting {len(to_extract)} resumes once each.", file=sys.stderr)
     with ThreadPoolExecutor(max_workers=max(1, args.extract_workers)) as executor:
@@ -417,7 +415,7 @@ def main():
                 status = f"{rep.get('status')}, {rep.get('overall_score')} {rep.get('match_recommendation')}"
             print(f"[{done}/{total}] {name} eval {result['evaluation']}: {status}", file=sys.stderr)
 
-    mode = "Combined Extraction" if args.combined else "Text-only extraction"
+    mode = "Combined Extraction"
     compared = [compare_resume(name, sorted(evals, key=lambda r: r["evaluation"])) for name, evals in results.items()]
     report = build_report(args.set_name, mode, get_reference_date().isoformat(), standard_req, hidden_req, compared, scanned,
                           extraction_failures)

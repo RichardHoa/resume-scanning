@@ -17,12 +17,6 @@ ALL_CATEGORIES: List[str] = [
     "work_experience"
 ]
 
-REMAINING_CATEGORIES: List[str] = [
-    "seniority_title",
-    "education_certifications",
-    "work_experience"
-]
-
 _BUILDER_MAP: Dict[str, BaseCategoryBiasBuilder] = {
     "technical_skills": TechnicalSkillsBiasBuilder(),
     "seniority_title": SeniorityTitleBiasBuilder(),
@@ -41,10 +35,5 @@ def get_bias_builder(category_key: str) -> BaseCategoryBiasBuilder:
 
 
 def get_all_category_keys() -> List[str]:
-    """Returns all 4 evaluation categories tracked in bias_detection_plan.md."""
+    """Returns the 4 Categories the Bias Check covers (not hidden_culture)."""
     return list(ALL_CATEGORIES)
-
-
-def get_remaining_category_keys() -> List[str]:
-    """Returns the 3 categories excluding technical_skills."""
-    return list(REMAINING_CATEGORIES)

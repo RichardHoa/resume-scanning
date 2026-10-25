@@ -101,7 +101,7 @@ A resume PDF in which no page has text the system can read, only pictures of tex
 _Avoid_: OCR resume, image PDF, unreadable resume
 
 **Combined Extraction**:
-Extraction in which the model sees each page's image as well as the PyMuPDF text, turned on with `--combined`. The images show only the layout (columns, table rows, which entry a date or company belongs to); every value is still copied from the PDF's text, and the fidelity check rejects anything read only from an image. It needs a model that can see images, and never applies to a Scanned Resume.
+How every resume is extracted: the model sees each page's image as well as the PyMuPDF text. There is no text-only extraction. The images show only the layout (columns, table rows, which entry a date or company belongs to); every value is still copied from the PDF's text, and the fidelity check rejects anything read only from an image. It needs a model that can see images, and never applies to a Scanned Resume.
 _Avoid_: vision extraction, OCR extraction
 
 **Fidelity Warning**:
@@ -133,9 +133,17 @@ A secret, ranked list of candidates (by email) that HR supplies per resume set, 
 _Avoid_: answer key, tier file
 
 **Shuffle Kind**:
-One way of reordering the same prompt content in a bias test (e.g. Macro Permutation, Criteria Permutation, Atomic Interleave), used to check whether evaluation scores depend on ordering. The Baseline is not a Shuffle Kind.
+One way of reordering the same prompt content in the Bias Check (e.g. Macro Permutation, Criteria Permutation, Atomic Interleave), used to check whether evaluation scores depend on ordering. The Baseline is not a Shuffle Kind.
 _Avoid_: experiment type, permutation group
 
 **Baseline**:
-The unshuffled evaluation run in each bias-test iteration; every Shuffle Kind run in that iteration is compared against it.
+The unshuffled evaluation run in each Bias Repetition; every Shuffle Kind run in that Bias Repetition is compared against it.
 _Avoid_: control, reference run
+
+**Bias Check**:
+A test of whether a Category's score depends on the order its prompt content is given in: one fixed CnB resume is judged by one production Category run per ordering, the Baseline and every Shuffle Kind, and each is compared against the Baseline. It needs the CnB HR RAG to be stored.
+_Avoid_: bias test, bias suite, positional test
+
+**Bias Repetition**:
+One full pass of the Bias Check for a Category: its Baseline and every Shuffle Kind run, each compared against that pass's own Baseline. The Bias Check makes 5, so the differences between them show how much a score moves with no reordering at all.
+_Avoid_: iteration, Repeat Evaluation (that is the evaluator consistency check's)

@@ -13,7 +13,7 @@
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script for the Extractor Consistency Check
 #
-# Usage: sbatch scripts/checks/extractor_consistency.sh [model] [--text]
+# Usage: sbatch scripts/checks/extractor_consistency.sh [model]
 #
 # Extracts every resume of both resume sets, CnB then Tech, 5 times on one vLLM server, and writes a report of
 # what changes between the runs, with every Fidelity Warning and failed run (.scratch/extractor-consistency/spec.md).
@@ -21,15 +21,14 @@
 # JSONs per resume and consistency_report.md / .json. No evaluation runs, so no HR RAG is needed. The Tech set's
 # Reference Date is December 2015, as in the extract and evaluate job.
 #
-# Combined Extraction (page images) is the default, so the model must be able to see images (VLLM_VISION=1);
-# --text runs text-only extraction instead.
+# Every resume is extracted with Combined Extraction: vLLM is served with vision on and the extractor also sees each
+# page's image, for layout only (values still come from the PDF text). It needs a profile that can see images
+# (VLLM_VISION=1).
 # -----------------------------------------------------------------------------
 
-COMBINED=1
 POSITIONAL_ARGS=()
 for arg in "$@"; do
   case "$arg" in
-    --text) COMBINED=0 ;;
     *) POSITIONAL_ARGS+=("$arg") ;;
   esac
 done
@@ -95,12 +94,8 @@ setup_vllm_env
 resolve_model_arg "$RAW_MODEL" || exit 1
 
 # Combined Extraction: refuse a model that cannot see images before anything is wiped, then serve vision on
-COMBINED_ARGS=()
-if [ "$COMBINED" -eq 1 ]; then
-  require_vision_profile || exit 1
-  serve_vision_on "$COMBINED_MAX_PAGES"
-  COMBINED_ARGS=(--combined)
-fi
+require_vision_profile || exit 1
+serve_vision_on "$COMBINED_MAX_PAGES"
 
 DATASETS=(CnB Tech)
 for DATASET in "${DATASETS[@]}"; do
@@ -138,7 +133,6 @@ PORT=$(find_free_port)
 
 echo "[$(date +'%H:%M:%S')] Project Root: $PROJECT_ROOT"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL"
-echo "[$(date +'%H:%M:%S')] Combined Extraction: $([ "$COMBINED" -eq 1 ] && echo on || echo off)"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT"
 echo "[$(date +'%H:%M:%S')] Server Log File: $VLLM_LOG"
 echo "[$(date +'%H:%M:%S')] HF Cache Path: ${HF_HOME:-default}"
@@ -175,8 +169,7 @@ for DATASET in "${DATASETS[@]}"; do
     --model-name "$MODEL" \
     --vllm-url "http://127.0.0.1:$PORT/v1" \
     --workers 6 \
-    --reference-date "$REFERENCE_DATE" \
-    "${COMBINED_ARGS[@]}" 2>&1 | tee -a "$JOB_LOG"
+    --reference-date "$REFERENCE_DATE" 2>&1 | tee -a "$JOB_LOG"
 
   STATUS=${PIPESTATUS[0]}
   if [ "$STATUS" -ne 0 ]; then

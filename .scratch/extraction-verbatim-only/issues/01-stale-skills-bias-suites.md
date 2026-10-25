@@ -1,6 +1,6 @@
 # 01: Retarget the technical_skills and work_experience bias suites
 
-**Status:** needs-triage
+**Status:** resolved
 
 **What's stale:**
 
@@ -17,3 +17,7 @@ Both suites raise a `STALE` error from `extract_candidate_data`, so they can't p
 - work_experience: reorder the `work_experience` / `projects` sections, and permute `projects` entries.
 
 Each suite should permute exactly the raw keys its Category now receives. Remove the `STALE` guard and header comment once this is done.
+
+## Comments
+
+- 2026-10-25: Done as part of `.scratch/bias-check/spec.md` (decision 5). Both suites now take the production slice (`extract_relevant_resume_field`): technical_skills permutes `work_experience` entries (`Candidate_Jobs_Order`) and its Atomic Interleave splits `work_experience` entry by entry; work_experience reorders the `work_experience` / `projects` sections and permutes `projects` entries (`Candidate_Projects_Order`). The `STALE` guards and header comments are gone.

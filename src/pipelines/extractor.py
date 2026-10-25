@@ -303,15 +303,14 @@ def extract_text_from_pdf(pdf_path: str) -> tuple[str, list[str]]:
 
 class ResumeExtractor:
     """
-    Extracts a resume PDF into the schema JSON through a vLLM server (or the mock). `combined` turns on Combined
-    Extraction: the model also sees the page images, which needs a vision model served with images allowed.
+    Extracts a resume PDF into the schema JSON through a vLLM server (or the mock), always with Combined Extraction:
+    the model also sees the page images, which needs a vision model served with images allowed.
     """
 
-    def __init__(self, model_name: Optional[str] = None, mock: bool = False, vllm_url: str = DEFAULT_VLLM_URL, combined: bool = False):
+    def __init__(self, model_name: Optional[str] = None, mock: bool = False, vllm_url: str = DEFAULT_VLLM_URL):
         self.model_name = model_name
         self.mock = mock
         self.vllm_url = vllm_url
-        self.combined = combined
 
     def load_model(self):
         if not self.mock and not self.model_name:
@@ -359,19 +358,18 @@ class ResumeExtractor:
         repaired = False
         page_images = None
         if self.mock:
-            # The mock has no server to send page images to, so --combined changes nothing here
+            # The mock has no server to send page images to, so it gets none
             resume_text = "Mock resume content converted from PDF."
         else:
             try:
                 resume_text, pdf_warnings = extract_text_from_pdf(pdf_path)
-                if self.combined:
-                    page_images, left_out = render_page_images(pdf_path)
-                    if left_out:
-                        pages = ", ".join(str(n) for n in left_out)
-                        pdf_warnings.append(
-                            f"Pages not shown as images: page(s) {pages} were read from text only; "
-                            f"Combined Extraction shows at most {COMBINED_MAX_PAGES} pages."
-                        )
+                page_images, left_out = render_page_images(pdf_path)
+                if left_out:
+                    pages = ", ".join(str(n) for n in left_out)
+                    pdf_warnings.append(
+                        f"Pages not shown as images: page(s) {pages} were read from text only; "
+                        f"Combined Extraction shows at most {COMBINED_MAX_PAGES} pages."
+                    )
             except ScannedResumeError as e:
                 print(f"[Extractor Rejected] {pdf_path}: Scanned Resume (no page has text)", file=sys.stderr)
                 return json.dumps({"error": str(e), SCANNED_RESUME_KEY: True}, ensure_ascii=False, indent=2)

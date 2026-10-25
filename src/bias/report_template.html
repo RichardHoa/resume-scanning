@@ -91,16 +91,16 @@ pre.file { margin: 0; font: 12px/1.45 var(--mono); background: var(--bg); border
 <body>
 <div class="wrap">
   <header>
-    <div class="eyebrow" id="path">bias-result/</div>
+    <div class="eyebrow" id="path">runs/</div>
     <h1>Evaluator Bias Report · <span class="model" id="model"></span></h1>
-    <p>For each category, each row is one shuffle kind: the same prompt content in a different order. The bar shows how many points the score moved from the Baseline of the same repeat.</p>
+    <p>For each category, each row is one shuffle kind: the same prompt content in a different order. The bar shows how many points the score moved from the Baseline of the same Bias Repetition.</p>
   </header>
 
   <section class="panel">
     <div class="seg" id="views" role="group" aria-label="View"></div>
     <div id="out"></div>
     <div class="note">
-      <div>Percentages are over non-failed runs. A run counts as failed if its own output was invalid, or if the Baseline of its repeat was invalid, because there is no trusted score to compare against.</div>
+      <div>Percentages are over non-failed runs. A run counts as failed if its own output was invalid, or if the Baseline of its Bias Repetition was invalid, because there is no trusted score to compare against.</div>
     </div>
   </section>
 </div>
@@ -122,7 +122,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;",
 
 document.title = `Bias Report · ${DATA.model}`;
 document.getElementById("model").textContent = DATA.model;
-document.getElementById("path").textContent = `bias-result/${DATA.model}/`;
+document.getElementById("path").textContent = `runs/${DATA.folder}/`;
 
 let view = "chart";
 try { const v = localStorage.getItem("bias-report-view"); if (["chart", "txt", "csv"].includes(v)) view = v; } catch (e) {}
@@ -158,7 +158,7 @@ function renderChart(out) {
   let h = `<div class="legend">${BUCKETS.map(([, label, color]) => `<span><i class="sw" style="background:var(${color})"></i>${label}</span>`).join("")}</div>`;
   for (const c of DATA.categories) {
     const chips = c.baseline_scores.split(" ").filter(Boolean).map(s => `<span class="chip ${s === "failed" ? "fail" : ""}">${esc(s)}</span>`).join("");
-    h += `<div class="cat"><div class="cat-head"><h3>${esc(c.category)}</h3><div class="bases">Baseline per repeat ${chips || "-"}</div></div><div class="rows">`;
+    h += `<div class="cat"><div class="cat-head"><h3>${esc(c.category)}</h3><div class="bases">Baseline per Bias Repetition ${chips || "-"}</div></div><div class="rows">`;
     h += `<div class="row hdr"><span>Shuffle kind</span><span>Points moved from Baseline</span><span class="num">Changed</span><span class="num">Up / Down</span><span class="num">Biggest</span><span class="num">Runs</span></div>`;
     for (const r of c.rows) {
       const failed = r.failed ? `<span class="failtxt">${fi(r.failed)} failed</span>` : `<span class="sub">0 failed</span>`;

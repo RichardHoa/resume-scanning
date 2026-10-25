@@ -23,13 +23,18 @@
 # --tech), never wiped, and also shows the results of the matching pipeline run folder (runs/batch-cnb or
 # runs/batch-tech), read-only. With neither flag it loads no dataset: no evaluation order and no pipeline results,
 # and it writes to runs/web.
+#
+# Add --lightweight (anywhere among the arguments) to serve the small qwen3.5-9b profile (Qwen/Qwen3.5-9B,
+# CONCURRENCY=40) instead of the DEFAULT_MODEL_KEY profile.
 # -----------------------------------------------------------------------------
 
 SET_ARGS=()
+LIGHTWEIGHT_ARGS=()
 POSITIONAL_ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --cnb|--tech) SET_ARGS+=("$arg") ;;
+    --lightweight) LIGHTWEIGHT_ARGS=("$arg") ;;
     *) POSITIONAL_ARGS+=("$arg") ;;
   esac
 done
@@ -46,7 +51,15 @@ source "$SCRIPT_DIR/lib/vllm_utils.sh"
 source "$SCRIPT_DIR/lib/model_profiles.sh"
 
 # Sets MODEL, VLLM_EXTRA_ARGS and the CONCURRENCY request limit the web server inherits
-load_model_profile "$DEFAULT_MODEL_KEY" || exit 1
+if [ ${#LIGHTWEIGHT_ARGS[@]} -gt 0 ]; then
+  load_model_profile "qwen3.5-9b" || exit 1
+else
+  load_model_profile "$DEFAULT_MODEL_KEY" || exit 1
+fi
+# Every resume is extracted with Combined Extraction (page images), so the model must see images and vLLM is
+# served with vision on
+require_vision_profile || exit 1
+serve_vision_on "$COMBINED_MAX_PAGES"
 DEFAULT_VLLM_PORT=8100
 WEB_PORT=8005
 
@@ -322,6 +335,7 @@ show_help() {
   echo "  --cnb                          With a start action: serve the CnB resume set (evaluation_order.txt)"
   echo "  --tech                         With a start action: serve the Tech resume set (evaluation_order_tech.txt, December 2015)"
   echo "                                 With neither, no dataset is loaded and the website writes to runs/web"
+  echo "  --lightweight                  With a start action: serve Qwen/Qwen3.5-9B (concurrency 40) instead of the default model"
   echo ""
 }
 
@@ -374,7 +388,7 @@ case "$1" in
     echo "====================================================================="
     # The daemon's log and PID file live in logs/, which setup_environment only creates later inside the daemon
     mkdir -p logs
-    nohup bash "$SCRIPT_DIR/server.sh" __internal_daemon "${SET_ARGS[@]}" > "$DAEMON_LOG_FILE" 2>&1 &
+    nohup bash "$SCRIPT_DIR/server.sh" __internal_daemon "${SET_ARGS[@]}" "${LIGHTWEIGHT_ARGS[@]}" > "$DAEMON_LOG_FILE" 2>&1 &
     DAEMON_PID=$!
     echo "$DAEMON_PID" > "$DAEMON_PID_FILE"
 

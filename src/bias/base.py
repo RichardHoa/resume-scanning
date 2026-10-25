@@ -2,11 +2,14 @@
 Base classes, data models, and shared utilities for bias & positional order sensitivity detection.
 """
 from abc import ABC, abstractmethod
+import copy
 import os
 import json
 import itertools
 import random
 from typing import Dict, List, Any, Tuple, Optional, Set
+
+from src.pipelines.evaluator_utils import extract_relevant_resume_field
 
 
 class BaseCategoryBiasBuilder(ABC):
@@ -28,10 +31,9 @@ class BaseCategoryBiasBuilder(ABC):
         """Human-readable dimension label (e.g. 'Technical Skills & Competencies')."""
         pass
 
-    @abstractmethod
     def extract_candidate_data(self, resume_dict: Dict[str, Any]) -> Dict[str, Any]:
-        """Extracts the relevant resume sections for this evaluation dimension."""
-        pass
+        """The raw resume keys production judges this Category on, so the Baseline prompt is the production prompt."""
+        return extract_relevant_resume_field(self.category_key, resume_dict)
 
     @abstractmethod
     def build_atomic_chunks(
@@ -48,12 +50,14 @@ class BaseCategoryBiasBuilder(ABC):
         criteria_list: List[str],
         candidate_data: Dict[str, Any],
         seed: int = 42,
-        atomic_sample_size: int = 300
+        atomic_sample_size: int = 300,
+        max_per_kind: Optional[int] = None
     ) -> List[Tuple[str, str, Any]]:
         """
         Generates all strictly unique experiment iterations across all required test groups:
         Baseline, Macro Permutations, Criteria Intra-Permutations, Candidate Intra-Permutations,
-        Spatial Interleaving, and Atomic Interleaving.
+        Spatial Interleaving, and Atomic Interleaving. Each permutation group holds at most max_per_kind orderings
+        (all when None).
         Returns list of (experiment_type, condition_label, permutation_metadata).
         """
         pass
@@ -84,6 +88,42 @@ class BaseCategoryBiasBuilder(ABC):
         closing_tag = f"</{tag}>"
         escaped_tag = f"&lt;/{tag}&gt;"
         return str(text).replace(closing_tag, escaped_tag)
+
+    @staticmethod
+    def capped_permutations(items: Any, limit: Optional[int]) -> List[Tuple[Any, ...]]:
+        """
+        The first `limit` orderings of items in itertools order (all when limit is None), generated lazily: building
+        every ordering first would not fit in memory for a long list (11 Criteria have about 40 million).
+        """
+        return list(itertools.islice(itertools.permutations(items), limit))
+
+    @staticmethod
+    def list_length(candidate_data: Dict[str, Any], key: str) -> int:
+        """How many entries the list under key has; 1 when it is missing or empty, so it gets the one identity order."""
+        items = candidate_data.get(key)
+        return len(items) if isinstance(items, list) and items else 1
+
+    @staticmethod
+    def permute_list(candidate_data: Dict[str, Any], key: str, perm: Tuple[int, ...]) -> Dict[str, Any]:
+        """A copy of candidate_data with the list under key reordered by perm; unchanged when perm does not fit it."""
+        snip_copy = copy.deepcopy(candidate_data)
+        items = snip_copy.get(key)
+        if isinstance(items, list) and len(items) == len(perm):
+            snip_copy[key] = [items[i] for i in perm]
+        return snip_copy
+
+    @staticmethod
+    def split_into(items: Any, parts: int) -> List[List[Any]]:
+        """items cut into `parts` contiguous groups in order (later groups empty when there are fewer items), so a
+        fixed number of chunks still carries every item."""
+        items = items if isinstance(items, list) else []
+        size, extra = divmod(len(items), parts)
+        groups, start = [], 0
+        for i in range(parts):
+            end = start + size + (1 if i < extra else 0)
+            groups.append(items[start:end])
+            start = end
+        return groups
 
     @staticmethod
     def render_macro_permutation(

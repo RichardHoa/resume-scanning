@@ -1,13 +1,11 @@
 """
 Seniority & Title Bias & Positional Sensitivity Experiment Builder.
-Corresponds to Part 2 of docs/bias_detection_plan.md (5,491 unique iterations).
+Permutes the raw keys production judges the Category on: position_applied, self_evaluation, work_experience.
 """
-import copy
-import itertools
 import json
 import math
 import random
-from typing import Dict, List, Any, Tuple, Set
+from typing import Dict, List, Any, Optional, Tuple, Set
 
 from src.bias.base import BaseCategoryBiasBuilder
 from src.prompts.evaluator_prompts import get_category_evaluation_prompt
@@ -36,31 +34,6 @@ class SeniorityTitleBiasBuilder(BaseCategoryBiasBuilder):
     def category_label(self) -> str:
         return "Position & Seniority Match"
 
-    def extract_candidate_data(self, resume_dict: Dict[str, Any]) -> Dict[str, Any]:
-        work_exp = resume_dict.get("work_experience", [])
-        work_exp_list = work_exp if isinstance(work_exp, list) else []
-
-        work_exp_summary = []
-        for w in work_exp_list:
-            if isinstance(w, dict):
-                pos = w.get("position", "")
-                comp = w.get("company_name", "")
-                dur = w.get("duration", "")
-                comp_info = w.get("company_description") or w.get("company_size") or w.get("industry") or ""
-                if comp_info:
-                    work_exp_summary.append(f"{pos} tại {comp} ({comp_info}) ({dur})")
-                else:
-                    work_exp_summary.append(f"{pos} tại {comp} ({dur})")
-            elif isinstance(w, str):
-                work_exp_summary.append(w)
-
-        return {
-            "position_applied": resume_dict.get("position_applied", {}),
-            "self_evaluation": resume_dict.get("self_evaluation", ""),
-            "work_experience_history": work_exp_summary,
-            "work_experience_details": work_exp_list
-        }
-
     def build_atomic_chunks(
         self,
         criteria_list: List[str],
@@ -77,12 +50,12 @@ class SeniorityTitleBiasBuilder(BaseCategoryBiasBuilder):
             ))
 
         # 2. Position Applied
-        pos_applied = candidate_data.get("position_applied", {})
-        pos_str = json.dumps(pos_applied, ensure_ascii=False)
-        atomic_chunks.append((
-            "Applied_Title",
-            f"<candidate_target_position>\n{pos_str}\n</candidate_target_position>"
-        ))
+        if "position_applied" in candidate_data:
+            pos_str = json.dumps(candidate_data["position_applied"], ensure_ascii=False)
+            atomic_chunks.append((
+                "Applied_Title",
+                f"<candidate_target_position>\n{pos_str}\n</candidate_target_position>"
+            ))
 
         # 3. Self Evaluation
         self_eval = candidate_data.get("self_evaluation", "")
@@ -93,18 +66,8 @@ class SeniorityTitleBiasBuilder(BaseCategoryBiasBuilder):
                 f"<candidate_self_evaluation>\n{clean_eval}\n</candidate_self_evaluation>"
             ))
 
-        # 4. Work Experience History Items
-        hist_list = candidate_data.get("work_experience_history", [])
-        if isinstance(hist_list, list):
-            for idx, item in enumerate(hist_list, start=1):
-                clean_item = self.sanitize_xml(str(item), "career_milestone")
-                atomic_chunks.append((
-                    f"Hist_{idx}",
-                    f"<career_milestone id=\"{idx}\">\n{clean_item}\n</career_milestone>"
-                ))
-
-        # 5. Work Experience Details Items
-        details_list = candidate_data.get("work_experience_details", [])
+        # 4. Work Experience Entries
+        details_list = candidate_data.get("work_experience", [])
         if isinstance(details_list, list):
             for idx, item in enumerate(details_list, start=1):
                 item_str = json.dumps(item, ensure_ascii=False, indent=2)
@@ -114,7 +77,7 @@ class SeniorityTitleBiasBuilder(BaseCategoryBiasBuilder):
                     f"<work_experience_entry id=\"{idx}\">\n{clean_item}\n</work_experience_entry>"
                 ))
 
-        # 6. Evaluation Instructions
+        # 5. Evaluation Instructions
         atomic_chunks.append((
             "INS",
             f"<evaluation_instructions>\n"
@@ -130,7 +93,8 @@ class SeniorityTitleBiasBuilder(BaseCategoryBiasBuilder):
         criteria_list: List[str],
         candidate_data: Dict[str, Any],
         seed: int = 42,
-        atomic_sample_size: int = 300
+        atomic_sample_size: int = 300,
+        max_per_kind: Optional[int] = None
     ) -> List[Tuple[str, str, Any]]:
         experiments: List[Tuple[str, str, Any]] = [
             ("Baseline", "00_baseline", "baseline")
@@ -143,27 +107,27 @@ class SeniorityTitleBiasBuilder(BaseCategoryBiasBuilder):
         # Group 2: Criteria Intra-Permutations (N! combinations, e.g. 1! = 1 if single criterion)
         num_criteria = len(criteria_list)
         if num_criteria > 1:
-            crit_all_perms = list(itertools.permutations(range(num_criteria)))
+            crit_all_perms = self.capped_permutations(range(num_criteria), max_per_kind)
             for idx, perm in enumerate(crit_all_perms, start=1):
                 experiments.append(("Criteria_Permutation", f"crit_perm_{idx:04d}", perm))
 
         # Group 3: Candidate Intra-Permutations
-        # 3a. Job Chronology Permutations (5! = 120 runs)
-        details = candidate_data.get("work_experience_details", [])
-        num_jobs = len(details) if isinstance(details, list) and details else 1
-        job_perms = list(itertools.permutations(range(num_jobs)))
+        # 3a. Job Chronology Permutations (5! = 120 runs for 5 jobs)
+        job_perms = self.capped_permutations(range(self.list_length(candidate_data, "work_experience")), max_per_kind)
         for idx, perm in enumerate(job_perms, start=1):
             experiments.append(("Candidate_Job_Chronology", f"cand_chrono_{idx:03d}", perm))
 
-        # 3b. Top-Level Section Key Permutations (4! = 24 runs)
-        top_keys = ["position_applied", "self_evaluation", "work_experience_history", "work_experience_details"]
-        key_perms = list(itertools.permutations(top_keys))
-        for idx, perm in enumerate(key_perms, start=1):
-            experiments.append(("Candidate_Key_Order", f"cand_key_order_{idx:02d}", perm))
+        # 3b. Top-Level Section Key Permutations (3! = 6 runs when position_applied, self_evaluation and
+        # work_experience are all present)
+        top_keys = list(candidate_data.keys())
+        if len(top_keys) >= 2:
+            key_perms = self.capped_permutations(top_keys, max_per_kind)
+            for idx, perm in enumerate(key_perms, start=1):
+                experiments.append(("Candidate_Key_Order", f"cand_key_order_{idx:02d}", perm))
 
         # Group 4: 7-Chunk Spatial Interleaving (7! = 5,040 runs)
         # C + R1..R5 + INS = 7 discrete blocks
-        spatial_perms = list(itertools.permutations(range(7)))
+        spatial_perms = self.capped_permutations(range(7), max_per_kind)
         for idx, perm in enumerate(spatial_perms, start=1):
             experiments.append(("Spatial_Interleave_7Chunk", f"spat_perm_{idx:04d}", perm))
 
@@ -197,17 +161,13 @@ class SeniorityTitleBiasBuilder(BaseCategoryBiasBuilder):
 
         pos_applied = candidate_data.get("position_applied", {})
         self_eval = candidate_data.get("self_evaluation", "")
-        details = candidate_data.get("work_experience_details", [])
-        if not isinstance(details, list) or not details:
-            details = [{}]
+        # Every job lands in one of the 5 parts, in order, so no Shuffle Kind drops a job
+        job_groups = self.split_into(candidate_data.get("work_experience", []), 5)
 
         r_chunks: List[Tuple[str, str]] = []
-        num_jobs = len(details)
-
-        for i in range(5):
+        for i, group in enumerate(job_groups):
             idx = i + 1
-            job_item = details[i] if i < num_jobs else {}
-            job_dict: Dict[str, Any] = {"experience_item": job_item}
+            job_dict: Dict[str, Any] = {"experience_items": group}
 
             if i == 0 and pos_applied:
                 job_dict["target_position_applied"] = pos_applied
@@ -273,15 +233,7 @@ class SeniorityTitleBiasBuilder(BaseCategoryBiasBuilder):
 
         elif exp_type == "Candidate_Job_Chronology":
             perm_tuple = perm_meta
-            snip_copy = copy.deepcopy(candidate_data)
-            hist = snip_copy.get("work_experience_history", [])
-            details = snip_copy.get("work_experience_details", [])
-
-            if isinstance(hist, list) and len(hist) == len(perm_tuple):
-                snip_copy["work_experience_history"] = [hist[i] for i in perm_tuple]
-            if isinstance(details, list) and len(details) == len(perm_tuple):
-                snip_copy["work_experience_details"] = [details[i] for i in perm_tuple]
-
+            snip_copy = self.permute_list(candidate_data, "work_experience", perm_tuple)
             user_prompt = get_category_evaluation_prompt(
                 category_name,
                 model_name,

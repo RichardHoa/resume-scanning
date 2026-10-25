@@ -13,7 +13,7 @@
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script for Extraction & Evaluation in One Job with vLLM
 #
-# Usage: sbatch scripts/pipeline/extract_evaluate.sh [pdf_dir] [model] --cnb|--tech [--combined]
+# Usage: sbatch scripts/pipeline/extract_evaluate.sh [pdf_dir] [model] --cnb|--tech
 #
 # Wipes the run folder (runs/batch-cnb with --cnb, runs/batch-tech with --tech), spins up a vLLM server instance,
 # runs batch extraction (Step 1), and then runs batch evaluation (Step 2) using the active vLLM server. Every
@@ -30,19 +30,18 @@
 # The Tech resumes are old, so --tech also sets the Reference Date (the date the prompts treat as today)
 # to December 2015.
 #
-# --combined runs Combined Extraction: vLLM is served with vision on and the extractor also sees each page's image,
-# for layout only (values still come from the PDF text). It needs a profile that can see images (VLLM_VISION=1).
+# Every resume is extracted with Combined Extraction: vLLM is served with vision on and the extractor also sees each
+# page's image, for layout only (values still come from the PDF text). It needs a profile that can see images
+# (VLLM_VISION=1).
 # -----------------------------------------------------------------------------
 
 DATASET=""
 SET_FLAGS=0
-COMBINED=0
 POSITIONAL_ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --cnb) DATASET="CnB"; SET_FLAGS=$((SET_FLAGS + 1)) ;;
     --tech) DATASET="Tech"; SET_FLAGS=$((SET_FLAGS + 1)) ;;
-    --combined) COMBINED=1 ;;
     *) POSITIONAL_ARGS+=("$arg") ;;
   esac
 done
@@ -135,12 +134,8 @@ fi
 resolve_model_arg "$RAW_MODEL" || exit 1
 
 # Combined Extraction: refuse a model that cannot see images before anything is wiped, then serve vision on
-COMBINED_ARGS=()
-if [ "$COMBINED" -eq 1 ]; then
-  require_vision_profile || exit 1
-  serve_vision_on "$COMBINED_MAX_PAGES"
-  COMBINED_ARGS=(--combined)
-fi
+require_vision_profile || exit 1
+serve_vision_on "$COMBINED_MAX_PAGES"
 
 use_pipeline_run_dir "$DATASET"
 
@@ -185,7 +180,6 @@ echo "[$(date +'%H:%M:%S')] Reference Date: ${REFERENCE_DATE:-today}" | tee -a "
 echo "[$(date +'%H:%M:%S')] Target PDF Directory: $PDF_DIR" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Run Folder: $RUN_DIR" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL" | tee -a "$JOB_LOG"
-echo "[$(date +'%H:%M:%S')] Combined Extraction: $([ "$COMBINED" -eq 1 ] && echo on || echo off)" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Server Log File: $VLLM_LOG" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Extractor Log File: $EXTRACT_LOG" | tee -a "$JOB_LOG"
@@ -209,8 +203,7 @@ python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
   --model-name "$MODEL" \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --workers 6 \
-  --reference-date "$REFERENCE_DATE" \
-  "${COMBINED_ARGS[@]}" 2>&1 | tee "$EXTRACT_LOG" | tee -a "$JOB_LOG"
+  --reference-date "$REFERENCE_DATE" 2>&1 | tee "$EXTRACT_LOG" | tee -a "$JOB_LOG"
 
 EXTRACT_STATUS=${PIPESTATUS[0]}
 if [ "$EXTRACT_STATUS" -ne 0 ]; then

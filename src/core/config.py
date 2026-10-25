@@ -31,7 +31,11 @@ WEB_TO_PIPELINE_RUN_FOLDER = {"web-cnb": "batch-cnb", "web-tech": "batch-tech"}
 CONSISTENCY_RUN_FOLDERS = (
     "extractor-consistency-cnb", "extractor-consistency-tech", "evaluator-consistency-cnb", "evaluator-consistency-tech"
 )
-RUN_FOLDER_NAMES = ("batch-cnb", "batch-tech", WEB_NO_SET_RUN_FOLDER, *WEB_TO_PIPELINE_RUN_FOLDER, *CONSISTENCY_RUN_FOLDERS)
+# The Bias Check's folder: it only ever tests one CnB resume; the website never reads it
+BIAS_RUN_FOLDER = "bias-cnb"
+RUN_FOLDER_NAMES = (
+    "batch-cnb", "batch-tech", WEB_NO_SET_RUN_FOLDER, *WEB_TO_PIPELINE_RUN_FOLDER, *CONSISTENCY_RUN_FOLDERS, BIAS_RUN_FOLDER
+)
 
 LOGS_SUBDIR = "logs"
 PROMPT_LOGS_SUBDIR = "prompt_logs"
@@ -156,7 +160,7 @@ REQUIREMENTS_DECOMPOSITION_MAX_TOKENS = 4096
 PROOFREAD_PAGE_MAX_TOKENS = 4096
 PROOFREAD_NOTE_MAX_TOKENS = 16384
 PROOFREAD_RETRY_TEMPERATURE = 0.3
-# Combined Extraction (--combined): the extractor sees page images next to the PyMuPDF text, for layout only.
+# Combined Extraction, how every resume is extracted: the extractor sees page images next to the PyMuPDF text, for layout only.
 # At most COMBINED_MAX_PAGES pages are shown; keep it equal to COMBINED_MAX_PAGES in scripts/lib/model_profiles.sh,
 # which sets vLLM's per-prompt image limit
 COMBINED_IMAGE_DPI = 150

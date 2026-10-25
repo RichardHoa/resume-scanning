@@ -13,7 +13,7 @@
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script for the Evaluator Consistency Check
 #
-# Usage: sbatch scripts/checks/evaluator_consistency.sh [model] --cnb|--tech [--text]
+# Usage: sbatch scripts/checks/evaluator_consistency.sh [model] --cnb|--tech
 #
 # Extracts every resume of one resume set once, then evaluates that extraction 5 times (5 Repeat Evaluations, each
 # with the production Category runs) and writes a report of what changes between them: Match Recommendation,
@@ -25,19 +25,18 @@
 # extraction JSON per resume, the 5 evaluation JSONs per resume and evaluator_consistency_report.md / .json. The
 # Tech set's Reference Date is December 2015, as in the extract and evaluate job.
 #
-# Combined Extraction (page images) is the default, so the model must be able to see images (VLLM_VISION=1);
-# --text runs text-only extraction instead.
+# Every resume is extracted with Combined Extraction: vLLM is served with vision on and the extractor also sees each
+# page's image, for layout only (values still come from the PDF text). It needs a profile that can see images
+# (VLLM_VISION=1).
 # -----------------------------------------------------------------------------
 
 DATASET=""
 SET_FLAGS=0
-COMBINED=1
 POSITIONAL_ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --cnb) DATASET="CnB"; SET_FLAGS=$((SET_FLAGS + 1)) ;;
     --tech) DATASET="Tech"; SET_FLAGS=$((SET_FLAGS + 1)) ;;
-    --text) COMBINED=0 ;;
     *) POSITIONAL_ARGS+=("$arg") ;;
   esac
 done
@@ -115,12 +114,8 @@ setup_vllm_env
 resolve_model_arg "$RAW_MODEL" || exit 1
 
 # Combined Extraction: refuse a model that cannot see images before anything is wiped, then serve vision on
-COMBINED_ARGS=()
-if [ "$COMBINED" -eq 1 ]; then
-  require_vision_profile || exit 1
-  serve_vision_on "$COMBINED_MAX_PAGES"
-  COMBINED_ARGS=(--combined)
-fi
+require_vision_profile || exit 1
+serve_vision_on "$COMBINED_MAX_PAGES"
 
 PDF_DIR="$PROJECT_ROOT/Vietnamese-dataset/$DATASET"
 if [ ! -d "$PDF_DIR" ]; then
@@ -160,7 +155,6 @@ echo "[$(date +'%H:%M:%S')] Dataset: $DATASET" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Reference Date: ${REFERENCE_DATE:-today}" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Run Folder: $RUN_DIR" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL" | tee -a "$JOB_LOG"
-echo "[$(date +'%H:%M:%S')] Combined Extraction: $([ "$COMBINED" -eq 1 ] && echo on || echo off)" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] Server Log File: $VLLM_LOG" | tee -a "$JOB_LOG"
 echo "[$(date +'%H:%M:%S')] HF Cache Path: ${HF_HOME:-default}" | tee -a "$JOB_LOG"
@@ -180,8 +174,7 @@ python3 -u "$PROJECT_ROOT/scripts/checks/evaluator_consistency.py" \
   --model-name "$MODEL" \
   --vllm-url "http://127.0.0.1:$PORT/v1" \
   --extract-workers 6 \
-  --reference-date "$REFERENCE_DATE" \
-  "${COMBINED_ARGS[@]}" 2>&1 | tee -a "$JOB_LOG"
+  --reference-date "$REFERENCE_DATE" 2>&1 | tee -a "$JOB_LOG"
 
 STATUS=${PIPESTATUS[0]}
 

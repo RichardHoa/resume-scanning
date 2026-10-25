@@ -6,7 +6,7 @@ Resumes are converted to Markdown by Docling, with PyMuPDF4LLM as the fallback w
 
 A PDF in which no page has a text layer is a Scanned Resume and is rejected before any parser runs, by a cheap PyMuPDF text-layer check. We considered OCR (Docling with RapidOCR, Tesseract `vie`, or EasyOCR), but resumes can be in any language, and OCR models that drop diacritics or misread a script would produce text that looks like resume evidence but is not, which is exactly what ADR 0003 forbids. Asking the candidate for a text PDF is cheaper and safer than guessing. Do not add an OCR path back without revisiting this.
 
-> **Revisited by [ADR 0013](0013-combined-extraction-page-images-for-layout.md):** behind `--combined`, the extractor may see page images for layout only; values must still come from the text layer, and Scanned Resumes are still rejected.
+> **Revisited by [ADR 0013](0013-combined-extraction-page-images-for-layout.md):** the extractor sees page images for layout only (on every extraction since [ADR 0015](0015-combined-extraction-everywhere.md)); values must still come from the text layer, and Scanned Resumes are still rejected.
 
 ## Consequences
 

@@ -4,10 +4,9 @@
 #
 # Sourced by SLURM scripts. `load_model_profile <key>` sets:
 #   MODEL                      HuggingFace model ID served by vLLM
-#   MODEL_KEY                  Short key (also names the bias-result/<key>/ folder)
+#   MODEL_KEY                  Short key
 #   CONCURRENCY                Max requests in flight to vLLM from one process, shared by every caller
 #                              (no default: every branch must set it)
-#   MAX_EVAL_PER_SHUFFLE_KIND  Cap on evaluations per shuffle kind (bias suite, default 200)
 #   VLLM_ENABLE_THINKING       1 = let the model think (chat_template_kwargs), 0 = off
 #   VLLM_REASONING_STRENGTH    System-prompt effort level for models that always reason ("" = unset)
 #   VLLM_EXTRA_ARGS            Bash array of extra `vllm serve` flags
@@ -18,14 +17,13 @@
 # -----------------------------------------------------------------------------
 
 DEFAULT_MODEL_KEY="sea-lion-v4.5-27b"
-MODEL_PROFILE_KEYS="qwen3.5-35b-a3b qwen2.5-32b gemma4-26b-a4b glm4.7-flash qwen3.6-35b-a3b qwen3.8-27b gemma4-31b muse-glimmer-30b sea-lion-v4.5-27b"
+MODEL_PROFILE_KEYS="qwen3.5-35b-a3b qwen2.5-32b gemma4-26b-a4b glm4.7-flash qwen3.6-35b-a3b qwen3.8-27b gemma4-31b muse-glimmer-30b sea-lion-v4.5-27b qwen3.5-9b"
 
 load_model_profile() {
   local key="${1:-$DEFAULT_MODEL_KEY}"
 
   # Defaults; a branch only sets what differs. CONCURRENCY has none: it is model-specific
   CONCURRENCY=""
-  MAX_EVAL_PER_SHUFFLE_KIND=200
   VLLM_ENABLE_THINKING=0
   VLLM_REASONING_STRENGTH=""
   VLLM_EXTRA_ARGS=()
@@ -41,7 +39,6 @@ load_model_profile() {
       # Dense 32B: every parameter is active per token, so keep concurrency low
       MODEL="Qwen/Qwen2.5-32B-Instruct"
       CONCURRENCY=15
-      MAX_EVAL_PER_SHUFFLE_KIND=300
       ;;
     gemma4-26b-a4b)
       # Multimodal checkpoint: disable image/audio inputs to skip encoder memory reservation
@@ -117,6 +114,12 @@ load_model_profile() {
         --reasoning-parser qwen3
       )
       ;;
+    qwen3.5-9b)
+      # Small dense checkpoint, served by scripts/server.sh --lightweight
+      MODEL="Qwen/Qwen3.5-9B"
+      VLLM_VISION=1
+      CONCURRENCY=40
+      ;;
     *)
       echo "[ERROR] Unknown model key '$key'. Valid keys: $MODEL_PROFILE_KEYS" >&2
       return 1
@@ -129,7 +132,7 @@ load_model_profile() {
   fi
 
   MODEL_KEY="$key"
-  export MODEL MODEL_KEY CONCURRENCY MAX_EVAL_PER_SHUFFLE_KIND VLLM_ENABLE_THINKING VLLM_REASONING_STRENGTH VLLM_VISION
+  export MODEL MODEL_KEY CONCURRENCY VLLM_ENABLE_THINKING VLLM_REASONING_STRENGTH VLLM_VISION
   return 0
 }
 
@@ -159,7 +162,7 @@ require_vision_profile() {
   for key in $MODEL_PROFILE_KEYS; do
     ( load_model_profile "$key" >/dev/null 2>&1 && [[ "$VLLM_VISION" == "1" ]] ) && vision_keys+=("$key")
   done
-  echo "[ERROR] '$MODEL' cannot see images, so it cannot run Combined Extraction (--combined)." >&2
+  echo "[ERROR] '$MODEL' cannot see images, so it cannot run Combined Extraction, which every extraction uses." >&2
   echo "[ERROR] Profiles that can: ${vision_keys[*]}" >&2
   return 1
 }

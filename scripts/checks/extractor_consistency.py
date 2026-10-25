@@ -41,8 +41,6 @@ def parse_args():
     parser.add_argument("--workers", type=int, default=6, help="Extractions running at once")
     parser.add_argument("--reference-date", type=str, default="",
                         help="Date (YYYY-MM-DD) the prompts treat as today, for old resume sets (default: the real date)")
-    parser.add_argument("--combined", action="store_true",
-                        help="Combined Extraction: also show the model the page images (needs a vision model)")
     return parser.parse_args()
 
 
@@ -269,7 +267,7 @@ def main():
         else:
             to_extract.append((name, os.path.join(args.dir, fname)))
 
-    extractor = ResumeExtractor(model_name=args.model_name, vllm_url=args.vllm_url, combined=args.combined)
+    extractor = ResumeExtractor(model_name=args.model_name, vllm_url=args.vllm_url)
     extractor.load_model()
 
     for name, _ in to_extract:
@@ -300,7 +298,7 @@ def main():
                 if result["run"] < RUNS_PER_RESUME:
                     pending[_submit(executor, name, pdf_path, result["run"] + 1)] = (name, pdf_path)
 
-    mode = "Combined Extraction" if args.combined else "Text-only extraction"
+    mode = "Combined Extraction"
     compared = [compare_resume(name, sorted(runs, key=lambda r: r["run"])) for name, runs in results.items()]
     report = build_report(args.set_name, mode, args.reference_date, compared, scanned)
 

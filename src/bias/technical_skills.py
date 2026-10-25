@@ -1,14 +1,11 @@
-# STALE: still built on the removed skills_and_specialties field. See .scratch/extraction-verbatim-only/issues/01-stale-skills-bias-suites.md
 """
 Technical Skills & Competencies Bias & Positional Sensitivity Experiment Builder.
-Corresponds to Part 1 of docs/bias_detection_plan.md (5,587 unique iterations).
+Permutes the raw keys production judges the Category on: skills, work_experience, projects, languages.
 """
-import copy
-import itertools
 import json
 import math
 import random
-from typing import Dict, List, Any, Tuple, Set
+from typing import Dict, List, Any, Optional, Tuple, Set
 
 from src.bias.base import BaseCategoryBiasBuilder
 from src.prompts.evaluator_prompts import get_category_evaluation_prompt
@@ -37,16 +34,6 @@ class TechnicalSkillsBiasBuilder(BaseCategoryBiasBuilder):
     def category_label(self) -> str:
         return "Technical Skills & Competencies"
 
-    def extract_candidate_data(self, resume_dict: Dict[str, Any]) -> Dict[str, Any]:
-        raise RuntimeError(
-            "STALE: the technical_skills bias suite still targets the removed skills_and_specialties field. "
-            "See .scratch/extraction-verbatim-only/issues/01-stale-skills-bias-suites.md"
-        )
-        return {
-            "skills_and_specialties": resume_dict.get("skills_and_specialties", []),
-            "languages": resume_dict.get("languages", [])
-        }
-
     def build_atomic_chunks(
         self,
         criteria_list: List[str],
@@ -62,17 +49,26 @@ class TechnicalSkillsBiasBuilder(BaseCategoryBiasBuilder):
                 f"<job_criterion id=\"{idx}\">\n- {clean_crit}\n</job_criterion>"
             ))
 
-        # Atomic Candidate Skill Chunks
-        skills = candidate_data.get("skills_and_specialties", [])
-        if isinstance(skills, list):
-            for idx, skill in enumerate(skills, start=1):
-                clean_skill = self.sanitize_xml(str(skill), "candidate_skill")
+        # The skills section, one chunk
+        if candidate_data.get("skills"):
+            skills_str = self.sanitize_xml(json.dumps(candidate_data["skills"], ensure_ascii=False, indent=2), "candidate_skills")
+            atomic_chunks.append(("Skills", f"<candidate_skills>\n{skills_str}\n</candidate_skills>"))
+
+        # Atomic Candidate Job Chunks: work_experience is split entry by entry
+        work_exp = candidate_data.get("work_experience", [])
+        if isinstance(work_exp, list):
+            for idx, job in enumerate(work_exp, start=1):
+                clean_job = self.sanitize_xml(json.dumps(job, ensure_ascii=False, indent=2), "candidate_job")
                 atomic_chunks.append((
-                    f"Skill_{idx}",
-                    f"<candidate_skill id=\"{idx}\">\n{clean_skill}\n</candidate_skill>"
+                    f"Job_{idx}",
+                    f"<candidate_job id=\"{idx}\">\n{clean_job}\n</candidate_job>"
                 ))
 
-        if "languages" in candidate_data and candidate_data["languages"]:
+        if candidate_data.get("projects"):
+            proj_str = self.sanitize_xml(json.dumps(candidate_data["projects"], ensure_ascii=False, indent=2), "candidate_projects")
+            atomic_chunks.append(("Projects", f"<candidate_projects>\n{proj_str}\n</candidate_projects>"))
+
+        if candidate_data.get("languages"):
             lang_str = json.dumps(candidate_data["languages"], ensure_ascii=False)
             atomic_chunks.append(("Lang", f"<candidate_languages>\n{lang_str}\n</candidate_languages>"))
 
@@ -91,7 +87,8 @@ class TechnicalSkillsBiasBuilder(BaseCategoryBiasBuilder):
         criteria_list: List[str],
         candidate_data: Dict[str, Any],
         seed: int = 42,
-        atomic_sample_size: int = 300
+        atomic_sample_size: int = 300,
+        max_per_kind: Optional[int] = None
     ) -> List[Tuple[str, str, Any]]:
         experiments: List[Tuple[str, str, Any]] = [
             ("Baseline", "00_baseline", "baseline")
@@ -104,19 +101,17 @@ class TechnicalSkillsBiasBuilder(BaseCategoryBiasBuilder):
         # Group 2: Criteria Intra-Permutations (N! combinations, e.g. 7! = 5,040)
         num_criteria = len(criteria_list)
         if num_criteria > 1:
-            crit_all_perms = list(itertools.permutations(range(num_criteria)))
+            crit_all_perms = self.capped_permutations(range(num_criteria), max_per_kind)
             for idx, perm in enumerate(crit_all_perms, start=1):
                 experiments.append(("Criteria_Permutation", f"crit_perm_{idx:04d}", perm))
 
-        # Group 3: Candidate Skills Intra-Permutations (M! combinations, e.g. 5! = 120)
-        skills_list = candidate_data.get("skills_and_specialties", [])
-        num_skills = len(skills_list) if isinstance(skills_list, list) and skills_list else 1
-        cand_all_perms = list(itertools.permutations(range(num_skills)))
-        for idx, perm in enumerate(cand_all_perms, start=1):
-            experiments.append(("Candidate_Permutation", f"cand_perm_{idx:03d}", perm))
+        # Group 3: Candidate Job Intra-Permutations (M! combinations, e.g. 5! = 120 for 5 jobs)
+        job_perms = self.capped_permutations(range(self.list_length(candidate_data, "work_experience")), max_per_kind)
+        for idx, perm in enumerate(job_perms, start=1):
+            experiments.append(("Candidate_Jobs_Order", f"cand_jobs_perm_{idx:03d}", perm))
 
         # Group 4: Balanced Interleaved Placement (5! = 120 combinations)
-        balanced_all_perms = list(itertools.permutations(range(5)))
+        balanced_all_perms = self.capped_permutations(range(5), max_per_kind)
         for idx, perm in enumerate(balanced_all_perms, start=1):
             experiments.append(("Balanced_Interleave", f"bal_perm_{idx:03d}", perm))
 
@@ -183,43 +178,38 @@ class TechnicalSkillsBiasBuilder(BaseCategoryBiasBuilder):
             order_meta = f"Perm_{list(perm_tuple)}"
             return user_prompt, order_meta
 
-        elif exp_type == "Candidate_Permutation":
+        elif exp_type == "Candidate_Jobs_Order":
             perm_tuple = perm_meta
-            snip_copy = copy.deepcopy(candidate_data)
-            if "skills_and_specialties" in snip_copy and isinstance(snip_copy["skills_and_specialties"], list):
-                orig_s = snip_copy["skills_and_specialties"]
-                snip_copy["skills_and_specialties"] = [orig_s[i] for i in perm_tuple]
+            snip_copy = self.permute_list(candidate_data, "work_experience", perm_tuple)
             user_prompt = get_category_evaluation_prompt(
                 category_name,
                 model_name,
                 criteria_list,
                 snip_copy
             )
-            order_meta = f"Perm_{list(perm_tuple)}"
+            order_meta = f"Jobs_Perm_{list(perm_tuple)}"
             return user_prompt, order_meta
 
         elif exp_type == "Balanced_Interleave":
             perm_indices = perm_meta
             # 1. Split Criteria into 2 halves
             mid_c = max(1, len(criteria_list) // 2)
-            crit_part1 = criteria_list[:mid_c]
-            crit_part2 = criteria_list[mid_c:]
+            crit_str1 = "\n".join([f"- {c}" for c in criteria_list[:mid_c]])
+            crit_str2 = "\n".join([f"- {c}" for c in criteria_list[mid_c:]])
 
-            crit_str1 = "\n".join([f"- {c}" for c in crit_part1])
-            crit_str2 = "\n".join([f"- {c}" for c in crit_part2]) if crit_part2 else crit_str1
-
-            # 2. Split Candidate snippet into 2 halves
-            cand_copy = copy.deepcopy(candidate_data)
-            skills = cand_copy.get("skills_and_specialties", [])
-            if isinstance(skills, list) and len(skills) > 1:
-                mid_s = max(1, len(skills) // 2)
-                snip_part1 = {"skills_and_specialties_part1": skills[:mid_s]}
-                snip_part2 = {"skills_and_specialties_part2": skills[mid_s:]}
-                if "languages" in cand_copy:
-                    snip_part2["languages"] = cand_copy["languages"]
-            else:
-                snip_part1 = {"candidate_data_part1": cand_copy}
-                snip_part2 = {"candidate_data_part2": cand_copy}
+            # 2. Split the candidate slice into 2 halves at the middle of work_experience: skills and the first jobs,
+            # then the later jobs, projects and languages; each key keeps its raw name
+            jobs_part1, jobs_part2 = self.split_into(candidate_data.get("work_experience", []), 2)
+            snip_part1: Dict[str, Any] = {}
+            snip_part2: Dict[str, Any] = {}
+            if "skills" in candidate_data:
+                snip_part1["skills"] = candidate_data["skills"]
+            if "work_experience" in candidate_data:
+                snip_part1["work_experience"] = jobs_part1
+                snip_part2["work_experience"] = jobs_part2
+            for key in ("projects", "languages"):
+                if key in candidate_data:
+                    snip_part2[key] = candidate_data[key]
 
             snip_str1 = json.dumps(snip_part1, ensure_ascii=False, indent=2)
             snip_str2 = json.dumps(snip_part2, ensure_ascii=False, indent=2)

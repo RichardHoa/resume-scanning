@@ -7,17 +7,15 @@ import sys
 import json
 import csv
 import time
-import copy
 import threading
 import concurrent.futures
 from typing import Dict, List, Any, Tuple, Optional
 
-from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, RAG_DIR, CATEGORY_EVAL_MAX_TOKENS
+from src.core.config import RUN_DIR, PROMPT_LOGS_DIR, CATEGORY_EVAL_MAX_TOKENS
 from src.core.json_utils import clean_and_parse_json
 from src.pipelines.evaluator import ResumeEvaluator
 from src.pipelines.scoring import score_run
-from src.prompts.evaluator_prompts import get_evaluator_system_prompt, CATEGORY_EVALUATION_SCHEMA
-from src.bias.base import BaseCategoryBiasBuilder
+from src.prompts.evaluator_prompts import get_evaluator_system_prompt, category_evaluation_schema
 from src.bias.registry import get_bias_builder
 
 
@@ -25,12 +23,13 @@ from src.bias.registry import get_bias_builder
 # BIAS DETECTION ENGINE EXECUTION CONFIGURATION
 # =============================================================================
 MAX_EVAL_PER_SHUFFLE_KIND: int = 200
+# Bias Repetitions per category: at temperature 0 their differences show how much a score moves with no reordering
 NUM_TEST_ITERATIONS: int = 5
 
 def get_csv_fieldnames(num_criteria: int) -> List[str]:
     """
     Generates wide-format CSV column names with overall metrics and per-criterion metrics (C1..Cn).
-    Each row represents exactly 1 execution run.
+    Each row represents exactly 1 execution run; iteration_number is its Bias Repetition.
     """
     fields = [
         "iteration_number",
@@ -55,125 +54,21 @@ def get_csv_fieldnames(num_criteria: int) -> List[str]:
     return fields
 
 
-def get_criterion_prompt_positions(user_prompt: str, criteria_list: List[str]) -> Dict[str, int]:
+def criteria_by_id(raw_criteria: List[Dict[str, Any]], criteria_list: List[str]) -> Dict[str, Dict[str, Any]]:
     """
-    Determines the 1-indexed order in which each criterion appears in the rendered user prompt.
-    Returns a dict mapping criterion_id ('C1', 'C2', ...) to prompt_position (1..N).
+    Maps each Criterion's id ('C1'..'Cn', in criteria_list order) to its Verdict from a scored run, found by the exact
+    Criterion text the schema forces. A Criterion with no Verdict (an invalid run) gets NO_EVIDENCE and 0.
     """
-    offsets = []
-    for i, c_text in enumerate(criteria_list, start=1):
-        c_id = f"C{i}"
-        clean_text = c_text.strip()
-        # 1. Search for full verbatim criterion text
-        idx = user_prompt.find(clean_text)
-        # 2. Search for explicit XML tag or identifier attributes
-        if idx == -1:
-            idx = user_prompt.find(f'<job_criterion id="{i}"')
-        if idx == -1:
-            idx = user_prompt.find(f'<criterion id="{i}"')
-        if idx == -1:
-            idx = user_prompt.find(f'Crit_{i}')
-        if idx == -1:
-            idx = user_prompt.find(f'id="{i}"')
-        # 3. Fallback: search for generous 80-char prefix snippet if text was partially truncated
-        if idx == -1 and len(clean_text) > 20:
-            idx = user_prompt.find(clean_text[:80].strip())
-        offsets.append((idx if idx != -1 else 999999 + i, c_id, i))
-
-    sorted_offsets = sorted(offsets, key=lambda x: x[0])
-    positions = {}
-    for rank, (_, c_id, _) in enumerate(sorted_offsets, start=1):
-        positions[c_id] = rank
-    return positions
-
-
-def match_criteria_evaluations(
-    raw_criteria: List[Dict[str, Any]],
-    criteria_list: List[str]
-) -> Dict[str, Dict[str, Any]]:
-    """
-    Matches LLM criteria_evaluations list against the canonical criteria_list (C1..Cn).
-    Returns a dictionary mapping 'C1' -> {'score': float, 'verdict': str, 'evidence_quote': str}.
-    """
+    by_text = {str(c.get("criterion", "")).strip(): c for c in raw_criteria if isinstance(c, dict)}
     matched: Dict[str, Dict[str, Any]] = {}
-    used_raw = set()
-
     for i, c_text in enumerate(criteria_list, start=1):
-        c_id = f"C{i}"
-        c_norm = c_text.strip().lower()
-        best_match = None
-
-        # 1. Exact or substring match
-        for j, item in enumerate(raw_criteria):
-            if j in used_raw or not isinstance(item, dict):
-                continue
-            item_crit = str(item.get("criterion", "")).strip().lower()
-            if item_crit == c_norm or c_norm in item_crit or item_crit in c_norm:
-                best_match = item
-                used_raw.add(j)
-                break
-
-        # 2. Fallback: match by positional index if counts match
-        if best_match is None and i - 1 < len(raw_criteria) and (i - 1) not in used_raw:
-            item_cand = raw_criteria[i - 1]
-            if isinstance(item_cand, dict):
-                best_match = item_cand
-                used_raw.add(i - 1)
-
-        if best_match and isinstance(best_match, dict):
-            s_val = best_match.get("score", 0.0)
-            v_val = best_match.get("verdict", "NO_EVIDENCE")
-            q_val = best_match.get("evidence_quote")
-            try:
-                score_float = float(s_val)
-            except (ValueError, TypeError):
-                score_float = 0.0
-            matched[c_id] = {
-                "score": score_float,
-                "verdict": str(v_val),
-                "evidence_quote": q_val
-            }
-        else:
-            matched[c_id] = {
-                "score": 0.0,
-                "verdict": "NO_EVIDENCE",
-                "evidence_quote": None
-            }
-
+        crit = by_text.get(c_text.strip())
+        matched[f"C{i}"] = {
+            "score": float(crit.get("score", 0.0)),
+            "verdict": str(crit.get("verdict", "NO_EVIDENCE")),
+            "evidence_quote": crit.get("evidence_quote")
+        } if crit else {"score": 0.0, "verdict": "NO_EVIDENCE", "evidence_quote": None}
     return matched
-
-
-def get_bias_result_dir(project_root: str) -> str:
-    """Returns bias-result/<MODEL_KEY>/ so runs of different models never overwrite each other (bias-result/ if MODEL_KEY unset)."""
-    model_key = os.environ.get("MODEL_KEY", "").strip()
-    if model_key:
-        return os.path.join(project_root, "bias-result", model_key)
-    return os.path.join(project_root, "bias-result")
-
-
-def locate_candidate_resume(project_root: str, custom_path: Optional[str] = None) -> str:
-    """Finds target candidate resume JSON file from explicit argument, default search paths, or output_jsons/."""
-    if custom_path and os.path.isfile(custom_path):
-        return os.path.abspath(custom_path)
-
-    search_candidates = [
-        os.path.join(project_root, "output_jsons", "CnB - Nguyen Ho Mi Sa.json"),
-        os.path.join(project_root, "output_jsons", "vietnamese_resume_1.json"),
-    ]
-    for p in search_candidates:
-        if os.path.isfile(p):
-            return os.path.abspath(p)
-
-    output_dir = os.path.join(project_root, "output_jsons")
-    if os.path.isdir(output_dir):
-        jsons = sorted([os.path.join(output_dir, f) for f in os.listdir(output_dir) if f.lower().endswith(".json")])
-        if jsons:
-            return os.path.abspath(jsons[0])
-
-    raise FileNotFoundError(
-        f"Could not locate any extracted resume JSON in search paths: {search_candidates} or '{output_dir}'.\n"
-        f"Please run step 1 extractor or place a resume JSON in 'output_jsons/'."
-    )
 
 
 def log_data_provenance_report(
@@ -211,7 +106,6 @@ def run_single_category_bias_test(
     evaluator: ResumeEvaluator,
     resume_data: Dict[str, Any],
     resume_path: str,
-    project_root: str,
     concurrency: int,
     seed: int = 42,
     atomic_sample_size: int = 300,
@@ -220,24 +114,36 @@ def run_single_category_bias_test(
     dry_run: bool = False
 ) -> Dict[str, Any]:
     """
-    Executes exhaustive bias and positional sensitivity evaluation for a single category across 5 test iterations.
-    Generates a single consolidated CSV file:
-      bias-result/[<MODEL_KEY>/]bias_detection_{category_key}.csv
+    Executes exhaustive bias and positional sensitivity evaluation for a single category across 5 Bias Repetitions.
+    Each run is one production Category run (the same slice, schema, scoring and greedy decoding as
+    ResumeEvaluator.evaluate_category, without retries); only the order of the prompt content changes.
+    Generates a single consolidated CSV file in the run folder: bias_detection_{category_key}.csv.
+    A Not Applicable Category (no Criteria in the HR RAG) is skipped; a vector store out of step with the stored HR
+    RAG raises, as it fails the Category in production.
     """
     builder = get_bias_builder(category_key)
     category_name = builder.category_label
     resume_name = os.path.splitext(os.path.basename(resume_path))[0]
 
-    # 1. Extract Candidate Data Slice
+    # 1. Extract Candidate Data Slice: the raw resume keys production judges this Category on
     candidate_data = builder.extract_candidate_data(resume_data)
 
-    # 2. Retrieve Criteria from RAG
+    # 2. Retrieve Criteria from RAG, as production does
     query_ctx = json.dumps(candidate_data, ensure_ascii=False)
     criteria_list = evaluator.rag.retrieve(category_key, query_ctx, top_k=None)
 
+    # Mock replies judge no Criteria, so mocks score without an Importance map, as in production. Checked before Not
+    # Applicable, as in production, so an empty vector store with a stored HR RAG fails instead of being skipped
+    importance_map = {} if evaluator.mock else evaluator.rag.get_importance_map(category_key)
+    if importance_map and set(criteria_list) != set(importance_map):
+        raise RuntimeError(
+            f"The vector store's Criteria for '{category_key}' differ from the stored HR RAG. Save the HR RAG again on the RAG page."
+        )
+
     if not criteria_list:
-        print(f"[Warning] No criteria retrieved from RAG for category '{category_key}'. Using fallback empty check.", file=sys.stderr)
-        criteria_list = [f"Yêu cầu chuyên môn cho {category_name}"]
+        print(f"[Not Applicable] The HR RAG has no Criteria for '{category_key}': skipped.", file=sys.stderr)
+        return {"category_key": category_key, "category_name": category_name, "not_applicable": True}
+    json_schema = category_evaluation_schema(criteria_list)
 
     # 3. Build Atomic Chunks & Experiments
     effective_sample_size = min(atomic_sample_size, max_eval_per_shuffle_kind) if max_eval_per_shuffle_kind else atomic_sample_size
@@ -246,7 +152,8 @@ def run_single_category_bias_test(
         criteria_list=criteria_list,
         candidate_data=candidate_data,
         seed=seed,
-        atomic_sample_size=effective_sample_size
+        atomic_sample_size=effective_sample_size,
+        max_per_kind=max_eval_per_shuffle_kind if max_eval_per_shuffle_kind and max_eval_per_shuffle_kind > 0 else None
     )
 
     # Cap maximum evaluations for any shuffle kind / permutation group to max_eval_per_shuffle_kind
@@ -268,9 +175,8 @@ def run_single_category_bias_test(
     total_total_runs = total_runs_per_iter * num_iterations
 
     # Output paths
-    bias_result_dir = get_bias_result_dir(project_root)
-    os.makedirs(bias_result_dir, exist_ok=True)
-    cat_log_dir = os.path.join(project_root, "logging", "bias_prompts", category_key)
+    bias_result_dir = RUN_DIR
+    cat_log_dir = os.path.join(PROMPT_LOGS_DIR, category_key)
     os.makedirs(cat_log_dir, exist_ok=True)
     out_csv = os.path.join(bias_result_dir, f"bias_detection_{category_key}.csv")
 
@@ -283,7 +189,7 @@ def run_single_category_bias_test(
     print(f" 🔬 RUNNING CATEGORY: [{category_key}] - '{category_name}'", file=sys.stderr)
     print(f"    • Criteria Items ({len(criteria_list)}): {criteria_list}", file=sys.stderr)
     print(f"    • Candidate Slice Keys: {list(candidate_data.keys())}", file=sys.stderr)
-    print(f"    • Iterations per Test: {total_runs_per_iter:,} runs | Repetitions: {num_iterations} (Total: {total_total_runs:,} runs)", file=sys.stderr)
+    print(f"    • Runs per Bias Repetition: {total_runs_per_iter:,} | Bias Repetitions: {num_iterations} (Total: {total_total_runs:,} runs)", file=sys.stderr)
     for g_name, g_count in group_counts.items():
         print(f"       - {g_name:28s}: {g_count:5d} runs x {num_iterations} = {g_count * num_iterations:5d}", file=sys.stderr)
     print(f"    • Concurrency: {concurrency} workers", file=sys.stderr)
@@ -292,7 +198,7 @@ def run_single_category_bias_test(
     print("-" * 86, file=sys.stderr)
 
     if dry_run:
-        print(f"[DRY-RUN] Validating prompt rendering for {total_runs_per_iter} combinations across {num_iterations} iterations...", file=sys.stderr)
+        print(f"[DRY-RUN] Validating prompt rendering for {total_runs_per_iter} combinations across {num_iterations} Bias Repetitions...", file=sys.stderr)
         for i, (exp_type, cond_label, perm_meta) in enumerate(experiments[:10], start=1):
             p_text, o_meta = builder.render_prompt(
                 exp_type=exp_type,
@@ -339,14 +245,14 @@ def run_single_category_bias_test(
             {"role": "user", "content": user_prompt}
         ]
 
+        # One greedy call, no retries: a retry samples, which would mix sampling noise into the ordering effect
         try:
-            if evaluator.mock:
-                raw_response = evaluator._call_llm(user_prompt, category_key, language=evaluator.language).text
-            else:
-                raw_response = evaluator._call_vllm_backend(messages, json_schema=CATEGORY_EVALUATION_SCHEMA, max_tokens=CATEGORY_EVAL_MAX_TOKENS, step=f"bias_{category_key}").text
+            raw_response = evaluator._call_vllm_backend(
+                messages, temperature=0.0, json_schema=json_schema, max_tokens=CATEGORY_EVAL_MAX_TOKENS, step=f"bias_{category_key}"
+            ).text
 
             parsed = clean_and_parse_json(raw_response)
-            validated = score_run(parsed)
+            validated = score_run(parsed, importance_map=importance_map)
             is_valid = bool(validated is not None)
             score = validated.get("score", 0) if is_valid else 0
             raw_criteria = validated.get("criteria_evaluations", []) if is_valid else []
@@ -357,7 +263,7 @@ def run_single_category_bias_test(
             raw_criteria = []
 
         elapsed_sec = round(time.time() - t_iter, 2)
-        matched_crit = match_criteria_evaluations(raw_criteria, criteria_list)
+        matched_crit = criteria_by_id(raw_criteria, criteria_list)
 
         # Log prompt
         prefix = f"iter{iter_num:02d}_" if num_iterations > 1 else ""
@@ -370,7 +276,7 @@ def run_single_category_bias_test(
             f_log.write(f"============================== [RAW MODEL OUTPUT] ===========================\n")
             f_log.write(f"{raw_response}\n\n")
             f_log.write(f"================================= [METRICS] =================================\n")
-            f_log.write(f"Iteration Number: {iter_num}/{num_iterations} | Run: {idx}/{total_runs_per_iter} | Experiment: {exp_type} | Permutation: {perm_meta}\n")
+            f_log.write(f"Bias Repetition: {iter_num}/{num_iterations} | Run: {idx}/{total_runs_per_iter} | Experiment: {exp_type} | Permutation: {perm_meta}\n")
             f_log.write(f"Order: {order_meta}\n")
             f_log.write(f"Parsed Score: {score}/100 | Is Valid: {is_valid} | Response Time: {elapsed_sec}s\n")
             f_log.write(f"Criteria Breakdown: {json.dumps(matched_crit, ensure_ascii=False)}\n")
@@ -415,9 +321,9 @@ def run_single_category_bias_test(
         writer_init = csv.DictWriter(f_csv_init, fieldnames=csv_fieldnames)
         writer_init.writeheader()
 
-    # Loop through test iterations (1..num_iterations)
+    # Loop through the Bias Repetitions (1..num_iterations)
     for iter_num in range(1, num_iterations + 1):
-        # 1. Run Baseline first for this iteration
+        # 1. Run Baseline first for this Bias Repetition
         base_row, base_detail, base_matched_crit, base_order = evaluate_task(
             (1, experiments[0][0], experiments[0][1], experiments[0][2], iter_num)
         )
@@ -526,7 +432,7 @@ def run_single_category_bias_test(
                             f_csv.flush()
                     unflushed_rows.clear()
 
-        # Flush any remaining rows for this iteration
+        # Flush any remaining rows for this Bias Repetition
         if unflushed_rows:
             with file_lock:
                 with open(out_csv, "a", newline="", encoding="utf-8") as f_csv:
@@ -547,10 +453,10 @@ def run_single_category_bias_test(
         writer.writerows(all_csv_rows)
 
     # Imported here: `python -m src.bias.summary` loads this package first, so a top-level import would double-load it
-    from src.bias.summary import HTML_FILENAME, REPORT_FILENAME, write_model_summary
-    summary_csv = write_model_summary(bias_result_dir)
+    from src.bias.summary import HTML_FILENAME, REPORT_FILENAME, write_bias_summary
+    summary_csv = write_bias_summary(bias_result_dir)
 
-    # 3. Analysis & Summary across all iterations
+    # 3. Analysis & Summary across all Bias Repetitions
     valid_scores = [r["score"] for r in all_results_matrix if r.get("is_valid", True)]
     eval_pool = valid_scores if valid_scores else [r["score"] for r in all_results_matrix]
     min_score = min(eval_pool) if eval_pool else 0
@@ -598,7 +504,7 @@ def run_single_category_bias_test(
     print(f" 📊 BIAS & POSITIONAL SENSITIVITY SUMMARY: {category_name.upper()} [{category_key}]", file=sys.stderr)
     print("=" * 86, file=sys.stderr)
     print(f" Candidate Profile:                  {resume_name}", file=sys.stderr)
-    print(f" Test Iterations:                    {num_iterations} repetitions", file=sys.stderr)
+    print(f" Bias Repetitions:                   {num_iterations}", file=sys.stderr)
     print(f" Total Executions:                   {total_total_runs:,} runs", file=sys.stderr)
     print(f" Overall Score Range:                [{min_score} - {max_score}] (Total Spread: Δ = {total_spread} pts)", file=sys.stderr)
     for g_type, g_info in group_spreads.items():
@@ -611,9 +517,9 @@ def run_single_category_bias_test(
     print(f" Total Execution Time:               {total_time}s", file=sys.stderr)
     print(f" Prompts Logged to:                  {cat_log_dir}/", file=sys.stderr)
     print(f" Consolidated Output CSV:            {out_csv}", file=sys.stderr)
-    print(f" Model Summary CSV:                  {summary_csv}", file=sys.stderr)
-    print(f" Model Report:                       {os.path.join(bias_result_dir, REPORT_FILENAME)}", file=sys.stderr)
-    print(f" Model Report Page:                  {os.path.join(bias_result_dir, HTML_FILENAME)}", file=sys.stderr)
+    print(f" Summary CSV:                        {summary_csv}", file=sys.stderr)
+    print(f" Report:                             {os.path.join(bias_result_dir, REPORT_FILENAME)}", file=sys.stderr)
+    print(f" Report Page:                        {os.path.join(bias_result_dir, HTML_FILENAME)}", file=sys.stderr)
     print("=" * 86, file=sys.stderr)
 
     return summary_data

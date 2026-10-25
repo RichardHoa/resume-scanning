@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-CLI entry point for Bias & Positional Order Sensitivity Detection.
-Executes exhaustive permutation suites defined in docs/bias_detection_plan.md.
+CLI entry point for the Bias Check (.scratch/bias-check/spec.md): whether a Category's score depends on the order its
+prompt content is given in. Extracts the one fixed CnB resume from its PDF with Combined Extraction, then runs each
+category's Baseline and Shuffle Kinds as production Category runs on the default model, 5 Bias Repetitions each.
+
+The stored HR RAG must be the CnB one. Run through scripts/checks/evaluator_bias.sh, which wipes runs/bias-cnb and
+serves the default model with vision on; everything is written to runs/bias-cnb.
 
 Usage:
-  # Run the 3 remaining categories (seniority_title, education_certifications, work_experience):
-  python3 scripts/checks/evaluator_bias.py --remaining
-
-  # Run all 4 categories:
+  # Run all 4 categories (the default):
+  python3 scripts/checks/evaluator_bias.py
   python3 scripts/checks/evaluator_bias.py --all
 
   # Run one specific category:
@@ -17,14 +19,14 @@ Usage:
   python3 scripts/checks/evaluator_bias.py --work_experience
   python3 scripts/checks/evaluator_bias.py --category seniority_title
 
-  # Dry-run / Validation mode (generates all permutations & checks prompt formatting without LLM calls):
-  python3 scripts/checks/evaluator_bias.py --remaining --dry-run
+  # Dry-run / Validation mode (mock extraction, generates all permutations & checks prompt formatting without LLM calls):
+  python3 scripts/checks/evaluator_bias.py --dry-run
 """
 import os
 import sys
 import json
 import argparse
-from typing import List, Dict, Any
+from typing import List
 
 # Ensure repository root is in sys.path
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -32,70 +34,74 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 os.chdir(_PROJECT_ROOT)
 
-from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, RAG_DIR
+# The Bias Check always writes its own run folder (BIAS_RUN_FOLDER in src/core/config.py). Set before any src import:
+# config builds, and creates, every path from RUN_DIR as it is imported
+os.environ["RUN_DIR"] = "bias-cnb"
+
+from src.core.config import (
+    DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, RAG_DIR, RUN_DIR, EXTRACTION_JSON_DIR, PROMPT_LOGS_DIR,
+    VLLM_MAX_CONCURRENT_REQUESTS
+)
+from src.pipelines.extractor import ResumeExtractor
 from src.pipelines.evaluator import ResumeEvaluator
 from src.bias.runner import MAX_EVAL_PER_SHUFFLE_KIND
 from src.bias import (
-    get_bias_builder,
     get_all_category_keys,
-    get_remaining_category_keys,
-    locate_candidate_resume,
     log_data_provenance_report,
     run_single_category_bias_test
 )
+from extractor_consistency import is_scanned_pdf, extraction_error
+
+# The one resume the Bias Check tests. It never changes, and it is a CnB resume, so the CnB HR RAG must be stored
+BIAS_RESUME_NAME = "CnB - Nguyen Ho Mi Sa"
+BIAS_RESUME_PDF = os.path.join(_PROJECT_ROOT, "Vietnamese-dataset", "CnB", f"{BIAS_RESUME_NAME}.pdf")
 
 
 def parse_cli_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="ATS Evaluator Bias & Positional Sensitivity Detection Suite",
+        description="ATS Evaluator Bias Check (default model, one fixed CnB resume)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
-  python3 scripts/checks/evaluator_bias.py --remaining
-  python3 scripts/checks/evaluator_bias.py --all
+  python3 scripts/checks/evaluator_bias.py
   python3 scripts/checks/evaluator_bias.py --seniority_title
   python3 scripts/checks/evaluator_bias.py --education_certifications
   python3 scripts/checks/evaluator_bias.py --work_experience
   python3 scripts/checks/evaluator_bias.py --technical_skills
   python3 scripts/checks/evaluator_bias.py --category work_experience
-  python3 scripts/checks/evaluator_bias.py --remaining --dry-run
+  python3 scripts/checks/evaluator_bias.py --dry-run
 """
     )
 
     # Category Selection Group
-    cat_group = parser.add_argument_group("Category Selection")
-    cat_group.add_argument(
-        "--remaining",
-        action="store_true",
-        help="Run the 3 remaining categories except technical_skills (seniority_title, education_certifications, work_experience)"
-    )
+    cat_group = parser.add_argument_group("Category Selection (default: all 4)")
     cat_group.add_argument(
         "--all",
         action="store_true",
-        help="Run all 4 evaluation categories tracked in bias_detection_plan.md"
+        help="Run all 4 categories the Bias Check covers"
     )
     cat_group.add_argument(
         "--technical_skills", "--technical-skills",
         action="store_true",
         dest="technical_skills",
-        help="Run technical_skills category (5,587 iterations)"
+        help="Run technical_skills category"
     )
     cat_group.add_argument(
         "--seniority_title", "--seniority-title",
         action="store_true",
         dest="seniority_title",
-        help="Run seniority_title category (5,491 iterations)"
+        help="Run seniority_title category"
     )
     cat_group.add_argument(
         "--education_certifications", "--education-certifications",
         action="store_true",
         dest="education_certifications",
-        help="Run education_certifications category (549 to 667 iterations)"
+        help="Run education_certifications category"
     )
     cat_group.add_argument(
         "--work_experience", "--work-experience",
         action="store_true",
         dest="work_experience",
-        help="Run work_experience category (5,589 iterations)"
+        help="Run work_experience category"
     )
     cat_group.add_argument(
         "--category", "-c",
@@ -104,26 +110,8 @@ def parse_cli_args() -> argparse.Namespace:
         help="Run a specific category by name (e.g. seniority_title, technical_skills, etc.)"
     )
 
-    # Execution & Environment Configuration
-    exec_group = parser.add_argument_group("Execution & Model Configuration")
-    exec_group.add_argument(
-        "--resume-path", "-r",
-        type=str,
-        default=None,
-        help="Explicit path to candidate resume JSON file (default: auto-detected in output_jsons/)"
-    )
-    exec_group.add_argument(
-        "--concurrency",
-        type=int,
-        default=os.environ.get("CONCURRENCY"),
-        help="Number of concurrent worker threads (default: CONCURRENCY env var, set per model by model_profiles.sh)"
-    )
-    exec_group.add_argument(
-        "--model", "-m",
-        type=str,
-        default=os.environ.get("MODEL_NAME", DEFAULT_LLM_MODEL),
-        help=f"Target LLM model name (default: {DEFAULT_LLM_MODEL})"
-    )
+    # Execution Configuration
+    exec_group = parser.add_argument_group("Execution Configuration")
     exec_group.add_argument(
         "--vllm-url",
         type=str,
@@ -133,43 +121,37 @@ def parse_cli_args() -> argparse.Namespace:
     exec_group.add_argument(
         "--seed",
         type=int,
-        default=int(os.environ.get("BASE_SEED", "42")),
+        default=42,
         help="Random seed for deterministic atomic sampling (default: 42)"
     )
     exec_group.add_argument(
         "--atomic-sample-size",
         type=int,
-        default=int(os.environ.get("ATOMIC_SAMPLE_SIZE", "300")),
+        default=300,
         help="Sample size for atomic item-level interleaving (default: 300)"
     )
     exec_group.add_argument(
         "--max-eval-per-shuffle-kind", "--max-eval-per-shuffle",
         type=int,
-        default=int(os.environ.get("MAX_EVAL_PER_SHUFFLE_KIND", MAX_EVAL_PER_SHUFFLE_KIND)),
+        default=MAX_EVAL_PER_SHUFFLE_KIND,
         dest="max_eval_per_shuffle_kind",
         help=f"Maximum evaluations for any shuffle kind / permutation group (default: {MAX_EVAL_PER_SHUFFLE_KIND})"
     )
     exec_group.add_argument(
         "--dry-run",
         action="store_true",
-        help="Dry run mode: validates permutation generation and prompt rendering without sending LLM requests"
+        help="Dry run mode: mock extraction, validates permutation generation and prompt rendering without sending LLM requests"
     )
 
-    args = parser.parse_args()
-    if args.concurrency is None:
-        parser.error("--concurrency is required (or set CONCURRENCY); each model has its own value in scripts/lib/model_profiles.sh")
-    return args
+    return parser.parse_args()
 
 
 def resolve_categories(args: argparse.Namespace) -> List[str]:
-    """Resolves target categories list based on CLI flags."""
+    """Resolves target categories list based on CLI flags; no flag runs all 4."""
     categories: List[str] = []
 
     if args.all:
         return get_all_category_keys()
-
-    if args.remaining:
-        return get_remaining_category_keys()
 
     if args.technical_skills:
         categories.append("technical_skills")
@@ -189,37 +171,60 @@ def resolve_categories(args: argparse.Namespace) -> List[str]:
         env_cat = os.environ.get("CATEGORY_KEY", "").strip().lower().replace("-", "_")
         if env_cat == "all":
             return get_all_category_keys()
-        elif env_cat == "remaining":
-            return get_remaining_category_keys()
         elif env_cat:
             categories.append(env_cat)
 
-    # Default fallback: If zero flags specified, run --remaining as requested
-    if not categories:
-        print("[Notice] No category flag specified. Defaulting to '--remaining' (seniority_title, education_certifications, work_experience).", file=sys.stderr)
-        return get_remaining_category_keys()
+    return categories or get_all_category_keys()
 
-    return categories
+
+def extract_bias_resume(extractor: ResumeExtractor) -> tuple:
+    """
+    Extracts the Bias Check's resume from its PDF, saved as extraction_json/<resume>.json in the run folder.
+    Returns (json_path, data); exits non-zero when it cannot be used, since no category can run without it.
+    """
+    def fail(reason: str):
+        print(f"[Error] Cannot extract the Bias Check resume '{BIAS_RESUME_NAME}': {reason}", file=sys.stderr)
+        sys.exit(1)
+
+    if not os.path.isfile(BIAS_RESUME_PDF):
+        fail(f"its PDF is missing: {BIAS_RESUME_PDF}")
+    if is_scanned_pdf(BIAS_RESUME_PDF):
+        fail("it is a Scanned Resume")
+
+    try:
+        text = extractor.extract(BIAS_RESUME_PDF, log_dir=os.path.join(PROMPT_LOGS_DIR, "extraction"))
+    except Exception as e:
+        fail(f"extraction raised: {e}")
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        fail("invalid JSON after all retries")
+
+    json_path = os.path.join(EXTRACTION_JSON_DIR, f"{BIAS_RESUME_NAME}.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        f.write(text)
+    error = extraction_error(data)
+    if error:
+        fail(error)
+    return json_path, data
 
 
 def main():
-    os.environ["DISABLE_PROMPT_LOGGING"] = "1"
     args = parse_cli_args()
     categories_to_run = resolve_categories(args)
 
-    # 1. Locate and Load Candidate Resume JSON
-    target_resume_path = locate_candidate_resume(_PROJECT_ROOT, args.resume_path)
-    with open(target_resume_path, "r", encoding="utf-8") as f:
-        resume_data = json.load(f)
+    # 1. Extract the resume from scratch, so the check always tests what production extracts today
+    extractor = ResumeExtractor(model_name=DEFAULT_LLM_MODEL, vllm_url=args.vllm_url, mock=args.dry_run)
+    extractor.load_model()
+    target_resume_path, resume_data = extract_bias_resume(extractor)
 
     # 2. Initialize Evaluator & RAG
     evaluator = ResumeEvaluator(
-        model_name=args.model,
+        model_name=DEFAULT_LLM_MODEL,
         vllm_url=args.vllm_url,
         mock=args.dry_run
     )
-    if not args.dry_run:
-        evaluator.load_model()
+    evaluator.load_model()
 
     rag_db_path = os.path.join(RAG_DIR, "chroma_db")
     # Evaluation never builds or changes the HR RAG: HR sets it on the RAG page first
@@ -228,7 +233,7 @@ def main():
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
-    rag_status = "Collection loaded from persistent ChromaDB"
+    rag_status = "Collection loaded from persistent ChromaDB (must be the CnB HR RAG)"
 
     # 3. Transparent Provenance Logging
     log_data_provenance_report(
@@ -239,33 +244,41 @@ def main():
         categories_to_run=categories_to_run
     )
 
-    # 4. Execute Selected Categories
+    # 4. Execute Selected Categories; a failed category is reported and the rest still run
     overall_summaries = []
+    failed_categories = []
     for cat_key in categories_to_run:
-        summary = run_single_category_bias_test(
-            category_key=cat_key,
-            evaluator=evaluator,
-            resume_data=resume_data,
-            resume_path=target_resume_path,
-            project_root=_PROJECT_ROOT,
-            concurrency=args.concurrency,
-            seed=args.seed,
-            atomic_sample_size=args.atomic_sample_size,
-            max_eval_per_shuffle_kind=args.max_eval_per_shuffle_kind,
-            dry_run=args.dry_run
-        )
+        try:
+            summary = run_single_category_bias_test(
+                category_key=cat_key,
+                evaluator=evaluator,
+                resume_data=resume_data,
+                resume_path=target_resume_path,
+                concurrency=VLLM_MAX_CONCURRENT_REQUESTS,
+                seed=args.seed,
+                atomic_sample_size=args.atomic_sample_size,
+                max_eval_per_shuffle_kind=args.max_eval_per_shuffle_kind,
+                dry_run=args.dry_run
+            )
+        except RuntimeError as e:
+            print(f"[Error] Category '{cat_key}' failed: {e}", file=sys.stderr)
+            failed_categories.append(cat_key)
+            continue
         overall_summaries.append(summary)
 
     # 5. Combined Suite Report if multiple categories tested
     if len(categories_to_run) > 1:
         print("\n" + "#" * 86, file=sys.stderr)
-        print(" 🏆 OVERALL BIAS DETECTION MULTI-CATEGORY SUITE REPORT", file=sys.stderr)
+        print(" 🏆 OVERALL BIAS CHECK MULTI-CATEGORY REPORT", file=sys.stderr)
         print("#" * 86, file=sys.stderr)
-        print(f" {'Category':<28s} | {'Iterations':<10s} | {'Baseline':<8s} | {'Score Range':<14s} | {'Spread (Δ)':<10s}", file=sys.stderr)
+        print(f" {'Category':<28s} | {'Runs':<10s} | {'Baseline':<8s} | {'Score Range':<14s} | {'Spread (Δ)':<10s}", file=sys.stderr)
         print("-" * 86, file=sys.stderr)
         for s in overall_summaries:
             cat_name = s.get("category_name", s.get("category_key", "N/A"))
-            tot_runs = s.get("total_runs", 0)
+            if s.get("not_applicable"):
+                print(f" {cat_name:<28s} | {'-':<10s} | {'-':<8s} | {'-':<14s} | Not Applicable", file=sys.stderr)
+                continue
+            tot_runs = s.get("total_runs", s.get("total_iterations", 0))
             if s.get("dry_run"):
                 print(f" {cat_name:<28s} | {tot_runs:<10,d} | {'DRY-RUN':<8s} | {'[N/A]':<14s} | {'[DRY-RUN]':<10s}", file=sys.stderr)
             else:
@@ -274,7 +287,13 @@ def main():
                 max_sc = s.get("max_score", 0)
                 spread = s.get("total_spread_delta", 0)
                 print(f" {cat_name:<28s} | {tot_runs:<10,d} | {base_sc:<8d} | [{min_sc:3d} - {max_sc:3d}]     | Δ = {spread:2d} pts", file=sys.stderr)
+        for cat_key in failed_categories:
+            print(f" {cat_key:<28s} | FAILED (see the error above)", file=sys.stderr)
         print("#" * 86, file=sys.stderr)
+
+    print(f"Results: {RUN_DIR}", file=sys.stderr)
+    if failed_categories:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

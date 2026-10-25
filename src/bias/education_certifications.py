@@ -1,13 +1,11 @@
 """
 Education & Certifications Bias & Positional Sensitivity Experiment Builder.
-Corresponds to Part 3 of docs/bias_detection_plan.md (549 to 667 unique iterations).
+Permutes the raw keys production judges the Category on: education_background, certifications, languages.
 """
-import copy
-import itertools
 import json
 import math
 import random
-from typing import Dict, List, Any, Tuple, Set
+from typing import Dict, List, Any, Optional, Tuple, Set
 
 from src.bias.base import BaseCategoryBiasBuilder
 from src.prompts.evaluator_prompts import get_category_evaluation_prompt
@@ -35,13 +33,6 @@ class EducationCertificationsBiasBuilder(BaseCategoryBiasBuilder):
     @property
     def category_label(self) -> str:
         return "Education & Certifications"
-
-    def extract_candidate_data(self, resume_dict: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            "education_background": resume_dict.get("education_background", []),
-            "certifications": resume_dict.get("certifications", []),
-            "languages": resume_dict.get("languages", [])
-        }
 
     def build_atomic_chunks(
         self,
@@ -105,7 +96,8 @@ class EducationCertificationsBiasBuilder(BaseCategoryBiasBuilder):
         criteria_list: List[str],
         candidate_data: Dict[str, Any],
         seed: int = 42,
-        atomic_sample_size: int = 300
+        atomic_sample_size: int = 300,
+        max_per_kind: Optional[int] = None
     ) -> List[Tuple[str, str, Any]]:
         experiments: List[Tuple[str, str, Any]] = [
             ("Baseline", "00_baseline", "baseline")
@@ -118,28 +110,26 @@ class EducationCertificationsBiasBuilder(BaseCategoryBiasBuilder):
         # Group 2: Criteria Intra-Permutations (N! combinations if multiple criteria)
         num_criteria = len(criteria_list)
         if num_criteria > 1:
-            crit_all_perms = list(itertools.permutations(range(num_criteria)))
+            crit_all_perms = self.capped_permutations(range(num_criteria), max_per_kind)
             for idx, perm in enumerate(crit_all_perms, start=1):
                 experiments.append(("Criteria_Permutation", f"crit_perm_{idx:04d}", perm))
 
         # Group 3: Candidate Intra-Permutations
         # 3a. Certifications Shuffled (5! = 120 runs)
-        certs = candidate_data.get("certifications", [])
-        num_certs = len(certs) if isinstance(certs, list) and certs else 1
-        cert_perms = list(itertools.permutations(range(num_certs)))
+        cert_perms = self.capped_permutations(range(self.list_length(candidate_data, "certifications")), max_per_kind)
         for idx, perm in enumerate(cert_perms, start=1):
             experiments.append(("Candidate_Certifications_Order", f"cand_cert_perm_{idx:03d}", perm))
 
         # 3b. Top-Level Section Key Reordering (3! = 6 runs if all 3 keys present)
         all_keys = [k for k in ["education_background", "certifications", "languages"] if k in candidate_data]
         if len(all_keys) >= 2:
-            key_perms = list(itertools.permutations(all_keys))
+            key_perms = self.capped_permutations(all_keys, max_per_kind)
             for idx, perm in enumerate(key_perms, start=1):
                 experiments.append(("Candidate_Key_Order", f"cand_key_order_{idx:02d}", perm))
 
         # Group 4: 5-Chunk Spatial Interleaving (5! = 120 runs)
         # C + R1 (Degree) + R2 (Certs Part 1) + R3 (Certs Part 2) + INS
-        spatial_perms = list(itertools.permutations(range(5)))
+        spatial_perms = self.capped_permutations(range(5), max_per_kind)
         for idx, perm in enumerate(spatial_perms, start=1):
             experiments.append(("Spatial_Interleave_5Chunk", f"spat_perm_{idx:03d}", perm))
 
@@ -188,7 +178,11 @@ class EducationCertificationsBiasBuilder(BaseCategoryBiasBuilder):
         c_str1 = json.dumps({"certifications_part_1": c_part1}, ensure_ascii=False, indent=2)
         chunk_r2 = ("R2", f"### CANDIDATE CERTIFICATIONS (PART 1):\n<candidate_certifications_part_1>\n{c_str1}\n</candidate_certifications_part_1>")
 
-        c_str2 = json.dumps({"certifications_part_2": c_part2}, ensure_ascii=False, indent=2)
+        # Languages ride with the second half, so the 5 chunks still carry the whole slice
+        r3_dict: Dict[str, Any] = {"certifications_part_2": c_part2}
+        if "languages" in candidate_data:
+            r3_dict["languages"] = candidate_data["languages"]
+        c_str2 = json.dumps(r3_dict, ensure_ascii=False, indent=2)
         chunk_r3 = ("R3", f"### CANDIDATE CERTIFICATIONS (PART 2):\n<candidate_certifications_part_2>\n{c_str2}\n</candidate_certifications_part_2>")
 
         chunk_ins = ("INS", (
@@ -244,11 +238,7 @@ class EducationCertificationsBiasBuilder(BaseCategoryBiasBuilder):
 
         elif exp_type == "Candidate_Certifications_Order":
             perm_tuple = perm_meta
-            snip_copy = copy.deepcopy(candidate_data)
-            certs = snip_copy.get("certifications", [])
-            if isinstance(certs, list) and len(certs) == len(perm_tuple):
-                snip_copy["certifications"] = [certs[i] for i in perm_tuple]
-
+            snip_copy = self.permute_list(candidate_data, "certifications", perm_tuple)
             user_prompt = get_category_evaluation_prompt(
                 category_name,
                 model_name,

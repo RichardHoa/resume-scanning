@@ -46,6 +46,11 @@ use_consistency_run_dir() {
   _use_run_dir "$1-consistency" "$2"
 }
 
+# The Bias Check's run folder, runs/bias-cnb: it only ever tests one CnB resume
+use_bias_run_dir() {
+  _use_run_dir bias CnB
+}
+
 # Exports RUN_DIR as runs/<prefix>-cnb or runs/<prefix>-tech, and its subfolders
 _use_run_dir() {
   if [ "$2" = "Tech" ]; then
@@ -65,8 +70,9 @@ _require_pipeline_run_dir() {
     "$PROJECT_ROOT/runs/batch-cnb"|"$PROJECT_ROOT/runs/batch-tech") return 0 ;;
     "$PROJECT_ROOT/runs/extractor-consistency-cnb"|"$PROJECT_ROOT/runs/extractor-consistency-tech") return 0 ;;
     "$PROJECT_ROOT/runs/evaluator-consistency-cnb"|"$PROJECT_ROOT/runs/evaluator-consistency-tech") return 0 ;;
+    "$PROJECT_ROOT/runs/bias-cnb") return 0 ;;
   esac
-  echo "[CRITICAL ERROR] Refusing to wipe '$RUN_DIR': not a runs/batch-* or runs/*-consistency-* folder under $PROJECT_ROOT." >&2
+  echo "[CRITICAL ERROR] Refusing to wipe '$RUN_DIR': not a runs/batch-*, runs/*-consistency-* or runs/bias-cnb folder under $PROJECT_ROOT." >&2
   return 1
 }
 

@@ -9,12 +9,9 @@ from src.bias.work_experience import WorkExperienceBiasBuilder
 from src.bias.registry import (
     get_bias_builder,
     get_all_category_keys,
-    get_remaining_category_keys,
-    ALL_CATEGORIES,
-    REMAINING_CATEGORIES
+    ALL_CATEGORIES
 )
 from src.bias.runner import (
-    locate_candidate_resume,
     log_data_provenance_report,
     run_single_category_bias_test
 )
@@ -27,10 +24,7 @@ __all__ = [
     "WorkExperienceBiasBuilder",
     "get_bias_builder",
     "get_all_category_keys",
-    "get_remaining_category_keys",
     "ALL_CATEGORIES",
-    "REMAINING_CATEGORIES",
-    "locate_candidate_resume",
     "log_data_provenance_report",
     "run_single_category_bias_test"
 ]
