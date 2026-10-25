@@ -1,38 +1,67 @@
 {# Step 1: CV Extractor Workbench #}
 {% extends "base.html" %}
-{% block title %}Trích xuất CV{% endblock %}
-{% block heading %}Bước 1: Trích xuất CV{% endblock %}
-{% block description %}Tải lên CV PDF tiếng Việt hoặc tiếng Anh để AI phân tích bố cục và trích xuất thành hồ sơ JSON có cấu trúc.{% endblock %}
+{% block title %}Trích xuất hàng loạt CV{% endblock %}
+{% block heading %}Bước 1: Trích xuất hàng loạt CV{% endblock %}
+{% block description %}Tải lên một thư mục hoặc nhiều CV PDF tiếng Việt hoặc tiếng Anh; AI trích xuất song song từng CV thành hồ sơ JSON có cấu trúc.{% endblock %}
 {% block content %}
             <div class="page-view active" id="page-extractor">
                 <section class="panel upload-panel" id="upload-section">
                     <div class="panel-header">
-                        <h2>Tải lên CV ứng viên</h2>
-                        <p>Kéo thả tệp PDF hoặc chọn tệp để bắt đầu trích xuất.</p>
+                        <h2>Trích xuất hàng loạt</h2>
+                        <p>Kéo thả một thư mục CV (kể cả thư mục con) hoặc nhiều tệp PDF. Mọi CV được trích xuất song song trong cùng một lô.</p>
                     </div>
                     <div class="upload-dropzone" id="dropzone" tabindex="0" role="button" aria-label="Vùng thả tệp CV PDF">
-                        <input type="file" id="file-input" accept=".pdf" hidden>
+                        <input type="file" id="file-input" accept=".pdf" multiple hidden>
+                        <input type="file" id="folder-input" webkitdirectory multiple hidden>
                         <div class="dropzone-content">
                             <div class="upload-icon">
                                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
                             </div>
-                            <h3>Kéo & thả CV PDF vào đây</h3>
-                            <p>hoặc <button type="button" class="browse-link">chọn tệp</button> từ máy tính của bạn</p>
+                            <h3>Kéo & thả thư mục hoặc CV PDF vào đây</h3>
+                            <p>hoặc <button type="button" class="browse-link" id="btn-browse-files">chọn tệp</button> / <button type="button" class="browse-link" id="btn-browse-folder">chọn thư mục</button> từ máy tính của bạn</p>
                         </div>
                     </div>
-                    <div class="file-preview-card" id="file-preview" hidden>
-                        <div class="file-icon-pdf">
-                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5z"/></svg>
+                    <div class="batch-preflight" id="batch-preflight" hidden>
+                        <div class="batch-preflight-header">
+                            <div>
+                                <span class="batch-preflight-count" id="preflight-count">0 CV PDF</span>
+                                <span class="batch-preflight-size" id="preflight-size"></span>
+                            </div>
+                            <button class="btn-remove" id="btn-remove-file" aria-label="Bỏ các tệp đã chọn" type="button">&times;</button>
                         </div>
-                        <div class="file-details">
-                            <span class="file-name" id="preview-filename">resume.pdf</span>
-                            <span class="file-size" id="preview-filesize">0 KB</span>
-                        </div>
-                        <button class="btn-remove" id="btn-remove-file" aria-label="Bỏ tệp đã chọn" type="button">&times;</button>
+                        <ul class="batch-preflight-notes" id="preflight-notes"></ul>
                     </div>
                     <button class="btn btn-primary btn-block" id="btn-extract" disabled type="button">
-                        <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Bắt đầu trích xuất CV bằng AI
+                        <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> <span id="btn-extract-label">Bắt đầu trích xuất hàng loạt</span>
                     </button>
+                </section>
+
+                <section class="panel results-panel" id="batch-results-section" hidden>
+                    <div class="results-header">
+                        <div class="results-title-group">
+                            <h2>Kết quả trích xuất hàng loạt</h2>
+                            <span class="badge-success" id="batch-results-summary"></span>
+                        </div>
+                        <div class="results-actions">
+                            <button class="btn btn-secondary" id="btn-retry-failed" type="button" hidden>Thử lại các CV lỗi</button>
+                            <button class="btn btn-primary" id="btn-evaluate-batch" type="button">Đánh giá các CV này →</button>
+                            <button class="btn btn-danger" id="btn-batch-reset" type="button">Trích xuất lô khác</button>
+                        </div>
+                    </div>
+                    <p class="batch-results-hint">Bấm vào một CV đã trích xuất để xem chi tiết JSON và hồ sơ.</p>
+                    <div class="batch-table-wrap">
+                        <table class="batch-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Tệp CV</th>
+                                    <th scope="col">Kết quả</th>
+                                    <th scope="col">Vị trí ứng tuyển</th>
+                                    <th scope="col">Thời gian</th>
+                                </tr>
+                            </thead>
+                            <tbody id="batch-results-body"></tbody>
+                        </table>
+                    </div>
                 </section>
 
                 <section class="panel results-panel" id="results-section" hidden>
@@ -45,6 +74,7 @@
                             </div>
                         </div>
                         <div class="results-actions">
+                            <button class="btn btn-secondary" id="btn-back-to-batch" type="button" hidden>← Quay lại bảng kết quả</button>
                             <button class="btn btn-secondary" id="btn-toggle-view" type="button">
                                 <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg> Chia đôi màn hình
                             </button>
@@ -54,7 +84,7 @@
                             <button class="btn btn-success" id="btn-download" type="button">
                                 <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Tải xuống JSON
                             </button>
-                            <button class="btn btn-danger" id="btn-reset" type="button">Phân tích CV khác</button>
+                            <button class="btn btn-danger" id="btn-reset" type="button">Trích xuất lô khác</button>
                         </div>
                     </div>
 

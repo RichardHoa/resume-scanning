@@ -7,6 +7,7 @@ from src.api.config import router as config_router
 from src.api.extraction import router as extraction_router
 from src.api.evaluation import router as evaluation_router
 from src.api.rag import router as rag_router
+from src.api.batch import router as batch_router
 
 
 def include_api_routers(app: FastAPI) -> None:
@@ -16,3 +17,4 @@ def include_api_routers(app: FastAPI) -> None:
     app.include_router(extraction_router)
     app.include_router(evaluation_router)
     app.include_router(rag_router)
+    app.include_router(batch_router)

@@ -10,7 +10,7 @@ Only Corrections on pages both runs read count. Words are compared with their di
 markup (⚠, note calls, dialogue dashes, comments) is left out.
 
 Usage:
-  python3 scripts/compare_ocr_hint.py <run-dir-with-hint> <run-dir-without> [--book-dir vsc-project] [--details]
+  python3 scripts/proofread/compare_ocr_hint.py <run-dir-with-hint> <run-dir-without> [--book-dir vsc-project] [--details]
 """
 import argparse
 import json

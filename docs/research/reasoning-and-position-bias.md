@@ -1,6 +1,6 @@
 # Does turning on reasoning lower position bias in an LLM judge?
 
-Researched 2026-10-05. Question from the bias suite (`src/bias/`, `scripts/run_bias_detection.py`): if we set `VLLM_ENABLE_THINKING=1`, would score changes under criterion and resume-item shuffles shrink?
+Researched 2026-10-05. Question from the bias suite (`src/bias/`, `scripts/checks/evaluator_bias.py`): if we set `VLLM_ENABLE_THINKING=1`, would score changes under criterion and resume-item shuffles shrink?
 
 ## Bottom line
 

@@ -13,61 +13,34 @@
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script for ATS Evaluator Bias & Positional Sensitivity Suite
 # Usage:
-#   sbatch scripts/check_evaluator_bias.sh [--model <key>] [suite flags]
-#   sbatch scripts/check_evaluator_bias.sh --model glm4.7-flash --all
-#   sbatch scripts/check_evaluator_bias.sh --remaining
-#   sbatch scripts/check_evaluator_bias.sh --all
-#   sbatch scripts/check_evaluator_bias.sh --seniority_title
-#   sbatch scripts/check_evaluator_bias.sh --education_certifications
-#   sbatch scripts/check_evaluator_bias.sh --work_experience
-#   sbatch scripts/check_evaluator_bias.sh --technical_skills
+#   sbatch scripts/checks/evaluator_bias.sh [--model <key>] [suite flags]
+#   sbatch scripts/checks/evaluator_bias.sh --model glm4.7-flash --all
+#   sbatch scripts/checks/evaluator_bias.sh --remaining
+#   sbatch scripts/checks/evaluator_bias.sh --all
+#   sbatch scripts/checks/evaluator_bias.sh --seniority_title
+#   sbatch scripts/checks/evaluator_bias.sh --education_certifications
+#   sbatch scripts/checks/evaluator_bias.sh --work_experience
+#   sbatch scripts/checks/evaluator_bias.sh --technical_skills
 #
-# --model keys (default: DEFAULT_MODEL_KEY) are listed in MODEL_PROFILE_KEYS in scripts/model_profiles.sh.
+# --model keys (default: DEFAULT_MODEL_KEY) are listed in MODEL_PROFILE_KEYS in scripts/lib/model_profiles.sh.
 # Results go to bias-result/<model-key>/.
 # -----------------------------------------------------------------------------
 
-INITIAL_CWD="$(pwd)"
-
 # -----------------------------------------------------------------------------
-# Robust Location of config.sh and vllm_utils.sh
+# Location of the shared helpers (scripts/lib). SLURM runs a copy of this script, so under sbatch they are found
+# from the submitting directory, the repository root; run with bash, from the script's own folder
 # -----------------------------------------------------------------------------
-FIND_CONFIG_DIR=""
-if [ -n "$SLURM_SUBMIT_DIR" ]; then
-  if [ -f "$SLURM_SUBMIT_DIR/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$SLURM_SUBMIT_DIR/scripts"
-  elif [ -f "$SLURM_SUBMIT_DIR/config.sh" ]; then
-    FIND_CONFIG_DIR="$SLURM_SUBMIT_DIR"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ]; then
-  CANDIDATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
-  if [ -f "$CANDIDATE_DIR/config.sh" ]; then
-    FIND_CONFIG_DIR="$CANDIDATE_DIR"
-  elif [ -f "$CANDIDATE_DIR/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$CANDIDATE_DIR/scripts"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ]; then
-  if [ -f "$INITIAL_CWD/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$INITIAL_CWD/scripts"
-  elif [ -f "$INITIAL_CWD/config.sh" ]; then
-    FIND_CONFIG_DIR="$INITIAL_CWD"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ] || [ ! -f "$FIND_CONFIG_DIR/config.sh" ]; then
-  echo "[CRITICAL ERROR] Cannot locate 'config.sh'. Submitting directory: ${SLURM_SUBMIT_DIR:-$INITIAL_CWD}" >&2
+LIB_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/lib"
+[ -f "$LIB_DIR/config.sh" ] || LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd)"
+if [ ! -f "$LIB_DIR/config.sh" ]; then
+  echo "[CRITICAL ERROR] Cannot locate 'scripts/lib/config.sh'. Submit from the repository root. Submitting directory: ${SLURM_SUBMIT_DIR:-$(pwd)}" >&2
   exit 1
 fi
+source "$LIB_DIR/config.sh"
+source "$LIB_DIR/vllm_utils.sh"
+source "$LIB_DIR/model_profiles.sh"
 
-SCRIPT_DIR="$FIND_CONFIG_DIR"
-source "$SCRIPT_DIR/config.sh"
-source "$SCRIPT_DIR/vllm_utils.sh"
-source "$SCRIPT_DIR/model_profiles.sh"
-
-# Consume --model <key> / --model=<key>; forward all other arguments to run_bias_detection.py
+# Consume --model <key> / --model=<key>; forward all other arguments to evaluator_bias.py
 MODEL_KEY_ARG=""
 SUITE_ARGS=()
 while [ $# -gt 0 ]; do
@@ -161,7 +134,7 @@ if [ "$JSON_COUNT" -eq 0 ]; then
 fi
 
 echo "=== Starting Bias & Positional Order Sensitivity Suite (Arguments: ${SUITE_ARGS[*]:-'--remaining (default)'}) ==="
-python3 -u "$PROJECT_ROOT/scripts/run_bias_detection.py" "${SUITE_ARGS[@]}"
+python3 -u "$PROJECT_ROOT/scripts/checks/evaluator_bias.py" "${SUITE_ARGS[@]}"
 
 stop_vllm_server
 echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Bias Detection Job Finished ==="

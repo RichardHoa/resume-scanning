@@ -22,7 +22,7 @@ from all saved results. --no-ocr-hint sends each page's image without its OCR li
 --ocr-marks keeps the OCR's marks on a word the model read with the same letters where both OCR engines agree. To
 measure it, make two copies of a finished run, rebuild one with `--run-dir <a> --phase 1` and the other with
 `--run-dir <b> --phase 1 --ocr-marks` (no model calls: every page is done; neither keeps its Phase 2 notes, so
-they compare alike), then `python3 scripts/compare_ocr_hint.py <b> <a> --book-dir <book-dir>` ("with hint" is b). --dry-run sends nothing: it
+they compare alike), then `python3 scripts/proofread/compare_ocr_hint.py <b> <a> --book-dir <book-dir>` ("with hint" is b). --dry-run sends nothing: it
 counts each task's prompt tokens with the model's own processor (images included) to check they fit the context
 window.
 """

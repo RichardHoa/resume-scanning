@@ -18,11 +18,11 @@
 # `python -m vsc_ocr prepare-ai <book>` in the vsc repo, copied as is.
 #
 # Usage:
-#   sbatch scripts/submit_correction.sh [--model <key>] [proofread.py flags]
-#   sbatch scripts/submit_correction.sh --pages 10-40                     # a trial slice
-#   sbatch scripts/submit_correction.sh --pages 10-40 --no-ocr-hint       # the same slice, image only
-#   sbatch scripts/submit_correction.sh --run-dir vsc-project/ai-pass/<time>   # finish a run's missing tasks
-#   bash scripts/submit_correction.sh --dry-run                           # on the login node: token counts, no GPU
+#   sbatch scripts/proofread/submit.sh [--model <key>] [proofread.py flags]
+#   sbatch scripts/proofread/submit.sh --pages 10-40                     # a trial slice
+#   sbatch scripts/proofread/submit.sh --pages 10-40 --no-ocr-hint       # the same slice, image only
+#   sbatch scripts/proofread/submit.sh --run-dir vsc-project/ai-pass/<time>   # finish a run's missing tasks
+#   bash scripts/proofread/submit.sh --dry-run                           # on the login node: token counts, no GPU
 #
 # The model profile is served with vision on for this job only (profiles serve text only), and with at most
 # PROOFREAD_CONCURRENCY requests in flight.
@@ -31,43 +31,19 @@
 PROOFREAD_CONCURRENCY=30
 MAX_IMAGES_PER_PROMPT=1    # a page task sends its page; a note task the page the note is printed on
 
-INITIAL_CWD="$(pwd)"
-
-FIND_CONFIG_DIR=""
-if [ -n "$SLURM_SUBMIT_DIR" ]; then
-  if [ -f "$SLURM_SUBMIT_DIR/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$SLURM_SUBMIT_DIR/scripts"
-  elif [ -f "$SLURM_SUBMIT_DIR/config.sh" ]; then
-    FIND_CONFIG_DIR="$SLURM_SUBMIT_DIR"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ]; then
-  CANDIDATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
-  if [ -f "$CANDIDATE_DIR/config.sh" ]; then
-    FIND_CONFIG_DIR="$CANDIDATE_DIR"
-  elif [ -f "$CANDIDATE_DIR/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$CANDIDATE_DIR/scripts"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ]; then
-  if [ -f "$INITIAL_CWD/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$INITIAL_CWD/scripts"
-  elif [ -f "$INITIAL_CWD/config.sh" ]; then
-    FIND_CONFIG_DIR="$INITIAL_CWD"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ] || [ ! -f "$FIND_CONFIG_DIR/config.sh" ]; then
-  echo "[CRITICAL ERROR] Cannot locate 'config.sh'. Submitting directory: ${SLURM_SUBMIT_DIR:-$INITIAL_CWD}" >&2
+# -----------------------------------------------------------------------------
+# Location of the shared helpers (scripts/lib). SLURM runs a copy of this script, so under sbatch they are found
+# from the submitting directory, the repository root; run with bash, from the script's own folder
+# -----------------------------------------------------------------------------
+LIB_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/lib"
+[ -f "$LIB_DIR/config.sh" ] || LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd)"
+if [ ! -f "$LIB_DIR/config.sh" ]; then
+  echo "[CRITICAL ERROR] Cannot locate 'scripts/lib/config.sh'. Submit from the repository root. Submitting directory: ${SLURM_SUBMIT_DIR:-$(pwd)}" >&2
   exit 1
 fi
-
-SCRIPT_DIR="$FIND_CONFIG_DIR"
-source "$SCRIPT_DIR/config.sh"
-source "$SCRIPT_DIR/vllm_utils.sh"
-source "$SCRIPT_DIR/model_profiles.sh"
+source "$LIB_DIR/config.sh"
+source "$LIB_DIR/vllm_utils.sh"
+source "$LIB_DIR/model_profiles.sh"
 
 # Consume --model <key> / --model=<key>; forward all other arguments to proofread.py
 MODEL_KEY_ARG=""
@@ -153,6 +129,6 @@ python3 -u "$PROJECT_ROOT/src/cli/proofread.py" \
 STATUS=$?
 
 stop_vllm_server
-python3 "$PROJECT_ROOT/scripts/token_stats.py"
+python3 "$PROJECT_ROOT/scripts/checks/token_stats.py"
 echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] AI Proofreading Pass Finished ==="
 exit $STATUS

@@ -69,7 +69,7 @@ EXTRACTION_JSON_DIR = os.path.join(RUN_DIR, EXTRACTION_JSON_SUBDIR)
 EVALUATION_JSON_DIR = os.path.join(RUN_DIR, EVALUATION_JSON_SUBDIR)
 # Original resume PDFs kept at extraction, named like their extraction JSON, so HR can view them next to the evaluation
 RESUME_PDF_DIR = os.path.join(RUN_DIR, RESUME_PDF_SUBDIR)
-# One JSON line per vLLM request (step, resume, prompt/completion tokens, finish reason); summarized by scripts/token_stats.py
+# One JSON line per vLLM request (step, resume, prompt/completion tokens, finish reason); summarized by scripts/checks/token_stats.py
 TOKEN_USAGE_FILE = os.path.join(RUN_LOGS_DIR, TOKEN_USAGE_FILENAME)
 
 # Run folders read from, the active one first so its copy of a resume wins: a website folder also reads its
@@ -155,7 +155,7 @@ PROOFREAD_PAGE_MAX_TOKENS = 4096
 PROOFREAD_NOTE_MAX_TOKENS = 16384
 PROOFREAD_RETRY_TEMPERATURE = 0.3
 # Combined Extraction (--combined): the extractor sees page images next to the PyMuPDF text, for layout only.
-# At most COMBINED_MAX_PAGES pages are shown; keep it equal to COMBINED_MAX_PAGES in scripts/model_profiles.sh,
+# At most COMBINED_MAX_PAGES pages are shown; keep it equal to COMBINED_MAX_PAGES in scripts/lib/model_profiles.sh,
 # which sets vLLM's per-prompt image limit
 COMBINED_IMAGE_DPI = 150
 COMBINED_MAX_PAGES = 6
@@ -172,8 +172,8 @@ DEFAULT_VLLM_URL = "http://127.0.0.1:8100/v1"
 VLLM_REQUEST_TIMEOUT = 1800
 
 # Process-wide cap on requests in flight to vLLM, shared by every caller. Defaults from the model
-# profile's CONCURRENCY (exported by scripts/model_profiles.sh)
-DEFAULT_VLLM_MAX_CONCURRENT_REQUESTS = 50
+# profile's CONCURRENCY (exported by scripts/lib/model_profiles.sh)
+DEFAULT_VLLM_MAX_CONCURRENT_REQUESTS = 40
 VLLM_MAX_CONCURRENT_REQUESTS = int(os.environ.get("CONCURRENCY") or DEFAULT_VLLM_MAX_CONCURRENT_REQUESTS)
 
 # Review Panel (Candidate Feedback). Thinking is always off for the panel, whatever the model profile says
@@ -182,7 +182,7 @@ REVIEW_PANEL_PANELIST_MAX_TOKENS = 4096
 REVIEW_PANEL_COORDINATOR_MAX_TOKENS = 8192
 REVIEW_PANEL_MAX_ATTEMPTS = 2               # the whole panel is retried once from the beginning
 
-# Per-model reasoning controls, exported by scripts/model_profiles.sh
+# Per-model reasoning controls, exported by scripts/lib/model_profiles.sh
 VLLM_ENABLE_THINKING = os.environ.get("VLLM_ENABLE_THINKING", "0") == "1"
 VLLM_REASONING_STRENGTH = os.environ.get("VLLM_REASONING_STRENGTH", "")
 
@@ -196,8 +196,14 @@ OPERATION_DURATION_DEFAULTS_SECONDS = {
     "decompose": 60.0,
     "save_criteria": 10.0,
     "extract": 60.0,
-    "evaluate_candidate": 90.0
+    "evaluate_candidate": 90.0,
+    # Seconds per item of a whole Batch (its time divided by its items), for the estimate before any item finishes
+    "extract_batch_item": 5.0,
+    "evaluate_batch_item": 30.0
 }
 
-# Background batch-evaluation jobs: finished jobs are dropped from memory after this many seconds
-EVAL_JOB_TTL_SECONDS = 1800
+# Batch jobs on the website (extraction and evaluation): finished jobs, and the uploaded PDFs they still hold, are
+# dropped from memory after this many seconds
+BATCH_JOB_TTL_SECONDS = 1800
+# A PDF bigger than this is skipped before a batch extraction starts
+BATCH_MAX_PDF_BYTES = 20 * 1024 * 1024

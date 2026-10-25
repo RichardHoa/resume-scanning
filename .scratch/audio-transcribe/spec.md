@@ -12,12 +12,12 @@ The Qwen timestamp model (`Qwen/Qwen3-ForcedAligner-0.6B`) can't be used. It doe
 
 - **Where it lives.**
   - Code: `src/cli/transcribe_audio.py`. It is standalone and imports nothing from `src`.
-  - Runner: `scripts/transcribe_audio.sh`.
+  - Runner: `scripts/audio/transcribe.sh`.
   - Dependencies: `requirements-audio.txt`.
   - Guide: `docs/audio-transcribe.md`.
 
   The dependencies can't join the root `requirements.txt`, because `qwen-asr==0.0.6` pins `transformers==4.57.6` and `accelerate==1.12.0`, while the root pins 5.13.0 and 1.14.0 for vLLM. The transcriber therefore runs in its own venv on the compute machine. `vsc-project/` is gitignored and holds only the audio.
-- **Run by hand on the compute node.** Usage is `bash scripts/transcribe_audio.sh path/to/audio.m4a [--no-speakers] [--context FILE]`.
+- **Run by hand on the compute node.** Usage is `bash scripts/audio/transcribe.sh path/to/audio.m4a [--no-speakers] [--context FILE]`.
   - The script assumes the venv is already set up.
   - It never installs anything and never submits to SLURM.
   - It writes `<input-stem>.transcript.txt` next to the input, e.g. `1.transcript.txt`.
@@ -100,7 +100,7 @@ Even with the two-pass glossary, the transcript has many misheard words. Most of
 
 Qwen3-ASR's 1.7B decoder only writes down what it hears. The fix is a second model that listens to the same clip, reads the draft and knows the topic: `Qwen/Qwen3-Omni-30B-A3B-Instruct`, served by vLLM. SEA-LION v4.5 27B was ruled out because it can't take audio (text and images only). Qwen3-ASR is built on Qwen3-Omni, so Omni is not expected to hear better, only to understand the conversation better.
 
-- **One SLURM job, no flags: `sbatch scripts/submit_transcript.sh`.** It runs exactly one setup, with its inputs fixed in the script:
+- **One SLURM job, no flags: `sbatch scripts/audio/submit_transcript.sh`.** It runs exactly one setup, with its inputs fixed in the script:
   - audio `vsc-project/audio-transcribe/1.m4a`;
   - glossary `vsc-project/audio-transcribe/1.context.txt`.
 
@@ -109,7 +109,7 @@ Qwen3-ASR's 1.7B decoder only writes down what it hears. The fix is a second mod
   - An existing `1.transcript.txt` (which may hold the developer's bracketed notes) is first renamed to `1.transcript.<YYYYmmdd-HHMMSS>.txt`, so nothing hand-written is lost.
   - `HF_TOKEN` must be in the environment `sbatch` is run from, since pyannote needs it.
   - The process exits before step 2, so the GPU is free for vLLM.
-- **Step 2: review (the root venv, `resume_env`).** The job serves Qwen3-Omni with vLLM through `scripts/vllm_utils.sh`, the same way as the other jobs. It runs `src/cli/review_transcript.py`, then stops the server.
+- **Step 2: review (the root venv, `resume_env`).** The job serves Qwen3-Omni with vLLM through `scripts/lib/vllm_utils.sh`, the same way as the other jobs. It runs `src/cli/review_transcript.py`, then stops the server.
   - Serving flags: `--limit-mm-per-prompt.audio 1`, with `.image 0` and `.video 0`. Only text output is used (no speech output).
   - The model is set in the job script, not added to `model_profiles.sh`, so it doesn't join the profile list the other jobs and the bias suite use.
   - At most 16 requests are in flight.
@@ -139,7 +139,7 @@ Qwen3-ASR's 1.7B decoder only writes down what it hears. The fix is a second mod
   - `imageio-ffmpeg==0.6.0`, to decode `1.m4a` (the compute machine has no system ffmpeg).
 - **Model weights.** These go in the HF cache (`$HF_HOME/hub`), not in any requirements file. Qwen3-Omni-30B-A3B-Instruct is about 60–70 GB in bf16. That fits the job's one 96 GB GPU (RTX Pro 6000 Blackwell). To delete it afterwards: `rm -rf "$HF_HOME/hub/models--Qwen--Qwen3-Omni-30B-A3B-Instruct"`. The guide gives this command.
 - **Where it lives.**
-  - Job: `scripts/submit_transcript.sh`.
+  - Job: `scripts/audio/submit_transcript.sh`.
   - Code: `src/cli/review_transcript.py`, using `src/providers/vllm_client.py` like `proofread.py` does.
   - Prompt and schema: `src/prompts/transcript_review_prompts.py`.
   - Guide: a "Review pass" section in `docs/audio-transcribe.md`.
@@ -150,7 +150,7 @@ Qwen3-ASR's 1.7B decoder only writes down what it hears. The fix is a second mod
 
 ## Next: PhoWhisper option (`--phowhisper`)
 
-An optional flag, `--phowhisper`, makes `transcribe_audio.py` transcribe with `vinai/PhoWhisper-large` instead of Qwen3-ASR. It is reached through `scripts/transcribe_audio.sh`, which already passes every argument through to the Python script. This lets the developer compare a Vietnamese-tuned Whisper against Qwen3-ASR on the same recording.
+An optional flag, `--phowhisper`, makes `transcribe_audio.py` transcribe with `vinai/PhoWhisper-large` instead of Qwen3-ASR. It is reached through `scripts/audio/transcribe.sh`, which already passes every argument through to the Python script. This lets the developer compare a Vietnamese-tuned Whisper against Qwen3-ASR on the same recording.
 
 - **Only the transcriber changes.** Decoding, diarization, VAD, cutting into Segments, timestamps, `Person N:` labels and the line format all stay the same. Only step 5 (transcribing each Segment) uses PhoWhisper. Empty Segments are still left out.
 - **Language.** PhoWhisper is fine-tuned on Vietnamese only, so every Segment is transcribed with `language="vi"`, `task="transcribe"`. There is no auto-detect and no "redo as Vietnamese" step. English and French words come out however the model hears them.
@@ -159,10 +159,10 @@ An optional flag, `--phowhisper`, makes `transcribe_audio.py` transcribe with `v
 - **Hallucinations.** Whisper can invent text on near-silent or short clips, or loop on a phrase. Generation uses `no_repeat_ngram_size=10` (tokens, about 4 syllables, so normal speech isn't blocked), and a warning names each Segment whose text still compresses more than 2.4× with zlib (Whisper's own repetition threshold). Its text is kept, because the developer checks the output by hand.
 - **Runtime.** It loads with plain `transformers` (`WhisperForConditionalGeneration` + `WhisperProcessor`, already in the audio venv through `qwen-asr`), so `requirements-audio.txt` gets no new entry. It runs in bf16 on `cuda:0`, in batches of `ASR_BATCH_SIZE`, with `max_new_tokens` held within Whisper's limit (~440). The weights go in the HF cache.
 - **Output.** The output is `<stem>.phowhisper.transcript.txt`, so it sits beside the Qwen `<stem>.transcript.txt` and never overwrites it. `review_transcript.py` strips `.transcript.txt`, so a review of it would write `<stem>.phowhisper.reviewed.transcript.txt`.
-- **SLURM job unchanged.** `scripts/submit_transcript.sh` stays Qwen3-ASR + Qwen3-Omni with no flags. `--phowhisper` is run by hand on a compute node.
+- **SLURM job unchanged.** `scripts/audio/submit_transcript.sh` stays Qwen3-ASR + Qwen3-Omni with no flags. `--phowhisper` is run by hand on a compute node.
 - **Where it lives.**
   - Code: `src/cli/transcribe_audio.py` (flag, model loading, per-Segment transcription, the 30 s cut).
-  - Usage line: `scripts/transcribe_audio.sh`.
+  - Usage line: `scripts/audio/transcribe.sh`.
   - Guide: a short `--phowhisper` paragraph in `docs/audio-transcribe.md`.
 - **Not done.** No scoring or reference transcript, no glossary pass, no ADR (an optional flag is easy to reverse), and no glossary entry.
 
@@ -277,7 +277,7 @@ This reverses the earlier "no reference, no scoring" decision: without a score w
 
   There is also one by-hand run with `--no-declip`, to decide the default in step 1.
 
-### SLURM job (`scripts/submit_transcript.sh`, still no flags)
+### SLURM job (`scripts/audio/submit_transcript.sh`, still no flags)
 
 1. Transcribe with `--context 1.context.txt --with-phowhisper` in the audio venv. Each existing output, the Qwen transcript and the PhoWhisper transcript, is first renamed with a time suffix, as now.
 2. Serve Qwen3-Omni and run `review_transcript.py ... --second 1.phowhisper.transcript.txt`.
@@ -345,7 +345,7 @@ This reverses the earlier "no reference, no scoring" decision: without a score w
   - Passing the previous segment's text as context: errors carry forward.
 - 2026-10-19: The two-pass glossary rerun still had many misheard words (the developer's bracketed corrections in the first 3 lines: "bát cảnh"→"bác Cảnh", "Đức Phật pháp"→"Đức Hộ Pháp", "nari đâu"→"narrator của", "quá xin lỗi"→"question list", "cố"→"ký ức của").
   - A four-way comparison was first planned: Qwen3-ASR, + SEA-LION review, + Qwen3-Omni review, and PhoWhisper-large, scored on a hand-corrected 5 minutes.
-  - Decided instead: build only Qwen3-ASR + Qwen3-Omni review, as one SLURM job with no flags (`scripts/submit_transcript.sh`). There is no reference and no scoring; the developer checks the output by hand.
+  - Decided instead: build only Qwen3-ASR + Qwen3-Omni review, as one SLURM job with no flags (`scripts/audio/submit_transcript.sh`). There is no reference and no scoring; the developer checks the output by hand.
   - SEA-LION was dropped because it can't hear the audio. PhoWhisper and the comparison were dropped as not needed for now.
   - This reverses the earlier "no LLM cleanup": the review is a separate step with its own output file, and the unreviewed transcript stays next to it.
   - The review runs in the root `requirements.txt` venv, so the ASR venv gets no heavy additions.

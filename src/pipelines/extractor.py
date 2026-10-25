@@ -25,78 +25,6 @@ from src.providers import vllm_client
 from src.pipelines.evaluator_utils import SCANNED_RESUME_KEY
 
 
-def clean_markdown_and_symbols(text: str) -> str:
-    """
-    Decodes HTML entities, removes HTML tags (<br>, <b>, etc.), markdown formatting symbols,
-    link URLs, and normalizes text for clean content comparison.
-    """
-    if not text:
-        return ""
-    # 1. Decode HTML entities (&amp; -> &, &nbsp; -> space, etc.)
-    text = html.unescape(text)
-    # 2. Unicode NFC normalization
-    text = unicodedata.normalize("NFC", text)
-    # 3. Replace HTML tags (e.g. <br>, <br/>, <b>, <span>, <div>, etc.) with spaces
-    text = re.sub(r'<[^>]+>', ' ', text)
-    # 4. Unwrap Markdown links [Text](URL) -> Text
-    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
-    # 5. Standardize dashes/hyphens
-    text = re.sub(r'[–—−]', '-', text)
-    # 6. Strip markdown formatting symbols (*, _, #, `, |, ~, >, bullet symbols like •)
-    text = re.sub(r'[\*\_\#\`\|\~\>\•]', ' ', text)
-    # 7. Convert to lowercase
-    text = text.lower()
-    # 8. Normalize all whitespace (newlines, tabs, multiple spaces) to a single space
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
-
-
-def to_words_only(text: str) -> str:
-    """Converts text to lowercase NFC normalized alphanumeric words separated by single spaces."""
-    if not text:
-        return ""
-    text = html.unescape(text)
-    text = unicodedata.normalize("NFC", text)
-    text = text.lower()
-    text = re.sub(r'<[^>]+>', ' ', text)
-    text = re.sub(r'[^\w\s]', ' ', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
-
-
-def is_text_in_markdown(val: str, norm_markdown: str, words_markdown: str) -> bool:
-    """Checks if extracted text string exists in source markdown content."""
-    norm_val = clean_markdown_and_symbols(val)
-    if not norm_val:
-        return True
-
-    # 1. Direct normalized substring match
-    if norm_val in norm_markdown:
-        return True
-
-    # 2. Check using alphanumeric words-only representation (ignores markdown symbols, list numbers, colon spacing)
-    words_val = to_words_only(val)
-    if not words_val:
-        return True
-
-    if words_val in words_markdown:
-        return True
-
-    # 3. For multi-line text, check line-by-line / sentence-by-sentence
-    lines = [line.strip() for line in val.split('\n') if line.strip()]
-    if len(lines) > 1:
-        all_lines_found = True
-        for line in lines:
-            line_words = to_words_only(line)
-            if line_words and line_words not in words_markdown:
-                all_lines_found = False
-                break
-        if all_lines_found:
-            return True
-
-    return False
-
-
 # Every Fidelity Warning starts with this; the other entries in an extraction's "warning" list are PDF Notes, or the
 # Repaired Extraction warning below
 FIDELITY_WARNING_PREFIX = "Extraction text at "
@@ -106,6 +34,126 @@ REPAIRED_EXTRACTION_WARNING = (
     "fields after the cut may be missing."
 )
 
+# Fidelity check thresholds, chosen on the 2026-10-25 consistency runs (see docs/research/extractor-consistency-2026-10-25.md).
+# A segment shorter than this (in tokens) is only accepted if the whole value also passes the ordered window
+FIDELITY_SHORT_SEGMENT_TOKENS = 3
+# The ordered window spans value length + max(value length, this) markdown tokens
+FIDELITY_WINDOW_BASE_SPREAD = 10
+# Values shorter than this (in tokens) never pass by the ordered window alone
+FIDELITY_WINDOW_MIN_TOKENS = 5
+# A language name the model infers from a certificate (ADR 0003) is accepted when the markdown names one of these
+FIDELITY_LANGUAGE_CERTIFICATES = {
+    "english": ("TOEIC", "IELTS", "TOEFL", "Cambridge", "APTIS", "VSTEP"),
+    "japanese": ("JLPT", "日本語能力試験"),
+    "chinese": ("HSK", "TOCFL"),
+    "korean": ("TOPIK",),
+}
+
+# A real HTML tag: '<', optional '/', a tag name starting with a letter, bounded attributes, '>'. A bare '<' or '>'
+# ("< 50 employees", ">90%") is ordinary punctuation
+_HTML_TAG = re.compile(r'</?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]{0,200})?\s*/?>')
+_MARKDOWN_LINK = re.compile(r'\[([^\]]+)\]\([^\)]+\)')
+_NON_WORD = re.compile(r'[\W_]+')
+# Kana, CJK ideographs and Hangul: each character is its own token, since these scripts don't separate words by spaces
+_CJK_CHAR = re.compile(
+    r'([\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff'
+    r'\U00020000-\U0002fa1f])'
+)
+# Where a value splits into segments: line breaks, bullet markers, ' / ' and spaced range dashes
+_SEGMENT_SPLIT = re.compile(r'\n|\s/\s|\s[-–—]\s|(?:^|(?<=\s))[-+•]\s')
+_LANGUAGE_FIELD_PATH = re.compile(r'^languages\[\d+\]\.language$')
+
+
+def fidelity_tokens(text: str) -> list[str]:
+    """Normalises text for the fidelity check and splits it into tokens; values and markdown go through the same steps."""
+    if not text:
+        return []
+    text = html.unescape(text)
+    text = unicodedata.normalize("NFKC", text)
+    text = _HTML_TAG.sub(' ', text)
+    text = _MARKDOWN_LINK.sub(r'\1', text)
+    text = _NON_WORD.sub(' ', text.lower())
+    text = _CJK_CHAR.sub(r' \1 ', text)
+    return text.split()
+
+
+class _MarkdownIndex:
+    """The resume markdown, tokenised once per extraction, with the lookups the matching rules need."""
+
+    def __init__(self, markdown: str):
+        self.tokens = fidelity_tokens(markdown)
+        self.joined = f" {' '.join(self.tokens)} "
+        self.spaceless = "".join(self.tokens)
+        self.boundaries = {0}
+        self.positions: dict[str, list[int]] = {}
+        offset = 0
+        for i, token in enumerate(self.tokens):
+            offset += len(token)
+            self.boundaries.add(offset)
+            self.positions.setdefault(token, []).append(i)
+
+    def contiguous(self, tokens: list[str]) -> bool:
+        return f" {' '.join(tokens)} " in self.joined
+
+    def spaceless_match(self, tokens: list[str]) -> bool:
+        """The tokens joined without spaces equal a run of whole markdown tokens joined without spaces."""
+        target = "".join(tokens)
+        start = self.spaceless.find(target)
+        while start != -1:
+            if start in self.boundaries and start + len(target) in self.boundaries:
+                return True
+            start = self.spaceless.find(target, start + 1)
+        return False
+
+    def ordered_window(self, tokens: list[str]) -> bool:
+        """All tokens appear in order within a window counted from a match of the first token."""
+        span = len(tokens) + max(len(tokens), FIDELITY_WINDOW_BASE_SPREAD)
+        for first in self.positions.get(tokens[0], []):
+            end = min(first + span, len(self.tokens))
+            i = first + 1
+            for token in tokens[1:]:
+                while i < end and self.tokens[i] != token:
+                    i += 1
+                if i >= end:
+                    break
+                i += 1
+            else:
+                return True
+        return False
+
+
+def _segments_match(val: str, markdown: _MarkdownIndex, tokens: list[str]) -> bool:
+    segments = [seg for seg in (fidelity_tokens(part) for part in _SEGMENT_SPLIT.split(val)) if seg]
+    if len(segments) < 2:
+        return False
+    if not all(markdown.contiguous(seg) or markdown.spaceless_match(seg) for seg in segments):
+        return False
+    # Short pieces (a year, a one-word title) are found almost anywhere: they must also sit near each other
+    if any(len(seg) < FIDELITY_SHORT_SEGMENT_TOKENS for seg in segments):
+        return markdown.ordered_window(tokens)
+    return True
+
+
+def _language_from_certificate(path: str, tokens: list[str], markdown: _MarkdownIndex) -> bool:
+    if not _LANGUAGE_FIELD_PATH.match(path):
+        return False
+    certificates = FIDELITY_LANGUAGE_CERTIFICATES.get(" ".join(tokens), ())
+    return any(markdown.contiguous(fidelity_tokens(cert)) for cert in certificates)
+
+
+def is_text_in_markdown(val: str, path: str, markdown: _MarkdownIndex) -> bool:
+    """Checks whether an extracted value at a field path comes from the resume's text; any one rule accepts it."""
+    tokens = fidelity_tokens(val)
+    if not tokens:
+        return True
+    return (
+        markdown.contiguous(tokens)
+        or markdown.spaceless_match(tokens)
+        or _segments_match(val, markdown, tokens)
+        or (len(tokens) >= FIDELITY_WINDOW_MIN_TOKENS and markdown.ordered_window(tokens))
+        or _language_from_certificate(path, tokens, markdown)
+    )
+
 
 def check_extracted_fields_in_markdown(extracted_dict: dict, markdown_content: str) -> list[str]:
     """
@@ -113,8 +161,7 @@ def check_extracted_fields_in_markdown(extracted_dict: dict, markdown_content: s
     (excluding the 'warning' field).
     Returns a list of warning messages for missing extraction texts.
     """
-    norm_markdown = clean_markdown_and_symbols(markdown_content)
-    words_markdown = to_words_only(markdown_content)
+    markdown = _MarkdownIndex(markdown_content)
     warnings = []
 
     def traverse(obj, path: str):
@@ -130,7 +177,7 @@ def check_extracted_fields_in_markdown(extracted_dict: dict, markdown_content: s
                 traverse(item, current_path)
         elif isinstance(obj, str):
             val_str = obj.strip()
-            if val_str and not is_text_in_markdown(val_str, norm_markdown, words_markdown):
+            if val_str and not is_text_in_markdown(val_str, path, markdown):
                 warnings.append(f"{FIDELITY_WARNING_PREFIX}'{path}' ('{val_str}') not found in markdown")
 
     traverse(extracted_dict, "")

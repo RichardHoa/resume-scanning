@@ -35,7 +35,7 @@ Implemented (uncommitted). The acceptance boxes are left for the developer's man
 
 - **Web:** the batch now calls `evaluate_resume(generate_feedback=True)`. The progress counter (`_mark_candidate_done`) and the `evaluate_candidate` duration already wrap that whole call, so both now include the Review Panel without further changes. Web mock mode gets canned feedback through `MockReviewPanel`.
 - **Candidate modal** (`src/static/js/modules/candidates.js`): a "Nhận xét của hội đồng đánh giá" card between the score banner and the Category cards. It shows the summary, strengths, weaknesses and interview checks, with each Panelist's final view in a closed `<details>`. `failed` feedback shows "Không thể tạo nhận xét", and the Category cards still render. Skipped or absent feedback (scoring-only runs, older reports) and Failed Evaluations show no card.
-- **Backfill:** `sbatch scripts/submit_feedback_vllm.sh [REPORT_DIR] [MODEL]` (REPORT_DIR defaults to `evaluation_json`). It runs `src/cli/backfill_feedback.py --dir ...`, which:
+- **Backfill:** `sbatch scripts/pipeline/feedback.sh [REPORT_DIR] [MODEL]` (REPORT_DIR defaults to `evaluation_json`). It runs `src/cli/backfill_feedback.py --dir ...`, which:
   - skips `status: "error"` reports and those whose feedback is `ok`
   - reviews the rest in parallel, throttled by the shared request limit (the profile's `CONCURRENCY`)
   - rewrites only `candidate_feedback`, through a temp file

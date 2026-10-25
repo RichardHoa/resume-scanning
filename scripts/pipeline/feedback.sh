@@ -13,7 +13,7 @@
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script: backfill Candidate Feedback into existing evaluation reports
 #
-# Usage: sbatch scripts/submit_feedback_vllm.sh [REPORT_DIR] [MODEL]
+# Usage: sbatch scripts/pipeline/feedback.sh [REPORT_DIR] [MODEL]
 #   REPORT_DIR  directory of evaluation reports (default: runs/batch-cnb/evaluation_json)
 #   MODEL       model profile key or HuggingFace model ID (default: the default profile)
 #
@@ -32,43 +32,18 @@ if [[ "$REPORT_DIR" != /* && -d "$INITIAL_CWD/$REPORT_DIR" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Robust Location of config.sh and vllm_utils.sh
+# Location of the shared helpers (scripts/lib). SLURM runs a copy of this script, so under sbatch they are found
+# from the submitting directory, the repository root; run with bash, from the script's own folder
 # -----------------------------------------------------------------------------
-FIND_CONFIG_DIR=""
-if [ -n "$SLURM_SUBMIT_DIR" ]; then
-  if [ -f "$SLURM_SUBMIT_DIR/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$SLURM_SUBMIT_DIR/scripts"
-  elif [ -f "$SLURM_SUBMIT_DIR/config.sh" ]; then
-    FIND_CONFIG_DIR="$SLURM_SUBMIT_DIR"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ]; then
-  CANDIDATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
-  if [ -f "$CANDIDATE_DIR/config.sh" ]; then
-    FIND_CONFIG_DIR="$CANDIDATE_DIR"
-  elif [ -f "$CANDIDATE_DIR/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$CANDIDATE_DIR/scripts"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ]; then
-  if [ -f "$INITIAL_CWD/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$INITIAL_CWD/scripts"
-  elif [ -f "$INITIAL_CWD/config.sh" ]; then
-    FIND_CONFIG_DIR="$INITIAL_CWD"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ] || [ ! -f "$FIND_CONFIG_DIR/config.sh" ]; then
-  echo "[CRITICAL ERROR] Cannot locate 'config.sh'. Submitting directory: ${SLURM_SUBMIT_DIR:-$INITIAL_CWD}" >&2
+LIB_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/lib"
+[ -f "$LIB_DIR/config.sh" ] || LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd)"
+if [ ! -f "$LIB_DIR/config.sh" ]; then
+  echo "[CRITICAL ERROR] Cannot locate 'scripts/lib/config.sh'. Submit from the repository root. Submitting directory: ${SLURM_SUBMIT_DIR:-$(pwd)}" >&2
   exit 1
 fi
-
-SCRIPT_DIR="$FIND_CONFIG_DIR"
-source "$SCRIPT_DIR/config.sh"
-source "$SCRIPT_DIR/vllm_utils.sh"
-source "$SCRIPT_DIR/model_profiles.sh"
+source "$LIB_DIR/config.sh"
+source "$LIB_DIR/vllm_utils.sh"
+source "$LIB_DIR/model_profiles.sh"
 
 if [ -z "$PROJECT_ROOT" ]; then
   echo "[CRITICAL ERROR] PROJECT_ROOT is not set after sourcing config.sh!" >&2
@@ -133,5 +108,5 @@ python3 -u "$PROJECT_ROOT/src/cli/backfill_feedback.py" \
   --dir "$REPORT_DIR"
 
 stop_vllm_server
-python3 "$PROJECT_ROOT/scripts/token_stats.py"
+python3 "$PROJECT_ROOT/scripts/checks/token_stats.py"
 echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Feedback Backfill Job Finished ==="

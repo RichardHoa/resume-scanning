@@ -86,7 +86,9 @@
     border-radius: var(--radius-lg);
     padding: 2.5rem;
     width: 100%;
-    max-width: 460px;
+    max-width: 520px;
+    max-height: calc(100vh - 3rem);
+    overflow-y: auto;
     text-align: center;
     display: flex;
     flex-direction: column;
@@ -162,3 +164,44 @@
     font-size: 0.82rem;
     font-variant-numeric: tabular-nums;
 }
+
+/* Batch waits: every item with its state */
+.loader-items {
+    list-style: none;
+    width: 100%;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    text-align: left;
+    font-size: 0.8rem;
+}
+
+.loader-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+.loader-item:last-child { border-bottom: none; }
+
+.loader-item-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-secondary);
+}
+
+.loader-item-state {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: var(--text-muted);
+}
+
+.loader-item--running .loader-item-state { color: var(--color-secondary); }
+.loader-item--done .loader-item-state { color: var(--success); }
+.loader-item--failed .loader-item-state { color: var(--danger); }
+.loader-item--cancelled .loader-item-state { color: var(--text-dim); }

@@ -15,69 +15,20 @@
 # -----------------------------------------------------------------------------
 
 RAW_MODEL="$1"
-INITIAL_CWD="$(pwd)"
 
 # -----------------------------------------------------------------------------
-# Robust Location of config.sh and vllm_utils.sh
+# Location of the shared helpers (scripts/lib). SLURM runs a copy of this script, so under sbatch they are found
+# from the submitting directory, the repository root; run with bash, from the script's own folder
 # -----------------------------------------------------------------------------
-FIND_CONFIG_DIR=""
-if [ -n "$SLURM_SUBMIT_DIR" ]; then
-  if [ -f "$SLURM_SUBMIT_DIR/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$SLURM_SUBMIT_DIR/scripts"
-  elif [ -f "$SLURM_SUBMIT_DIR/config.sh" ]; then
-    FIND_CONFIG_DIR="$SLURM_SUBMIT_DIR"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ]; then
-  CANDIDATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
-  if [ -f "$CANDIDATE_DIR/config.sh" ]; then
-    FIND_CONFIG_DIR="$CANDIDATE_DIR"
-  elif [ -f "$CANDIDATE_DIR/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$CANDIDATE_DIR/scripts"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ]; then
-  if [ -f "$INITIAL_CWD/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$INITIAL_CWD/scripts"
-  elif [ -f "$INITIAL_CWD/config.sh" ]; then
-    FIND_CONFIG_DIR="$INITIAL_CWD"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ] || [ ! -f "$FIND_CONFIG_DIR/config.sh" ]; then
-  echo "[CRITICAL ERROR] Cannot locate 'config.sh'. Submitting directory: ${SLURM_SUBMIT_DIR:-$INITIAL_CWD}" >&2
+LIB_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/lib"
+[ -f "$LIB_DIR/config.sh" ] || LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd)"
+if [ ! -f "$LIB_DIR/config.sh" ]; then
+  echo "[CRITICAL ERROR] Cannot locate 'scripts/lib/config.sh'. Submit from the repository root. Submitting directory: ${SLURM_SUBMIT_DIR:-$(pwd)}" >&2
   exit 1
 fi
-
-# Load cluster modules (miniconda3)
-echo "[$(date +'%H:%M:%S')] STEP 1: Loading system environment modules..."
-module load miniconda3 2>/dev/null || true
-module load cuda 2>/dev/null || module load cuda13.0 2>/dev/null || true
-
-# Check conda binary path
-if ! command -v conda &>/dev/null; then
-  for c_path in /compute_home/$USER/miniconda3/bin/conda /compute_home/$USER/anaconda3/bin/conda /opt/miniconda3/bin/conda /opt/anaconda3/bin/conda; do
-    if [ -x "$c_path" ]; then
-      export PATH="$(dirname "$c_path"):$PATH"
-      break
-    fi
-  done
-fi
-
-echo "[$(date +'%H:%M:%S')] STEP 2: Activating Conda environment 'resume_env'..."
-eval "$(conda shell.bash hook 2>/dev/null)" || true
-source activate resume_env 2>/dev/null || conda activate resume_env 2>/dev/null || true
-echo "[$(date +'%H:%M:%S')] Step 2 complete. Active Python: $(which python3 2>/dev/null || echo 'python3 not found')"
-
-# -----------------------------------------------------------------------------
-# STEP 3: Source Configuration & vLLM Helpers (Python environment is active)
-# -----------------------------------------------------------------------------
-SCRIPT_DIR="$FIND_CONFIG_DIR"
-source "$SCRIPT_DIR/config.sh"
-source "$SCRIPT_DIR/vllm_utils.sh"
-source "$SCRIPT_DIR/model_profiles.sh"
+source "$LIB_DIR/config.sh"
+source "$LIB_DIR/vllm_utils.sh"
+source "$LIB_DIR/model_profiles.sh"
 
 if [ -z "$PROJECT_ROOT" ]; then
   echo "[CRITICAL ERROR] PROJECT_ROOT is not set after sourcing config.sh!" >&2

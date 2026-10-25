@@ -6,20 +6,18 @@
  *              1. Input requirements & decompose into 5-dimension RAG criteria + hr_rag.txt
  *              2. Inspect & freely edit/adjust RAG criteria before evaluation
  *              3. Candidate selection with live filtering & secret tier ordering (ResumeSelection)
- *              4. AI batch evaluation against verified RAG criteria, with KPI statistics and
- *                 leaderboards (ResultsDashboard)
+ *              4. AI batch evaluation against verified RAG criteria, run as a server Batch job
+ *                 (reconnected to after a reload), with KPI statistics and leaderboards (ResultsDashboard)
  */
 
 import { API } from './api.js';
 import { CriteriaEditor, CATEGORY_NAMES } from './criteria-editor.js';
 import { WaitingScreen } from './waiting-screen.js';
+import { BatchStore, followBatchJob, offerRunningBatch, runningBatchFromRefusal } from './batch-job.js';
 import { ResumeSelection } from './resume-selection.js';
 import { ResultsDashboard } from './results-dashboard.js';
 import { byId } from './dom.js';
 import { html } from './html.js';
-
-// How often the batch-evaluation job status is polled while the waiting screen shows.
-const EVAL_JOB_POLL_MS = 1500;
 
 export class EvaluatorController {
     constructor() {
@@ -43,6 +41,7 @@ export class EvaluatorController {
         this.initEvents();
         this.checkExistingRag();
         this.resumeSelection.load();
+        this.reconnectToRunningBatch();
     }
 
     /**
@@ -420,49 +419,70 @@ export class EvaluatorController {
             return;
         }
 
+        let started;
+        try {
+            started = await API.startEvaluationJob(stdReq, hiddenReq, filenames);
+        } catch (err) {
+            const running = runningBatchFromRefusal(err);
+            if (running) offerRunningBatch(running, r => this.followJob(r.jobId), 'evaluate');
+            else alert('Lỗi đánh giá: ' + err.message);
+            return;
+        }
+        BatchStore.rememberRunning(started.job_id, 'evaluate');
+        await this.followJob(started.job_id, filenames.length);
+    }
+
+    /** After a reload, follows the evaluation Batch this browser started, if the server still has it. */
+    reconnectToRunningBatch() {
+        const running = BatchStore.running();
+        if (running && running.kind === 'evaluate') this.followJob(running.jobId);
+    }
+
+    /**
+     * Follows an evaluation job on the waiting screen, every candidate with its state, then opens Step 4 with
+     * every candidate that finished; a stopped Batch shows the ones that finished before it stopped.
+     * @param {string} jobId
+     * @param {number} [total=0] - Candidates in the Batch, until the first status says.
+     */
+    async followJob(jobId, total = 0) {
         this.waitingScreen.startBatch(
             'evaluate_candidate',
-            `Đang đánh giá ${filenames.length} ứng viên...`,
-            'Đang chấm điểm 5 chiều vector RAG theo đúng thứ tự đánh giá...',
-            filenames.length
+            'Đang đánh giá hàng loạt ứng viên...',
+            'Các ứng viên được chấm điểm song song theo 5 chiều RAG, theo đúng thứ tự đánh giá. Có thể dừng lô: ứng viên đang xử lý vẫn được hoàn tất.',
+            total,
+            () => API.cancelBatchJob(jobId)
         );
 
-        let data;
+        let job;
         try {
-            data = await this.runEvaluationJob(stdReq, hiddenReq, filenames);
+            job = await followBatchJob(jobId, this.waitingScreen);
         } catch (err) {
             // Close the waiting screen before the blocking alert so it isn't left behind it.
             this.waitingScreen.finish();
-            alert('Lỗi đánh giá: ' + err.message);
+            // The server no longer has it (expired or restarted): nothing left to reconnect to
+            if (err.status === 404) BatchStore.forgetRunning();
+            else alert('Lỗi đánh giá: ' + err.message);
             return;
         }
         this.waitingScreen.finish();
+        BatchStore.forgetRunning();
 
+        if (job.state === 'failed') {
+            alert('Lỗi đánh giá: ' + (job.error || 'Tác vụ đánh giá thất bại.'));
+            return;
+        }
+        const data = job.result;
         if (!data || !Array.isArray(data.results)) {
             alert('Đánh giá thất bại: Máy chủ trả về dữ liệu không hợp lệ.');
             return;
         }
         if (data.results.length === 0) {
-            alert('Không có kết quả đánh giá nào. Hãy kiểm tra các ứng viên đã chọn đã được quét/trích xuất ở Bước 1.');
+            alert(job.state === 'cancelled'
+                ? 'Lô đã dừng trước khi có ứng viên nào được đánh giá xong.'
+                : 'Không có kết quả đánh giá nào. Hãy kiểm tra các ứng viên đã chọn đã được quét/trích xuất ở Bước 1.');
             return;
         }
         this.goToStage(4);
         this.dashboard.render(data.results, this.resumeSelection.techMode);
-    }
-
-    /**
-     * Starts batch evaluation as a background job and polls it, reporting per-candidate
-     * progress to the waiting screen, until it finishes.
-     * @returns {Promise<Object>} The job's results payload: {results, total_evaluated, batch_execution_time_seconds}.
-     */
-    async runEvaluationJob(stdReq, hiddenReq, filenames) {
-        const { job_id: jobId } = await API.startEvaluationJob(stdReq, hiddenReq, filenames);
-        for (;;) {
-            await new Promise(resolve => setTimeout(resolve, EVAL_JOB_POLL_MS));
-            const job = await API.getEvaluationJob(jobId);
-            this.waitingScreen.reportProgress(job.completed, job.total);
-            if (job.state === 'done') return job.result;
-            if (job.state === 'failed') throw new Error(job.error || 'Tác vụ đánh giá thất bại.');
-        }
     }
 }

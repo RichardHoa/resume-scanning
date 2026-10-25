@@ -5,20 +5,20 @@ Executes exhaustive permutation suites defined in docs/bias_detection_plan.md.
 
 Usage:
   # Run the 3 remaining categories (seniority_title, education_certifications, work_experience):
-  python3 scripts/run_bias_detection.py --remaining
+  python3 scripts/checks/evaluator_bias.py --remaining
 
   # Run all 4 categories:
-  python3 scripts/run_bias_detection.py --all
+  python3 scripts/checks/evaluator_bias.py --all
 
   # Run one specific category:
-  python3 scripts/run_bias_detection.py --technical_skills
-  python3 scripts/run_bias_detection.py --seniority_title
-  python3 scripts/run_bias_detection.py --education_certifications
-  python3 scripts/run_bias_detection.py --work_experience
-  python3 scripts/run_bias_detection.py --category seniority_title
+  python3 scripts/checks/evaluator_bias.py --technical_skills
+  python3 scripts/checks/evaluator_bias.py --seniority_title
+  python3 scripts/checks/evaluator_bias.py --education_certifications
+  python3 scripts/checks/evaluator_bias.py --work_experience
+  python3 scripts/checks/evaluator_bias.py --category seniority_title
 
   # Dry-run / Validation mode (generates all permutations & checks prompt formatting without LLM calls):
-  python3 scripts/run_bias_detection.py --remaining --dry-run
+  python3 scripts/checks/evaluator_bias.py --remaining --dry-run
 """
 import os
 import sys
@@ -27,7 +27,7 @@ import argparse
 from typing import List, Dict, Any
 
 # Ensure repository root is in sys.path
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 os.chdir(_PROJECT_ROOT)
@@ -50,14 +50,14 @@ def parse_cli_args() -> argparse.Namespace:
         description="ATS Evaluator Bias & Positional Sensitivity Detection Suite",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
-  python3 scripts/run_bias_detection.py --remaining
-  python3 scripts/run_bias_detection.py --all
-  python3 scripts/run_bias_detection.py --seniority_title
-  python3 scripts/run_bias_detection.py --education_certifications
-  python3 scripts/run_bias_detection.py --work_experience
-  python3 scripts/run_bias_detection.py --technical_skills
-  python3 scripts/run_bias_detection.py --category work_experience
-  python3 scripts/run_bias_detection.py --remaining --dry-run
+  python3 scripts/checks/evaluator_bias.py --remaining
+  python3 scripts/checks/evaluator_bias.py --all
+  python3 scripts/checks/evaluator_bias.py --seniority_title
+  python3 scripts/checks/evaluator_bias.py --education_certifications
+  python3 scripts/checks/evaluator_bias.py --work_experience
+  python3 scripts/checks/evaluator_bias.py --technical_skills
+  python3 scripts/checks/evaluator_bias.py --category work_experience
+  python3 scripts/checks/evaluator_bias.py --remaining --dry-run
 """
     )
 
@@ -157,7 +157,7 @@ def parse_cli_args() -> argparse.Namespace:
 
     args = parser.parse_args()
     if args.concurrency is None:
-        parser.error("--concurrency is required (or set CONCURRENCY); each model has its own value in scripts/model_profiles.sh")
+        parser.error("--concurrency is required (or set CONCURRENCY); each model has its own value in scripts/lib/model_profiles.sh")
     return args
 
 

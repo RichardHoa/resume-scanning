@@ -4,19 +4,22 @@ Candidate Evaluation & Evaluation Results FastAPI Router
 import os
 import sys
 import json
+import math
 import time
-import uuid
 import asyncio
 import traceback
-from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, List, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
+from src.api.batch import busy_response
+from src.core.batch_jobs import (
+    EVALUATE_KIND, BatchBusyError, ItemOutcome, create_job, detached_job, finish_job, run_items, set_items
+)
 from src.core.config import (
-    RESUME_JSON_DIRS, EVALUATION_JSON_DIR, EVAL_JOB_TTL_SECONDS, VLLM_MAX_CONCURRENT_REQUESTS, DEFAULT_NUM_EVALUATIONS
+    RESUME_JSON_DIRS, EVALUATION_JSON_DIR, VLLM_MAX_CONCURRENT_REQUESTS, DEFAULT_NUM_EVALUATIONS, CATEGORY_LABELS
 )
 from src.core.state import state
 from src.core.durations import record_duration
@@ -51,20 +54,27 @@ class EvaluationBatchRequest(BaseModel):
 @router.post("/evaluate_batch")
 async def evaluate_batch(payload: EvaluationBatchRequest):
     """Runs a batch evaluation synchronously and returns the results (kept for non-UI callers)."""
-    return await _run_batch_evaluation(payload)
+    return await _run_batch_evaluation(payload, detached_job(EVALUATE_KIND))
 
 
-async def _run_batch_evaluation(
-    payload: EvaluationBatchRequest,
-    on_progress: Optional[Callable[[int, int], None]] = None
-) -> dict:
+def candidates_in_flight(num_evaluations: int) -> int:
+    """
+    How many candidates a batch evaluation runs at once. Each candidate sends all its Category runs at once, so with
+    every candidate started together they all share the request slots and all finish near the end: nothing comes in
+    until the last minute and the progress means nothing. Just enough candidates to fill the slots finish one after
+    another instead, and one more keeps the slots busy while a candidate is in its Review Panel, which sends fewer.
+    """
+    requests_per_candidate = len(CATEGORY_LABELS) * max(1, num_evaluations)
+    return math.ceil(VLLM_MAX_CONCURRENT_REQUESTS / requests_per_candidate) + 1
+
+
+async def _run_batch_evaluation(payload: EvaluationBatchRequest, job: Dict[str, Any]) -> dict:
     """
     Evaluates scanned resumes against HR Standard & Hidden Requirements strictly in secret evaluation_order.
     Logs execution timings per resume and per dimension category.
     Each candidate's earlier evaluation and its prompt logs are cleared first, so the run folder holds only this one.
-    Runs evaluation in worker thread via asyncio.to_thread to prevent blocking the FastAPI event loop.
-    Calls on_progress(completed, total) once the candidate list is known and after each candidate
-    finishes. Every failure is raised as an HTTPException.
+    The job's items become the candidates, in evaluation order, each with its own state; a cancelled job's
+    candidates that never started have no result. Every failure of the Batch itself is raised as an HTTPException.
     """
     try:
         os.environ["DISABLE_PROMPT_LOGGING"] = "0"
@@ -135,52 +145,35 @@ async def _run_batch_evaluation(
         if not candidate_items:
             raise HTTPException(status_code=400, detail=f"Selected resume file(s) [{', '.join(filenames[:3])}] were not found in scanned candidate directories ({', '.join(RESUME_JSON_DIRS)}). Please run Step 1 Extraction first.")
 
+        # A resume named twice (or as both its .pdf and .json name) is evaluated once
+        candidate_items = list({c["fname"]: c for c in candidate_items}.values())
         candidate_items.sort(key=lambda c: (c["tier"], c["tier_order"], c["fname"]))
 
+        in_flight = candidates_in_flight(num_evaluations)
         print(f"\n================================================================================", file=sys.stderr)
-        print(f"[SERVER EVALUATION] Starting evaluation of {len(candidate_items)} candidate resume(s) in evaluation order, throttled by the {VLLM_MAX_CONCURRENT_REQUESTS}-request vLLM limit...", file=sys.stderr)
+        print(f"[SERVER EVALUATION] Starting evaluation of {len(candidate_items)} candidate resume(s) in evaluation order, {in_flight} at a time within the {VLLM_MAX_CONCURRENT_REQUESTS}-request vLLM limit...", file=sys.stderr)
         print(f"================================================================================", file=sys.stderr)
 
-        # Candidates are scheduled freely; the process-wide vLLM request limit does the throttling. The
-        # default asyncio executor is too small for that, so the batch gets its own threads. More candidates
-        # in flight than request slots could never add throughput, so that is the thread count.
-        loop = asyncio.get_running_loop()
-        executor = ThreadPoolExecutor(
-            max_workers=min(len(candidate_items), VLLM_MAX_CONCURRENT_REQUESTS),
-            thread_name_prefix="eval-candidate"
-        )
-        total_candidates = len(candidate_items)
-        completed_count = 0
-        if on_progress:
-            on_progress(completed_count, total_candidates)
+        candidates_by_name = {item["fname"]: item for item in candidate_items}
+        set_items(job, [item["fname"] for item in candidate_items])
 
-        def _mark_candidate_done():
-            nonlocal completed_count
-            completed_count += 1
-            if on_progress:
-                on_progress(completed_count, total_candidates)
-
-        async def _evaluate_single_candidate(item):
+        def _evaluate_single_candidate(job_item: Dict[str, Any]) -> ItemOutcome:
+            item = candidates_by_name[job_item["name"]]
             fname = item["fname"]
-            resume_data = item["data"]
             base_name = os.path.splitext(fname)[0]
-
             try:
                 clear_resume_evaluation(base_name)
                 candidate_start_time = time.time()
-                eval_result = await loop.run_in_executor(
-                    executor,
-                    lambda: state.evaluator.evaluate_resume(
-                        resume_data,
-                        standard_req,
-                        hidden_req,
-                        resume_name=base_name,
-                        output_dir=EVALUATION_JSON_DIR,
-                        num_evaluations=num_evaluations,
-                        language=eval_language,
-                        resume_path=item["fpath"],
-                        generate_feedback=True
-                    )
+                eval_result = state.evaluator.evaluate_resume(
+                    item["data"],
+                    standard_req,
+                    hidden_req,
+                    resume_name=base_name,
+                    output_dir=EVALUATION_JSON_DIR,
+                    num_evaluations=num_evaluations,
+                    language=eval_language,
+                    resume_path=item["fpath"],
+                    generate_feedback=True
                 )
                 # Covers evaluation and the Review Panel, so the waiting-screen estimate includes feedback time
                 record_duration("evaluate_candidate", time.time() - candidate_start_time)
@@ -191,7 +184,9 @@ async def _run_batch_evaluation(
                 # As list_eval_results adds them, so the page's report view can link the saved report and resume PDF
                 eval_result["filename"] = evaluation_report_filename(base_name)
                 eval_result["has_resume_pdf"] = find_resume_pdf(eval_result.get("resume_name") or fname) is not None
-                return eval_result
+                # A Failed Evaluation is a result to show and a failed item to count
+                error = (eval_result.get("error") or "Failed Evaluation") if eval_result.get("status") == "error" else None
+                return eval_result, error
             except Exception as e:
                 print(f"Error evaluating {fname}: {e}\n{traceback.format_exc()}", file=sys.stderr)
                 return {
@@ -204,15 +199,11 @@ async def _run_batch_evaluation(
                     "tier": item["tier"],
                     "tier_name": item["tier_name"],
                     "tier_order": item["tier_order"]
-                }
-            finally:
-                _mark_candidate_done()
+                }, str(e)
 
-        # Run all candidate evaluations concurrently, preserving order in results
-        try:
-            results = list(await asyncio.gather(*[_evaluate_single_candidate(item) for item in candidate_items]))
-        finally:
-            executor.shutdown(wait=False)
+        await run_items(job, _evaluate_single_candidate, in_flight)
+        # In evaluation order; a cancelled candidate that never started has no result
+        results = [job_item["result"] for job_item in job["items"] if job_item["result"] is not None]
 
         total_batch_time = time.time() - start_batch_time
 
@@ -243,80 +234,35 @@ async def _run_batch_evaluation(
         raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(main_err)}")
 
 
-def _drop_expired_eval_jobs() -> None:
-    """Removes finished background jobs older than EVAL_JOB_TTL_SECONDS from memory."""
-    now = time.time()
-    expired = [
-        job_id for job_id, job in state.eval_jobs.items()
-        if job["finished_at"] is not None and now - job["finished_at"] > EVAL_JOB_TTL_SECONDS
-    ]
-    for job_id in expired:
-        del state.eval_jobs[job_id]
-
-
-async def _run_eval_job(job: dict, payload: EvaluationBatchRequest) -> None:
-    """Background task body: runs the batch and records progress, results or error on the job."""
-    def _on_progress(completed: int, total: int) -> None:
-        job["completed"] = completed
-        job["total"] = total
-
+async def _run_eval_job(job: Dict[str, Any], payload: EvaluationBatchRequest) -> None:
+    """Background task body: runs the batch on the job and records its results or error."""
     try:
-        job["result"] = await _run_batch_evaluation(payload, on_progress=_on_progress)
-        job["state"] = "done"
+        finish_job(job, result=await _run_batch_evaluation(payload, job))
     except HTTPException as http_err:
-        job["error"] = str(http_err.detail)
-        job["state"] = "failed"
+        finish_job(job, error=str(http_err.detail))
     except Exception as unexpected_err:
         traceback.print_exc()
-        job["error"] = f"Evaluation failed: {str(unexpected_err)}"
-        job["state"] = "failed"
+        finish_job(job, error=f"Evaluation failed: {str(unexpected_err)}")
     finally:
-        job["finished_at"] = time.time()
         job.pop("task", None)
 
 
 @router.post("/evaluate_batch/jobs")
 async def start_evaluation_job(payload: EvaluationBatchRequest):
-    """Starts a batch evaluation as a background job and returns its id immediately."""
+    """Starts a batch evaluation as a background Batch job and returns its id immediately."""
     if not payload.resume_filenames:
         raise HTTPException(status_code=400, detail="No resume filenames selected for evaluation.")
     if not state.evaluator:
         raise HTTPException(status_code=500, detail="Resume Evaluator model is not initialized on the server.")
 
-    _drop_expired_eval_jobs()
-    job_id = uuid.uuid4().hex
-    job = {
-        "state": "running",
-        "total": len(payload.resume_filenames),
-        "completed": 0,
-        "started_at": time.time(),
-        "finished_at": None,
-        "result": None,
-        "error": None
-    }
-    state.eval_jobs[job_id] = job
+    try:
+        # The items are the requested names until the candidates are loaded, in evaluation order
+        job = create_job(EVALUATE_KIND, list(payload.resume_filenames))
+    except BatchBusyError as busy:
+        return busy_response(busy)
     # Keep a reference to the task so it isn't garbage-collected while running.
     job["task"] = asyncio.create_task(_run_eval_job(job, payload))
-    return {"job_id": job_id}
-
-
-@router.get("/evaluate_batch/jobs/{job_id}")
-def get_evaluation_job(job_id: str):
-    """Reports a background batch job's state, progress, elapsed time and final results or error."""
-    _drop_expired_eval_jobs()
-    job = state.eval_jobs.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Evaluation job not found.")
-    end_time = job["finished_at"] or time.time()
-    return {
-        "job_id": job_id,
-        "state": job["state"],
-        "total": job["total"],
-        "completed": job["completed"],
-        "elapsed_seconds": round(end_time - job["started_at"], 2),
-        "result": job["result"] if job["state"] == "done" else None,
-        "error": job["error"] if job["state"] == "failed" else None
-    }
+    return {"job_id": job["id"]}
 
 
 @router.get("/eval_results")

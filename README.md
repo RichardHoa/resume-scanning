@@ -20,7 +20,7 @@ An automated system to extract structured information (personal details, skills,
 Here is an overview of what each key file and folder does in this repository:
 
 - `src/step_1_extractor.py`: The main extraction script. Converts PDF resumes to Markdown using PyMuPDF4LLM and uses an LLM to generate structured JSON output.
-- `src/server.py`: A web server (FastAPI) that provides a user-friendly browser interface for uploading resumes and viewing extracted JSON results.
+- `src/server.py`: A web server (FastAPI) that provides a user-friendly browser interface for uploading a folder or several resumes, extracting and evaluating them in parallel as one batch, and viewing the results.
 - `src/evaluate.py`: Evaluates the accuracy of extracted JSON output by comparing it against ground-truth data using semantic similarity scoring.
 - `src/ground_truth.py`: A web-based tool for reviewing and validating ground-truth resume extractions.
 - `schemas/`: Contains JSON schema definitions (`qwen_schema.json`, `nuextract_schema.json`) that define the required extraction output format.
@@ -73,7 +73,7 @@ python3 src/evaluate.py --extracted runs/batch-cnb/extraction_json/ --ground-tru
 
 ### 4. AI Proofreading Pass (scanned books)
 
-`scripts/submit_correction.sh` has a model transcribe every page of a scanned book from its scan, with the OCR
+`scripts/proofread/submit.sh` has a model transcribe every page of a scanned book from its scan, with the OCR
 text as a draft, and joins the pages into a new text of the book.
 
 1. In the vsc repo, run `python -m vsc_ocr prepare-ai <book>` and copy the folder it makes, `data-for-ai/<book>/`,
@@ -81,11 +81,11 @@ text as a draft, and joins the pages into a new text of the book.
 2. Run the pass:
 
 ```bash
-bash scripts/submit_correction.sh --dry-run              # login node: checks every task fits the context window
-sbatch scripts/submit_correction.sh --pages 10-40         # a trial slice
-sbatch scripts/submit_correction.sh --pages 10-40 --no-ocr-hint   # the same slice from the images only
-sbatch scripts/submit_correction.sh                       # the whole book
-sbatch scripts/submit_correction.sh --run-dir vsc-project/ai-pass/<time>   # finish a run's failed tasks
+bash scripts/proofread/submit.sh --dry-run              # login node: checks every task fits the context window
+sbatch scripts/proofread/submit.sh --pages 10-40         # a trial slice
+sbatch scripts/proofread/submit.sh --pages 10-40 --no-ocr-hint   # the same slice from the images only
+sbatch scripts/proofread/submit.sh                       # the whole book
+sbatch scripts/proofread/submit.sh --run-dir vsc-project/ai-pass/<time>   # finish a run's failed tasks
 ```
 
 3. Copy `book.ai.md`, `ai_corrections.jsonl` and `boxes.jsonl` from the run folder `vsc-project/ai-pass/<time>/`
@@ -96,7 +96,7 @@ sbatch scripts/submit_correction.sh --run-dir vsc-project/ai-pass/<time>   # fin
 or not, compare two runs of the same slice against the reviewer's own corrections:
 
 ```bash
-python3 scripts/compare_ocr_hint.py vsc-project/ai-pass/<with-hint> vsc-project/ai-pass/<without>
+python3 scripts/proofread/compare_ocr_hint.py vsc-project/ai-pass/<with-hint> vsc-project/ai-pass/<without>
 ```
 
 ---

@@ -3,7 +3,7 @@
 Extractor Consistency Check — extracts every resume of one resume set 5 times and reports what changes between
 the runs, and every Fidelity Warning and failed run (.scratch/extractor-consistency/spec.md).
 
-Run once per resume set with RUN_DIR set to its consistency run folder (scripts/check_extractor_consistency.sh
+Run once per resume set with RUN_DIR set to its consistency run folder (scripts/checks/extractor_consistency.sh
 does both sets). Writes extraction_json/<resume>/run-<n>.json and consistency_report.md / .json to the run folder.
 """
 import os
@@ -16,7 +16,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
 # Ensure repository root is in sys.path for 'src' package imports and set CWD
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 os.chdir(_PROJECT_ROOT)

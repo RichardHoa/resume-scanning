@@ -8,7 +8,7 @@
 
 # Ensure PROJECT_ROOT is set if not already available
 if [ -z "$PROJECT_ROOT" ]; then
-  PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)"
+  PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
 fi
 export PROJECT_ROOT
 

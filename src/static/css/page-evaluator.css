@@ -131,16 +131,29 @@
     text-overflow: ellipsis;
 }
 
+/* Stays in view while HR scrolls the list, so the Batch's size is always visible */
 .batch-select-bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
     font-size: 0.85rem;
     color: var(--text-secondary);
     background: var(--color-background);
     padding: 8px 12px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
+}
+
+.batch-select-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
 }
 
 .selected-count {

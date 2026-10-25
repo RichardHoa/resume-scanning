@@ -96,11 +96,11 @@
     text-underline-offset: 3px;
 }
 
-/* Selected File Preview Card */
-.file-preview-card {
+/* The chosen Batch, checked before upload */
+.batch-preflight {
     display: flex;
-    align-items: center;
-    gap: 1rem;
+    flex-direction: column;
+    gap: 0.75rem;
     background-color: var(--bg-card);
     border: 1px solid var(--border-bright);
     border-radius: var(--radius-md);
@@ -108,45 +108,52 @@
     box-shadow: var(--shadow-sm);
 }
 
-.file-icon-pdf {
-    width: 42px;
-    height: 42px;
-    background: #FEF2F2;
-    border: 1px solid #FCA5A5;
-    border-radius: var(--radius-sm);
+.batch-preflight-header {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    justify-content: center;
-    color: #DC2626;
-    font-weight: 800;
-    font-size: 0.82rem;
-    font-family: var(--font-mono);
+    gap: 1rem;
 }
 
-.file-icon-pdf svg {
-    width: 28px;
-    height: 28px;
-    fill: var(--danger);
-}
-
-.file-icon-pdf::after { content: 'PDF'; }
-
-.file-details {
-    display: flex;
-    flex-direction: column;
-    flex-grow: 1;
-}
-
-.file-name {
+.batch-preflight-count {
     font-weight: 700;
     color: var(--text-main);
-    font-size: 0.92rem;
+    font-size: 0.95rem;
 }
 
-.file-size {
+.batch-preflight-size {
+    margin-left: 6px;
     font-size: 0.78rem;
     color: var(--text-muted);
     font-family: var(--font-mono);
+}
+
+.batch-preflight-notes {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.batch-preflight-notes:empty { display: none; }
+
+.preflight-note--warning {
+    color: var(--warning-fg);
+    background: var(--warning-bg);
+    border: 1px solid var(--warning-border);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+}
+
+.preflight-note--blocking {
+    color: var(--danger);
+    background: var(--danger-bg);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
 }
 
 .btn-remove {

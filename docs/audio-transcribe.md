@@ -49,7 +49,7 @@ On a compute node with a GPU, from the repo root, with the venv active:
 
 ```bash
 source ~/venvs/audio-transcribe/bin/activate
-bash scripts/transcribe_audio.sh vsc-project/audio-transcribe/1.m4a
+bash scripts/audio/transcribe.sh vsc-project/audio-transcribe/1.m4a
 ```
 
 This writes `vsc-project/audio-transcribe/1.transcript.txt`.
@@ -59,7 +59,7 @@ This writes `vsc-project/audio-transcribe/1.transcript.txt`.
 The model misspells names and foreign phrases it hasn't heard before (e.g. "Đại Đạo Tam Kỳ Phổ Độ", "Troisième Amnistie de Dieu en Orient"). List the terms the speakers use in a text file next to the audio and pass it with `--context`:
 
 ```bash
-bash scripts/transcribe_audio.sh vsc-project/audio-transcribe/1.m4a --context vsc-project/audio-transcribe/1.context.txt
+bash scripts/audio/transcribe.sh vsc-project/audio-transcribe/1.m4a --context vsc-project/audio-transcribe/1.context.txt
 ```
 
 The file is plain text, e.g. comma-separated terms:
@@ -83,7 +83,7 @@ The first run downloads the models, about 5 GB in total, into `~/.cache/huggingf
 To compare with a Vietnamese-tuned Whisper, add `--phowhisper`. The segments are transcribed by `vinai/PhoWhisper-large` instead of Qwen3-ASR; speakers, timestamps and the line format stay the same:
 
 ```bash
-bash scripts/transcribe_audio.sh vsc-project/audio-transcribe/1.m4a --phowhisper
+bash scripts/audio/transcribe.sh vsc-project/audio-transcribe/1.m4a --phowhisper
 ```
 
 This writes `vsc-project/audio-transcribe/1.phowhisper.transcript.txt`, next to the Qwen transcript rather than over it.
@@ -98,10 +98,10 @@ The first run downloads PhoWhisper-large, about 6 GB, into the same cache.
 
 ## Full job: two drafts, Qwen3-Omni review, names pass, score (SLURM)
 
-`scripts/submit_transcript.sh` runs the whole job for `vsc-project/audio-transcribe/1.m4a` in one go. It takes no flags:
+`scripts/audio/submit_transcript.sh` runs the whole job for `vsc-project/audio-transcribe/1.m4a` in one go. It takes no flags:
 
 ```bash
-sbatch scripts/submit_transcript.sh
+sbatch scripts/audio/submit_transcript.sh
 ```
 
 1. **Two drafts.** It transcribes the recording with `1.context.txt` and `--with-phowhisper` in the audio venv (`~/venvs/audio-transcribe`). Draft A is `1.transcript.txt` (Qwen3-ASR) and draft B is `1.phowhisper.transcript.txt`. Existing copies are first renamed to `<name>.<time>.txt`, so hand-written notes in them are kept.

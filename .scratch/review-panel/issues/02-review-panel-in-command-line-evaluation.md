@@ -40,7 +40,7 @@ Before starting, confirm the current Agent Framework Python API for an OpenAI-co
 
 - [ ] `agent-framework` is added to the requirements
 - [ ] The panel's requests in flight are capped by an official Agent Framework setting tied to the shared limit, or, if no such setting exists, the developer has been told and nothing was built to work around it
-- [ ] One `submit_eval_vllm.sh` run produces reports with `candidate_feedback.status: "ok"` and all fields filled, in Vietnamese
+- [ ] One `scripts/pipeline/evaluate.sh` run produces reports with `candidate_feedback.status: "ok"` and all fields filled, in Vietnamese
 - [ ] Rebuttal Round turns visibly respond to the other Panelists' views
 - [ ] Scores, weights and recommendations are identical with feedback on and with `--no-feedback`
 - [ ] A Failed Evaluation report has no `candidate_feedback`, and no panel calls are logged for it

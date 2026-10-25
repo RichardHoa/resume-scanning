@@ -4,7 +4,7 @@ Names pass over a reviewed transcript (src/cli/review_transcript.py), with a tex
 The lines go in chunks of CHUNK_LINES, each with CONTEXT_LINES before and after, so the model sees how a name is said
 elsewhere in the interview. It fixes only names and terms that came out as common words or garbled sounds, and keeps
 the speaker's own forms of names. An edit is applied only if its "old" occurs exactly once in the line and both sides
-are at most MAX_EDIT_SYLLABLES; an unsure edit is written as [? new]. Run by scripts/submit_transcript.sh; spec in
+are at most MAX_EDIT_SYLLABLES; an unsure edit is written as [? new]. Run by scripts/audio/submit_transcript.sh; spec in
 .scratch/audio-transcribe/spec.md ("Next: two-model fusion, names pass and scoring (v2)", step 4).
 
 Writes next to the transcript:

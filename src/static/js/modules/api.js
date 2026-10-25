@@ -3,20 +3,24 @@
  * Centralized REST API Service Wrapper
  * ==============================================================================
  * Description: Provides async helper methods for communicating with FastAPI
- *              backend endpoints (PDF extraction, evaluation batch jobs,
+ *              backend endpoints (batch extraction and evaluation jobs,
  *              RAG vector status, candidate pool records, and developer details).
  *              Every failed request throws the server's own message when it sent one.
  */
 
 /**
  * The Error for a failed response: the server's detail/error/message, else the fallback, else the HTTP status.
+ * The HTTP status and the whole reply ride along, e.g. for the running Batch a refused start names.
  * @param {Response} res
  * @param {string} [fallbackMessage]
- * @returns {Promise<Error>}
+ * @returns {Promise<Error & {status: number, data: Object}>}
  */
 async function responseError(res, fallbackMessage) {
     const errData = await res.json().catch(() => ({}));
-    return new Error(errData.detail || errData.error || errData.message || fallbackMessage || `Máy chủ trả về mã lỗi HTTP ${res.status}`);
+    const err = new Error(errData.detail || errData.error || errData.message || fallbackMessage || `Máy chủ trả về mã lỗi HTTP ${res.status}`);
+    err.status = res.status;
+    err.data = errData;
+    return err;
 }
 
 /**
@@ -43,18 +47,34 @@ function postJson(url, body, fallbackMessage) {
 
 export const API = {
     /**
-     * Uploads a candidate PDF resume file to start AI layout extraction (Vietnamese output).
-     * @param {File} file - PDF resume file object.
-     * @returns {Promise<{data: Object, extractionTime: string|null}>} Extracted JSON & execution time header.
+     * Uploads a Batch of PDF resumes and starts their extraction as a background job (Vietnamese output).
+     * A refusal because another Batch runs has status 409 and names it in data.running_job_id / data.running_kind.
+     * @param {Array<File>} files - The PDF files, each known by its base name.
+     * @returns {Promise<{job_id: string, skipped: Array<{name: string, reason: string}>}>}
      */
-    async extractCv(file) {
+    startExtractionJob(files) {
         const formData = new FormData();
-        formData.append('file', file);
+        files.forEach(file => formData.append('files', file, file.name));
         formData.append('language', 'vietnamese');
-        // Read directly rather than through request(): the timing header is needed too
-        const res = await fetch('/api/extract', { method: 'POST', body: formData });
-        if (!res.ok) throw await responseError(res, 'Trích xuất thất bại.');
-        return { data: await res.json(), extractionTime: res.headers.get('X-Extraction-Time') };
+        return request('/api/extract/jobs', { method: 'POST', body: formData }, 'Không bắt đầu được trích xuất hàng loạt.');
+    },
+
+    /**
+     * Starts a new Batch rerunning a finished extraction job's failed and cancelled files, with no re-upload.
+     * @param {string} jobId - The finished extraction job.
+     * @returns {Promise<{job_id: string}>}
+     */
+    retryExtractionJob(jobId) {
+        return request(`/api/extract/jobs/${encodeURIComponent(jobId)}/retry`, { method: 'POST' }, 'Không thử lại được các CV lỗi.');
+    },
+
+    /**
+     * The stored extraction JSON of one resume.
+     * @param {string} name - Resume file name (.pdf or .json) or base name.
+     * @returns {Promise<Object>}
+     */
+    getExtraction(name) {
+        return request(`/api/extractions/${encodeURIComponent(name)}`, undefined, 'Không tải được kết quả trích xuất.');
     },
 
     /**
@@ -83,12 +103,22 @@ export const API = {
     },
 
     /**
-     * Reads a background batch-evaluation job's status.
-     * @param {string} jobId - Id returned by startEvaluationJob.
-     * @returns {Promise<{state: string, total: number, completed: number, elapsed_seconds: number, result: ?Object, error: ?string}>}
+     * Reads a Batch job's status (extraction or evaluation).
+     * @param {string} jobId
+     * @returns {Promise<{kind: string, state: string, total: number, counts: Object<string, number>,
+     *          items: Array<{name: string, state: string, seconds: ?number, error: ?string, result?: Object}>,
+     *          elapsed_seconds: number, result: ?Object, error: ?string}>}
      */
-    getEvaluationJob(jobId) {
-        return request(`/api/evaluate_batch/jobs/${encodeURIComponent(jobId)}`);
+    getBatchJob(jobId) {
+        return request(`/api/batch_jobs/${encodeURIComponent(jobId)}`, undefined, 'Không đọc được trạng thái lô.');
+    },
+
+    /**
+     * Stops a running Batch: files or candidates not started are cancelled, running ones finish.
+     * @param {string} jobId
+     */
+    cancelBatchJob(jobId) {
+        return request(`/api/batch_jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' }, 'Không dừng được lô.');
     },
 
     /**

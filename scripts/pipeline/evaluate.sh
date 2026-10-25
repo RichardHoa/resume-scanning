@@ -13,7 +13,7 @@
 # -----------------------------------------------------------------------------
 # SLURM Batch Job Script for High-Speed vLLM Resume Evaluation Server
 #
-# Usage: sbatch scripts/submit_eval_vllm.sh [model] --cnb|--tech
+# Usage: sbatch scripts/pipeline/evaluate.sh [model] --cnb|--tech
 #
 # Evaluates the extractions already in the run folder (runs/batch-cnb with --cnb, runs/batch-tech with --tech).
 # Only the folder's evaluations are wiped first (their JSONs, prompt logs, token usage and logs); the extractions stay
@@ -45,46 +45,20 @@ else
 fi
 
 RAW_MODEL="$1"
-INITIAL_CWD="$(pwd)"
 
 # -----------------------------------------------------------------------------
-# Robust Location of config.sh and vllm_utils.sh
+# Location of the shared helpers (scripts/lib). SLURM runs a copy of this script, so under sbatch they are found
+# from the submitting directory, the repository root; run with bash, from the script's own folder
 # -----------------------------------------------------------------------------
-FIND_CONFIG_DIR=""
-if [ -n "$SLURM_SUBMIT_DIR" ]; then
-  if [ -f "$SLURM_SUBMIT_DIR/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$SLURM_SUBMIT_DIR/scripts"
-  elif [ -f "$SLURM_SUBMIT_DIR/config.sh" ]; then
-    FIND_CONFIG_DIR="$SLURM_SUBMIT_DIR"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ]; then
-  CANDIDATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
-  if [ -f "$CANDIDATE_DIR/config.sh" ]; then
-    FIND_CONFIG_DIR="$CANDIDATE_DIR"
-  elif [ -f "$CANDIDATE_DIR/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$CANDIDATE_DIR/scripts"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ]; then
-  if [ -f "$INITIAL_CWD/scripts/config.sh" ]; then
-    FIND_CONFIG_DIR="$INITIAL_CWD/scripts"
-  elif [ -f "$INITIAL_CWD/config.sh" ]; then
-    FIND_CONFIG_DIR="$INITIAL_CWD"
-  fi
-fi
-
-if [ -z "$FIND_CONFIG_DIR" ] || [ ! -f "$FIND_CONFIG_DIR/config.sh" ]; then
-  echo "[CRITICAL ERROR] Cannot locate 'config.sh'. Submitting directory: ${SLURM_SUBMIT_DIR:-$INITIAL_CWD}" >&2
+LIB_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}/scripts/lib"
+[ -f "$LIB_DIR/config.sh" ] || LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd)"
+if [ ! -f "$LIB_DIR/config.sh" ]; then
+  echo "[CRITICAL ERROR] Cannot locate 'scripts/lib/config.sh'. Submit from the repository root. Submitting directory: ${SLURM_SUBMIT_DIR:-$(pwd)}" >&2
   exit 1
 fi
-
-SCRIPT_DIR="$FIND_CONFIG_DIR"
-source "$SCRIPT_DIR/config.sh"
-source "$SCRIPT_DIR/vllm_utils.sh"
-source "$SCRIPT_DIR/model_profiles.sh"
+source "$LIB_DIR/config.sh"
+source "$LIB_DIR/vllm_utils.sh"
+source "$LIB_DIR/model_profiles.sh"
 
 if [ -z "$PROJECT_ROOT" ]; then
   echo "[CRITICAL ERROR] PROJECT_ROOT is not set after sourcing config.sh!" >&2

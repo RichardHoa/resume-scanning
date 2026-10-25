@@ -1,7 +1,7 @@
 #!/bin/bash
 # -----------------------------------------------------------------------------
 # Modular Web Server & vLLM Engine Manager
-# Model: the DEFAULT_MODEL_KEY profile in scripts/model_profiles.sh
+# Model: the DEFAULT_MODEL_KEY profile in scripts/lib/model_profiles.sh
 #
 # Usage:
 #   ./scripts/server.sh                 -> Starts both vLLM + FastAPI web server
@@ -41,9 +41,9 @@ if [ ${#SET_ARGS[@]} -gt 1 ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/config.sh"
-source "$SCRIPT_DIR/vllm_utils.sh"
-source "$SCRIPT_DIR/model_profiles.sh"
+source "$SCRIPT_DIR/lib/config.sh"
+source "$SCRIPT_DIR/lib/vllm_utils.sh"
+source "$SCRIPT_DIR/lib/model_profiles.sh"
 
 # Sets MODEL, VLLM_EXTRA_ARGS and the CONCURRENCY request limit the web server inherits
 load_model_profile "$DEFAULT_MODEL_KEY" || exit 1

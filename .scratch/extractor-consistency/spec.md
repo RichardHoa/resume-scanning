@@ -8,7 +8,7 @@ Replaces the outdated evaluator consistency check (`scripts/run_consistency.py`,
 
 - One SLURM job runs both resume sets, CnB then Tech, on one vLLM server. No `--cnb`/`--tech` flag.
 - Every resume is extracted 5 times. The count is fixed; there is no flag.
-- Each set uses its own Reference Date, the same as `submit_extract_eval_vllm.sh` (Tech: 2015-12-31, CnB: today).
+- Each set uses its own Reference Date, the same as `scripts/pipeline/extract_evaluate.sh` (Tech: 2015-12-31, CnB: today).
 - Combined Extraction is the default. `--text` runs text-only extraction instead. (This is the reverse of the extract/evaluate job, where text is the default and `--combined` opts in.) The default model can see images.
 - Production settings: extraction stays at `temperature=0.0`, so any difference is vLLM run-to-run noise.
 - No evaluation, no HR RAG needed.
@@ -42,7 +42,7 @@ Then one section per resume, unstable ones first:
 
 ## Implementation
 
-- `scripts/check_extractor_consistency.sh` (SLURM job, `sbatch scripts/check_extractor_consistency.sh [model] [--text]`) and `scripts/run_extractor_consistency.py` (one resume set per call, with `RUN_DIR` set).
+- `scripts/checks/extractor_consistency.sh` (SLURM job, `sbatch scripts/checks/extractor_consistency.sh [model] [--text]`) and `scripts/checks/extractor_consistency.py` (one resume set per call, with `RUN_DIR` set).
 - Fidelity Warnings are told apart from PDF Notes by `FIDELITY_WARNING_PREFIX` in `src/pipelines/extractor.py`.
 - Scanned Resumes are detected before any run with `find_textless_pages`, so they cost no LLM calls.
 - A Repaired Extraction is marked with `REPAIRED_EXTRACTION_WARNING` in its `warning` list (also shown on the website), and the check counts it as a failed run instead of comparing its cut-off fields.

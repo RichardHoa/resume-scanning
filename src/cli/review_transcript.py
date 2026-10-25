@@ -6,7 +6,7 @@ same lines. The line's clip, repaired and padded the way the transcriber hears i
 view of where they differ, the two lines before and after, and the glossary; the model writes what it hears. The
 answer replaces A only if it is not empty and, for a line of MIN_GUARDED_SYLLABLES or more, at most
 MAX_UNSUPPORTED_SHARE of its syllables are in neither draft nor the glossary, and its length is within
-MIN_LENGTH_RATIO–MAX_LENGTH_RATIO of the drafts'. Run by scripts/submit_transcript.sh; spec in
+MIN_LENGTH_RATIO–MAX_LENGTH_RATIO of the drafts'. Run by scripts/audio/submit_transcript.sh; spec in
 .scratch/audio-transcribe/spec.md ("Next: two-model fusion, names pass and scoring (v2)").
 
 Writes next to the audio:

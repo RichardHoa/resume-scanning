@@ -3,16 +3,16 @@
 # Centralized Shell Configuration for Resume Scanning Engine
 # ---------------------------------------------------------------------------
 
-# Resolve repository root directory
+# Resolve repository root directory (this file is scripts/lib/config.sh)
 _CONFIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_ROOT_DIR="$(cd "$_CONFIG_DIR/.." && pwd)"
+_ROOT_DIR="$(cd "$_CONFIG_DIR/../.." && pwd)"
 
 # Ensure commands execute from project root directory
 cd "$_ROOT_DIR" || exit 1
 
-# Export project root, script directory, and PYTHONPATH for all child processes
+# Export project root, scripts directory, and PYTHONPATH for all child processes
 export PROJECT_ROOT="$_ROOT_DIR"
-export SCRIPT_DIR="$_CONFIG_DIR"
+export SCRIPT_DIR="$_ROOT_DIR/scripts"
 if [ -n "$PYTHONPATH" ]; then
   export PYTHONPATH="$_ROOT_DIR:$PYTHONPATH"
 else

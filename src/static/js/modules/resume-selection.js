@@ -3,12 +3,13 @@
  * Resume Selection (Evaluator Step 3)
  * ==============================================================================
  * Description: Lists the scanned resumes HR can evaluate, grouped by secret
- *              evaluation-order tier, with search, select-all and the order
- *              file's status. Reports the selection size so the evaluator can
- *              enable its Run button.
+ *              evaluation-order tier, with search, select-all, "select the Batch
+ *              just extracted" and the order file's status. Reports the selection
+ *              size so the evaluator can enable its Run button.
  */
 
 import { API } from './api.js';
+import { BatchStore } from './batch-job.js';
 import { byId } from './dom.js';
 import { html, raw } from './html.js';
 import {
@@ -28,12 +29,15 @@ export class ResumeSelection {
         this.orderActive = false;
         this.tier1Count = 0;
         this.tier2Count = 0;
+        // Selected once the next load has the list, e.g. the Batch just extracted when HR came from Step 1
+        this.selectAfterLoad = BatchStore.takeSelectLastExtracted() ? BatchStore.lastExtracted() : null;
 
         this.container = byId('scanned-resumes-container');
         this.chkSelectAll = byId('chk-select-all');
         this.countBadge = byId('selected-count-badge');
         this.searchInput = byId('eval-cand-search');
         this.btnRefresh = byId('btn-refresh-resumes');
+        this.btnSelectLastBatch = byId('btn-select-last-batch');
 
         this.btnRefresh.addEventListener('click', () => this.load());
         this.chkSelectAll.addEventListener('change', () => {
@@ -44,10 +48,23 @@ export class ResumeSelection {
             this.render();
             this.updateSelectedCount();
         });
+        this.btnSelectLastBatch.addEventListener('click', () => this.selectFilenames(BatchStore.lastExtracted()));
         this.searchInput.addEventListener('input', () => {
             this.searchTerm = this.searchInput.value.toLowerCase().trim();
             this.render();
         });
+    }
+
+    /**
+     * Selects exactly those of the named resumes that are listed, and nothing else.
+     * @param {Array<string>} filenames - Resume JSON file names.
+     */
+    selectFilenames(filenames) {
+        const listed = new Set(this.resumes.map(r => r.filename));
+        this.selected = new Set(filenames.filter(name => listed.has(name)));
+        this.chkSelectAll.checked = false;
+        this.render();
+        this.updateSelectedCount();
     }
 
     /** File names of the selected resumes. */
@@ -84,8 +101,17 @@ export class ResumeSelection {
             this.tier1Count = data.tier1_count;
             this.tier2Count = data.tier2_count;
 
+            const listed = new Set(this.resumes.map(r => r.filename));
+            this.btnSelectLastBatch.hidden = !BatchStore.lastExtracted().some(name => listed.has(name));
+
             if (this.resumes.length === 0) {
                 this.container.innerHTML = '<div class="empty-state empty-state--compact">Chưa có CV nào được quét. Hãy tải CV PDF lên ở Bước 1 trước.</div>';
+                return;
+            }
+            if (this.selectAfterLoad) {
+                const names = this.selectAfterLoad;
+                this.selectAfterLoad = null;
+                this.selectFilenames(names);
                 return;
             }
             this.render();
@@ -162,7 +188,10 @@ export class ResumeSelection {
     }
 
     updateSelectedCount() {
-        this.countBadge.textContent = `Đã chọn ${this.selected.size}`;
+        const count = this.selected.size;
+        this.countBadge.textContent = count > 1
+            ? `Đã chọn ${count} CV — sẽ đánh giá song song`
+            : `Đã chọn ${count} CV`;
         this.onSelectionChange(this.selected.size);
     }
 }

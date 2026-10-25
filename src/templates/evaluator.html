@@ -168,7 +168,7 @@
                         <div class="panel-header-split">
                             <div>
                                 <h2>3. Chọn CV ứng viên để AI đánh giá</h2>
-                                <p>Chọn CV ứng viên để đánh giá theo tiêu chí RAG đã xác minh.</p>
+                                <p>Mọi CV được chọn được đánh giá song song trong một lô, theo tiêu chí RAG đã xác minh.</p>
                             </div>
                             <button class="btn btn-sm btn-secondary" id="btn-refresh-resumes" type="button">
                                 <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Làm mới danh sách
@@ -176,10 +176,13 @@
                         </div>
 
                         <div class="batch-select-bar">
-                            <label class="select-all-label">
-                                <input type="checkbox" id="chk-select-all"> Chọn tất cả ứng viên
-                            </label>
-                            <span class="selected-count" id="selected-count-badge">Đã chọn 0</span>
+                            <div class="batch-select-actions">
+                                <label class="select-all-label">
+                                    <input type="checkbox" id="chk-select-all"> Chọn tất cả ứng viên
+                                </label>
+                                <button class="btn btn-sm btn-secondary" id="btn-select-last-batch" type="button" hidden>Chọn lô vừa trích xuất</button>
+                            </div>
+                            <span class="selected-count" id="selected-count-badge" aria-live="polite">Đã chọn 0 CV</span>
                         </div>
 
                         <!-- Filter Search Bar -->
@@ -197,7 +200,7 @@
                                 ← Quay lại tiêu chí
                             </button>
                             <button class="btn btn-primary btn-wide" id="btn-run-eval" type="button" disabled>
-                                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg> Chạy đánh giá CV bằng AI
+                                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg> Chạy đánh giá hàng loạt bằng AI
                             </button>
                         </div>
                     </div>

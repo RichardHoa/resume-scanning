@@ -34,7 +34,7 @@ See `.scratch/review-panel/spec.md` and the Failed Evaluation entry in `GLOSSARY
 
 Implemented in commit 007e317 ("ticket 01"). Verified by reading the code against each acceptance criterion:
 
-- Default model: `DEFAULT_MODEL_KEY="sea-lion-v4.5-27b"` in `scripts/model_profiles.sh` (all submit scripts and `server.sh` resolve through it), and `DEFAULT_LLM_MODEL` in `src/core/config.py`. The profile sets `CONCURRENCY=70`.
+- Default model: `DEFAULT_MODEL_KEY="sea-lion-v4.5-27b"` in `scripts/lib/model_profiles.sh` (all submit scripts and `server.sh` resolve through it), and `DEFAULT_LLM_MODEL` in `src/core/config.py`. The profile sets `CONCURRENCY=70`.
 - Shared limit: `request_slots` in `src/providers/vllm_client.py` is held around every vLLM HTTP request and sized from `VLLM_MAX_CONCURRENT_REQUESTS` (env `CONCURRENCY`, default 70). Agent Framework's client does not go through it; ticket 02's **Request limit** section covers how the panel is capped.
 - The web batch's `Semaphore(20)` is gone. Candidates run on a dedicated executor, and command-line `--workers` defaults to the request limit.
 - Transformers refused in `ResumeEvaluator.__init__`, `src/cli/evaluate.py`, `src/server.py` and `scripts/submit_eval_transformer.sh`.

@@ -120,6 +120,10 @@ _Avoid_: partial extraction, auto-repair (alone)
 A flag on a resume that states no position the candidate is applying for. The resume is still evaluated, ranked and given Candidate Feedback like any other, as if applying for the job the HR requirement describes (every resume in a run is assumed to be for that one job); the flag only tells HR, on the website, that the position was missing. Having no stated position is not evidence against the candidate.
 _Avoid_: no position, error, unevaluated
 
+**Batch**:
+A set of resumes that one extraction or evaluation job processes together, in parallel, on the website. A failed resume never stops the rest of its Batch. Only one Batch runs at a time. The website calls extracting one "Trích xuất hàng loạt".
+_Avoid_: bulk, job (alone), run (a run is one of a Category's evaluation runs, or a run folder)
+
 **Evaluation Order**:
 A secret, ranked list of candidates (by email) that HR supplies per resume set, used on the website to group and order candidates into tiers. The Tech resume set lists only its top 10 in rank order, shown with their rank (#1–#10); every other candidate falls into one "rest" section. Each resume set is ranked only by its own list.
 _Avoid_: answer key, tier file
