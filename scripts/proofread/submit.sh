@@ -41,6 +41,25 @@ if [ ! -f "$LIB_DIR/config.sh" ]; then
   echo "[CRITICAL ERROR] Cannot locate 'scripts/lib/config.sh'. Submit from the repository root. Submitting directory: ${SLURM_SUBMIT_DIR:-$(pwd)}" >&2
   exit 1
 fi
+
+# Load cluster modules and activate resume_env before sourcing config.sh, which reads src/core/config.py with python3
+echo "[$(date +'%H:%M:%S')] STEP 1: Loading system environment modules and activating Conda environment 'resume_env'..."
+module load miniconda3 2>/dev/null || true
+module load cuda 2>/dev/null || module load cuda13.0 2>/dev/null || true
+
+if ! command -v conda &>/dev/null; then
+  for c_path in /compute_home/$USER/miniconda3/bin/conda /compute_home/$USER/anaconda3/bin/conda /opt/miniconda3/bin/conda /opt/anaconda3/bin/conda; do
+    if [ -x "$c_path" ]; then
+      export PATH="$(dirname "$c_path"):$PATH"
+      break
+    fi
+  done
+fi
+
+eval "$(conda shell.bash hook 2>/dev/null)" || true
+source activate resume_env 2>/dev/null || conda activate resume_env 2>/dev/null || true
+echo "[$(date +'%H:%M:%S')] Active Python: $(which python3 2>/dev/null || echo 'python3 not found')"
+
 source "$LIB_DIR/config.sh"
 source "$LIB_DIR/vllm_utils.sh"
 source "$LIB_DIR/model_profiles.sh"
@@ -86,24 +105,6 @@ fi
 cd "$PROJECT_ROOT" || exit 1
 setup_vllm_env
 mkdir -p "$PROJECT_ROOT/logs" "$PROJECT_ROOT/logging"
-
-echo "[$(date +'%H:%M:%S')] STEP 1: Loading system environment modules..."
-module load miniconda3 2>/dev/null || true
-module load cuda 2>/dev/null || module load cuda13.0 2>/dev/null || true
-
-if ! command -v conda &>/dev/null; then
-  for c_path in /compute_home/$USER/miniconda3/bin/conda /compute_home/$USER/anaconda3/bin/conda /opt/miniconda3/bin/conda /opt/anaconda3/bin/conda; do
-    if [ -x "$c_path" ]; then
-      export PATH="$(dirname "$c_path"):$PATH"
-      break
-    fi
-  done
-fi
-
-echo "[$(date +'%H:%M:%S')] STEP 2: Activating Conda environment 'resume_env'..."
-eval "$(conda shell.bash hook 2>/dev/null)" || true
-source activate resume_env 2>/dev/null || conda activate resume_env 2>/dev/null || true
-echo "[$(date +'%H:%M:%S')] Step 2 complete. Active Python: $(which python3 2>/dev/null || echo 'python3 not found')"
 
 if [ $DRY_RUN -eq 1 ]; then
   echo "=== Dry run: counting prompt tokens with $MODEL's processor, no vLLM server ==="

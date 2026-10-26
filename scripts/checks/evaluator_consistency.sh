@@ -68,9 +68,9 @@ if [ ! -f "$LIB_DIR/config.sh" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# STEP 1: Load Cluster Modules & Activate Conda Environment FIRST
+# STEP 1: Load Cluster Modules & Activate Conda Environment FIRST (config.sh reads src/core/config.py with python3)
 # -----------------------------------------------------------------------------
-echo "[$(date +'%H:%M:%S')] STEP 1: Loading system environment modules..."
+echo "[$(date +'%H:%M:%S')] STEP 1: Loading system environment modules and activating Conda environment 'resume_env'..."
 module load miniconda3 2>/dev/null || true
 module load cuda 2>/dev/null || module load cuda13.0 2>/dev/null || true
 
@@ -84,7 +84,6 @@ if ! command -v conda &>/dev/null; then
   done
 fi
 
-echo "[$(date +'%H:%M:%S')] STEP 2: Activating Conda environment 'resume_env'..."
 eval "$(conda shell.bash hook 2>/dev/null)" || true
 source activate resume_env 2>/dev/null || conda activate resume_env 2>/dev/null || true
 echo "[$(date +'%H:%M:%S')] Active Python: $(which python3 2>/dev/null || echo 'python3 not found')"

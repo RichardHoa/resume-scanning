@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Token Usage Stats — summarizes logging/token_usage.jsonl per pipeline step, to size max_tokens and the
-context window from measured usage instead of guesses.
+Token Usage Stats — summarizes the active run folder's logs/token_usage.jsonl (RUN_DIR, default runs/batch-cnb)
+per pipeline step, to size max_tokens and the context window from measured usage instead of guesses.
 """
 import os
 import sys

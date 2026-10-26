@@ -1,6 +1,10 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
-# Centralized Shell Configuration for Resume Scanning Engine
+# Shared Shell Configuration, sourced by every job script and scripts/server.sh
+#
+# Moves to the repository root and exports PROJECT_ROOT, SCRIPT_DIR and PYTHONPATH; reads VLLM_MAX_MODEL_LEN from
+# src/core/config.py; gives require_hr_rag and the run-folder helpers (use_*_run_dir, reset_run_dir,
+# reset_run_dir_evaluations). Source it after activating resume_env: it runs python3.
 # ---------------------------------------------------------------------------
 
 # Resolve repository root directory (this file is scripts/lib/config.sh)
@@ -19,8 +23,12 @@ else
   export PYTHONPATH="$_ROOT_DIR"
 fi
 
-# Dynamically fetch VLLM_MAX_MODEL_LEN from Python src.core.config (Single Source of Truth)
-VLLM_MAX_MODEL_LEN=$(python3 -c "import sys; sys.path.insert(0, '$_ROOT_DIR'); from src.core.config import VLLM_MAX_MODEL_LEN; print(VLLM_MAX_MODEL_LEN)" 2>/dev/null || echo 32768)
+# VLLM_MAX_MODEL_LEN comes from src/core/config.py (its one source). If that import fails (e.g. resume_env is not
+# active yet), it falls back to 32768 with a warning
+if ! VLLM_MAX_MODEL_LEN=$(python3 -c "import sys; sys.path.insert(0, '$_ROOT_DIR'); from src.core.config import VLLM_MAX_MODEL_LEN; print(VLLM_MAX_MODEL_LEN)" 2>/dev/null); then
+  VLLM_MAX_MODEL_LEN=32768
+  echo "[WARNING] Could not read VLLM_MAX_MODEL_LEN from src/core/config.py with $(command -v python3 || echo 'no python3'); using 32768. Activate resume_env before sourcing config.sh." >&2
+fi
 # Note: Do not export VLLM_MAX_MODEL_LEN as vLLM 0.27+ warns about unrecognized VLLM_* env vars
 
 # Evaluation never builds or changes the HR RAG: HR sets it on the website's RAG page before a run. Call this
@@ -64,7 +72,8 @@ _use_run_dir() {
   EVALUATION_JSON_DIR="$RUN_DIR/evaluation_json"
 }
 
-# Refuses any folder but the pipeline and consistency run folders, so a wrong or empty RUN_DIR never reaches rm -rf
+# Refuses any folder but the pipeline, consistency and Bias Check run folders, so a wrong or empty RUN_DIR never
+# reaches rm -rf
 _require_pipeline_run_dir() {
   case "$RUN_DIR" in
     "$PROJECT_ROOT/runs/batch-cnb"|"$PROJECT_ROOT/runs/batch-tech") return 0 ;;

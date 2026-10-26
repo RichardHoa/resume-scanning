@@ -13,6 +13,9 @@
 #   VLLM_VISION                1 = the checkpoint can see images (default 0). Profiles still serve text only;
 #                              a job that needs images turns vision on with `serve_vision_on`
 #
+# Only the default profile (sea-lion-v4.5-27b) is in use; qwen3.5-9b is served by scripts/server.sh --lightweight.
+# The other profiles are kept for reference.
+#
 # To add a model: add a case branch below and its key to MODEL_PROFILE_KEYS.
 # -----------------------------------------------------------------------------
 

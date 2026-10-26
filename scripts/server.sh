@@ -11,8 +11,8 @@
 #   ./scripts/server.sh --start-vllm    -> Starts vLLM inference server ONLY
 #   ./scripts/server.sh --stop-vllm     -> Stops vLLM inference server ONLY
 #
-#   ./scripts/server.sh --start-web     -> Starts FastAPI web server ONLY
-#   ./scripts/server.sh --stop-web      -> Stops FastAPI web server ONLY
+#   ./scripts/server.sh --start-web     -> Starts FastAPI web server ONLY (alias: --start-server)
+#   ./scripts/server.sh --stop-web      -> Stops FastAPI web server ONLY (alias: --stop-server)
 #
 #   ./scripts/server.sh --status        -> Checks status of all running services
 #   ./scripts/server.sh --help          -> Shows detailed usage information
@@ -26,6 +26,11 @@
 #
 # Add --lightweight (anywhere among the arguments) to serve the small qwen3.5-9b profile (Qwen/Qwen3.5-9B,
 # CONCURRENCY=40) instead of the DEFAULT_MODEL_KEY profile.
+#
+# Every resume is extracted with Combined Extraction (page images), so the model must be a profile that can see
+# images; vLLM is served with vision on. Run this on the GPU compute node. The combined start runs a background
+# daemon (log: logs/server.txt); vLLM's log is logs/vllm_server.log and the web server's is
+# <run folder>/logs/web_server.log. Set the HR RAG on the website's RAG page before evaluating.
 # -----------------------------------------------------------------------------
 
 SET_ARGS=()
@@ -46,6 +51,23 @@ if [ ${#SET_ARGS[@]} -gt 1 ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Load cluster modules and activate resume_env before sourcing config.sh, which reads src/core/config.py with python3
+module load miniconda3 2>/dev/null || true
+module load cuda 2>/dev/null || module load cuda13.0 2>/dev/null || true
+
+if ! command -v conda &>/dev/null; then
+  for c_path in /compute_home/$USER/miniconda3/bin/conda /compute_home/$USER/anaconda3/bin/conda /opt/miniconda3/bin/conda /opt/anaconda3/bin/conda; do
+    if [ -x "$c_path" ]; then
+      export PATH="$(dirname "$c_path"):$PATH"
+      break
+    fi
+  done
+fi
+
+eval "$(conda shell.bash hook 2>/dev/null)" || true
+source activate resume_env 2>/dev/null || conda activate resume_env 2>/dev/null || true
+
 source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/vllm_utils.sh"
 source "$SCRIPT_DIR/lib/model_profiles.sh"
@@ -84,22 +106,7 @@ DAEMON_LOG_FILE="logs/server.txt"
 setup_environment() {
   setup_vllm_env
   export DISABLE_PROMPT_LOGGING=0
-  mkdir -p logs "$WEB_RUN_DIR/logs" temp_uploads static
-
-  module load miniconda3 2>/dev/null || true
-  module load cuda 2>/dev/null || module load cuda13.0 2>/dev/null || true
-
-  if ! command -v conda &>/dev/null; then
-    for c_path in /compute_home/$USER/miniconda3/bin/conda /compute_home/$USER/anaconda3/bin/conda /opt/miniconda3/bin/conda /opt/anaconda3/bin/conda; do
-      if [ -x "$c_path" ]; then
-        export PATH="$(dirname "$c_path"):$PATH"
-        break
-      fi
-    done
-  fi
-
-  eval "$(conda shell.bash hook 2>/dev/null)" || true
-  source activate resume_env 2>/dev/null || true
+  mkdir -p logs "$WEB_RUN_DIR/logs"
 }
 
 # --- HELPER: Get vLLM Port ---
@@ -328,8 +335,8 @@ show_help() {
   echo "  --stop, stop                   Stop both vLLM and FastAPI Web Server"
   echo "  --start-vllm, start-vllm       Start ONLY the vLLM Inference Server"
   echo "  --stop-vllm, stop-vllm         Stop ONLY the vLLM Inference Server"
-  echo "  --start-web, start-web         Start ONLY the FastAPI Web Server"
-  echo "  --stop-web, stop-web           Stop ONLY the FastAPI Web Server"
+  echo "  --start-web, start-web         Start ONLY the FastAPI Web Server (also --start-server)"
+  echo "  --stop-web, stop-web           Stop ONLY the FastAPI Web Server (also --stop-server)"
   echo "  --status, status               Show current running status of all services"
   echo "  --help, -h                     Show this help message"
   echo "  --cnb                          With a start action: serve the CnB resume set (evaluation_order.txt)"

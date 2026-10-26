@@ -20,6 +20,11 @@
 # Runs the Review Panel only on reports whose Candidate Feedback is missing, skipped or failed, and
 # writes candidate_feedback back into each report. Scores are never re-computed. Failed Evaluations
 # are skipped and listed at the end. Rerunning on a finished directory makes no LLM calls.
+#
+# When REPORT_DIR is the evaluation_json of a run folder (runs/batch-*, runs/web*), the Review Panel's prompt logs
+# and token usage go to that run folder (docs/adr/0010-run-folders.md); otherwise to runs/batch-cnb. Nothing in the
+# run folder is wiped: the printed token stats cover the whole run folder, the Review Panel step included. The vLLM
+# log is logs/vllm_batch.log.
 # -----------------------------------------------------------------------------
 
 REPORT_DIR="${1:-runs/batch-cnb/evaluation_json}"
@@ -41,6 +46,31 @@ if [ ! -f "$LIB_DIR/config.sh" ]; then
   echo "[CRITICAL ERROR] Cannot locate 'scripts/lib/config.sh'. Submit from the repository root. Submitting directory: ${SLURM_SUBMIT_DIR:-$(pwd)}" >&2
   exit 1
 fi
+
+# -----------------------------------------------------------------------------
+# STEP 1: Load Cluster Modules & Activate Conda Environment FIRST (config.sh reads src/core/config.py with python3)
+# -----------------------------------------------------------------------------
+echo "[$(date +'%H:%M:%S')] STEP 1: Loading system environment modules and activating Conda environment 'resume_env'..."
+module load miniconda3 2>/dev/null || true
+module load cuda 2>/dev/null || module load cuda13.0 2>/dev/null || true
+
+# Check conda binary path
+if ! command -v conda &>/dev/null; then
+  for c_path in /compute_home/$USER/miniconda3/bin/conda /compute_home/$USER/anaconda3/bin/conda /opt/miniconda3/bin/conda /opt/anaconda3/bin/conda; do
+    if [ -x "$c_path" ]; then
+      export PATH="$(dirname "$c_path"):$PATH"
+      break
+    fi
+  done
+fi
+
+eval "$(conda shell.bash hook 2>/dev/null)" || true
+source activate resume_env 2>/dev/null || conda activate resume_env 2>/dev/null || true
+echo "[$(date +'%H:%M:%S')] Active Python: $(which python3 2>/dev/null || echo 'python3 not found')"
+
+# -----------------------------------------------------------------------------
+# STEP 2: Source Configuration & vLLM Helpers (Python environment is active)
+# -----------------------------------------------------------------------------
 source "$LIB_DIR/config.sh"
 source "$LIB_DIR/vllm_utils.sh"
 source "$LIB_DIR/model_profiles.sh"
@@ -56,33 +86,15 @@ cd "$PROJECT_ROOT" || exit 1
 # Setup optimization & threading environment variables
 setup_vllm_env
 
-# Review Panel prompt logs go to the run folder the reports are in (docs/adr/0010-run-folders.md)
+# Review Panel prompt logs and token usage go to the run folder the reports are in (docs/adr/0010-run-folders.md)
 case "$(basename "$(dirname "$REPORT_DIR")")" in
   batch-cnb|batch-tech|web|web-cnb|web-tech) export RUN_DIR="$(dirname "$REPORT_DIR")" ;;
 esac
 mkdir -p "$PROJECT_ROOT/logs" "$PROJECT_ROOT/logging"
 
-# Load cluster modules (miniconda3)
-echo "[$(date +'%H:%M:%S')] STEP 1: Loading system environment modules..."
-module load miniconda3 2>/dev/null || true
-module load cuda 2>/dev/null || module load cuda13.0 2>/dev/null || true
-
-# Check conda binary path
-if ! command -v conda &>/dev/null; then
-  for c_path in /compute_home/$USER/miniconda3/bin/conda /compute_home/$USER/anaconda3/bin/conda /opt/miniconda3/bin/conda /opt/anaconda3/bin/conda; do
-    if [ -x "$c_path" ]; then
-      export PATH="$(dirname "$c_path"):$PATH"
-      break
-    fi
-  done
-fi
-
-echo "[$(date +'%H:%M:%S')] STEP 2: Activating Conda environment 'resume_env'..."
-eval "$(conda shell.bash hook 2>/dev/null)" || true
-source activate resume_env 2>/dev/null || conda activate resume_env 2>/dev/null || true
-echo "[$(date +'%H:%M:%S')] Step 2 complete. Active Python: $(which python3 2>/dev/null || echo 'python3 not found')"
-
-# Print GPU info on compute node immediately
+# -----------------------------------------------------------------------------
+# STEP 3: Start the vLLM Server
+# -----------------------------------------------------------------------------
 echo "====================================================================="
 echo "[$(date +'%Y-%m-%d %H:%M:%S')] STEP 3: Inspecting GPU hardware allocation..."
 nvidia-smi 2>/dev/null || echo "nvidia-smi not available"
@@ -92,16 +104,18 @@ PORT=$(find_free_port)
 resolve_model_arg "$RAW_MODEL" || exit 1
 
 echo "[$(date +'%H:%M:%S')] Project Root: $PROJECT_ROOT"
+echo "[$(date +'%H:%M:%S')] Report Directory: $REPORT_DIR"
+echo "[$(date +'%H:%M:%S')] Run Folder: ${RUN_DIR:-runs/batch-cnb (default)}"
 echo "[$(date +'%H:%M:%S')] Target Model: $MODEL"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT"
 echo "[$(date +'%H:%M:%S')] HF Cache Path: ${HF_HOME:-default}"
 
 start_vllm_server "$MODEL" "$PORT" "$PROJECT_ROOT/logs/vllm_batch.log" || exit 1
 
-echo "=== vLLM Server Ready! ==="
-
-rm -f "$PROJECT_ROOT/logging/token_usage.jsonl"
-echo "=== Backfilling Candidate Feedback in '$REPORT_DIR' ==="
+# -----------------------------------------------------------------------------
+# STEP 4: Backfill Candidate Feedback
+# -----------------------------------------------------------------------------
+echo "=== [$(date +'%H:%M:%S')] STEP 4: Backfilling Candidate Feedback in '$REPORT_DIR' ==="
 python3 -u "$PROJECT_ROOT/src/cli/backfill_feedback.py" \
   --model-name "$MODEL" \
   --vllm-url "http://127.0.0.1:$PORT/v1" \

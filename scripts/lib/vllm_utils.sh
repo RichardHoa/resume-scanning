@@ -2,7 +2,7 @@
 # -----------------------------------------------------------------------------
 # Centralized vLLM Utilities & Lifecycle Management Helper
 #
-# Sourced by SLURM and batch execution scripts to provide environment setup,
+# Sourced by the SLURM job scripts and scripts/server.sh to provide environment setup,
 # dynamic port allocation, server startup, health checking, and process cleanup.
 # -----------------------------------------------------------------------------
 
@@ -83,7 +83,9 @@ stop_vllm_server() {
 # -----------------------------------------------------------------------------
 # Start vLLM Server Instance and Wait for Readiness
 # Usage: start_vllm_server <MODEL_NAME> <PORT> [LOG_FILE]
+#   (defaults: the default profile's model, port 8100, logs/vllm_server.log)
 # Optional: VLLM_EXTRA_ARGS bash array of extra `vllm serve` flags (see model_profiles.sh)
+# Waits up to 3600s for /v1/models, and traps EXIT/INT/TERM so the server dies with the calling shell
 # -----------------------------------------------------------------------------
 start_vllm_server() {
   local model="${1:-aisingapore/Qwen-SEA-LION-v4.5-27B-IT}"
@@ -104,7 +106,7 @@ start_vllm_server() {
   if ! python3 -c "import vllm" 2>/dev/null; then
     echo "====================================================================================="
     echo "[ERROR] 'vllm' package is not installed in the active Conda environment."
-    echo "To use vLLM backend, run on terminal: pip install vllm"
+    echo "Install the pinned stack in resume_env on the compute node: pip install -r requirements.txt"
     echo "====================================================================================="
     return 1
   fi

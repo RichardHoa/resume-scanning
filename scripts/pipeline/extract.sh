@@ -11,13 +11,13 @@
 #SBATCH --error=logging/slurm_extract_%j.err
 
 # -----------------------------------------------------------------------------
-# SLURM Batch Job Script for High-Speed vLLM Resume Batch Extraction
+# SLURM Batch Job Script for Resume Batch Extraction with vLLM
 #
 # Usage: sbatch scripts/pipeline/extract.sh [pdf_dir] [model] --cnb|--tech
 #
 # Wipes the run folder (runs/batch-cnb with --cnb, runs/batch-tech with --tech) and extracts every PDF into it
 # (docs/adr/0010-run-folders.md). --tech reads Vietnamese-dataset/Tech as of its Reference Date (December 2015);
-# an explicit PDF dir argument still overrides the dataset folder.
+# an explicit PDF dir argument still overrides the dataset folder. No evaluation runs, so no HR RAG is needed.
 # Every resume is extracted with Combined Extraction: vLLM is served with vision on and the extractor also sees each
 # page's image, for layout only (values still come from the PDF text). It needs a profile that can see images
 # (VLLM_VISION=1).
@@ -61,6 +61,31 @@ if [ ! -f "$LIB_DIR/config.sh" ]; then
   echo "[CRITICAL ERROR] Cannot locate 'scripts/lib/config.sh'. Submit from the repository root. Submitting directory: ${SLURM_SUBMIT_DIR:-$(pwd)}" >&2
   exit 1
 fi
+
+# -----------------------------------------------------------------------------
+# STEP 1: Load Cluster Modules & Activate Conda Environment FIRST (config.sh reads src/core/config.py with python3)
+# -----------------------------------------------------------------------------
+echo "[$(date +'%H:%M:%S')] STEP 1: Loading system environment modules and activating Conda environment 'resume_env'..."
+module load miniconda3 2>/dev/null || true
+module load cuda 2>/dev/null || module load cuda13.0 2>/dev/null || true
+
+# Check conda binary path
+if ! command -v conda &>/dev/null; then
+  for c_path in /compute_home/$USER/miniconda3/bin/conda /compute_home/$USER/anaconda3/bin/conda /opt/miniconda3/bin/conda /opt/anaconda3/bin/conda; do
+    if [ -x "$c_path" ]; then
+      export PATH="$(dirname "$c_path"):$PATH"
+      break
+    fi
+  done
+fi
+
+eval "$(conda shell.bash hook 2>/dev/null)" || true
+source activate resume_env 2>/dev/null || conda activate resume_env 2>/dev/null || true
+echo "[$(date +'%H:%M:%S')] Active Python: $(which python3 2>/dev/null || echo 'python3 not found')"
+
+# -----------------------------------------------------------------------------
+# STEP 2: Source Configuration & vLLM Helpers (Python environment is active)
+# -----------------------------------------------------------------------------
 source "$LIB_DIR/config.sh"
 source "$LIB_DIR/vllm_utils.sh"
 source "$LIB_DIR/model_profiles.sh"
@@ -76,6 +101,9 @@ cd "$PROJECT_ROOT" || exit 1
 # Setup optimization & threading environment variables
 setup_vllm_env
 
+# -----------------------------------------------------------------------------
+# STEP 3: Resolve Parameters & Validate Input Paths
+# -----------------------------------------------------------------------------
 # Resolve PDF input directory (Default: Vietnamese-dataset/$DATASET inside project root)
 if [ -n "$RAW_PDF_DIR" ]; then
   if [[ "$RAW_PDF_DIR" = /* ]]; then
@@ -99,29 +127,16 @@ serve_vision_on "$COMBINED_MAX_PAGES"
 use_pipeline_run_dir "$DATASET"
 mkdir -p "$PROJECT_ROOT/logging"
 
-# Load cluster modules (miniconda3)
-echo "[$(date +'%H:%M:%S')] STEP 1: Loading system environment modules..."
-module load miniconda3 2>/dev/null || true
-module load cuda 2>/dev/null || module load cuda13.0 2>/dev/null || true
-
-# Check conda binary path
-if ! command -v conda &>/dev/null; then
-  for c_path in /compute_home/$USER/miniconda3/bin/conda /compute_home/$USER/anaconda3/bin/conda /opt/miniconda3/bin/conda /opt/anaconda3/bin/conda; do
-    if [ -x "$c_path" ]; then
-      export PATH="$(dirname "$c_path"):$PATH"
-      break
-    fi
-  done
+if [ ! -d "$PDF_DIR" ]; then
+  echo "[ERROR] PDF directory '$PDF_DIR' does not exist." >&2
+  exit 1
 fi
 
-echo "[$(date +'%H:%M:%S')] STEP 2: Activating Conda environment 'resume_env'..."
-eval "$(conda shell.bash hook 2>/dev/null)" || true
-source activate resume_env 2>/dev/null || conda activate resume_env 2>/dev/null || true
-echo "[$(date +'%H:%M:%S')] Step 2 complete. Active Python: $(which python3 2>/dev/null || echo 'python3 not found')"
-
-# Print GPU info on compute node immediately
+# -----------------------------------------------------------------------------
+# STEP 4: Wipe the Run Folder & Start the vLLM Server
+# -----------------------------------------------------------------------------
 echo "====================================================================="
-echo "[$(date +'%Y-%m-%d %H:%M:%S')] STEP 3: Inspecting GPU hardware allocation..."
+echo "[$(date +'%Y-%m-%d %H:%M:%S')] STEP 4: Inspecting GPU hardware allocation..."
 nvidia-smi 2>/dev/null || echo "nvidia-smi not available"
 echo "====================================================================="
 
@@ -136,17 +151,15 @@ echo "[$(date +'%H:%M:%S')] Target Model: $MODEL"
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT"
 echo "[$(date +'%H:%M:%S')] HF Cache Path: ${HF_HOME:-default}"
 
-if [ ! -d "$PDF_DIR" ]; then
-  echo "[ERROR] PDF directory '$PDF_DIR' does not exist."
-  exit 1
-fi
-
 echo "[$(date +'%H:%M:%S')] Wiping run folder '$RUN_DIR' (the HR RAG and approved_jsons are kept)..."
 reset_run_dir || exit 1
 
 start_vllm_server "$MODEL" "$PORT" "$RUN_LOGS_DIR/vllm.log" || exit 1
 
-echo "=== vLLM Server Ready! Starting Batch Extraction ==="
+# -----------------------------------------------------------------------------
+# STEP 5: Batch Extraction
+# -----------------------------------------------------------------------------
+echo "=== [$(date +'%H:%M:%S')] STEP 5: vLLM Server Ready! Starting Batch Extraction ==="
 echo "Processing PDFs from '$PDF_DIR' -> JSONs to '$EXTRACTION_JSON_DIR' using model '$MODEL'"
 
 python3 -u "$PROJECT_ROOT/src/step_1_extractor.py" \
