@@ -3,10 +3,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
-#SBATCH --mem=32G
+#SBATCH --mem=64G
 #SBATCH --partition=student9696
 #SBATCH --gres=gpu:nvidia_rtx_pro_6000_blackwell_server_edition_4g.96gb:1
-#SBATCH --time=6:00:00
+#SBATCH --time=3:00:00
 #SBATCH --output=logging/slurm_eval_consistency_%j.out
 #SBATCH --error=logging/slurm_eval_consistency_%j.err
 
