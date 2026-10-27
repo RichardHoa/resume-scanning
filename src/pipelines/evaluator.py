@@ -17,7 +17,8 @@ from typing import Dict, List, Any, Optional
 from src.core.config import (
     DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, MAX_NEW_TOKENS,
     CATEGORY_EVAL_MAX_TOKENS, CATEGORY_EVAL_RETRY_TEMPERATURE, CATEGORY_EVAL_SAMPLE_TEMPERATURE,
-    DEFAULT_NUM_EVALUATIONS, SCRUTINY_MAX_QUESTIONS_PER_FIELD, HR_CHECK_ITEMS_KEY, CATEGORY_LABELS
+    DEFAULT_NUM_EVALUATIONS, SCRUTINY_MAX_QUESTIONS_PER_FIELD, SCRUTINY_MAX_SPLITS_PER_FIELD, HR_CHECK_ITEMS_KEY,
+    CATEGORY_LABELS
 )
 from src.core.logger import log_llm_call, log_broken_json, HR_RAG_LOG_NAME
 from src.core.json_utils import clean_and_parse_json
@@ -92,7 +93,9 @@ class ResumeEvaluator:
             if category == "requirements_decomposition":
                 system_prompt = get_requirements_decomposition_system_prompt()
             elif category == "requirements_scrutiny":
-                system_prompt = get_requirements_scrutiny_system_prompt(max_questions=SCRUTINY_MAX_QUESTIONS_PER_FIELD)
+                system_prompt = get_requirements_scrutiny_system_prompt(
+                    max_questions=SCRUTINY_MAX_QUESTIONS_PER_FIELD, max_splits=SCRUTINY_MAX_SPLITS_PER_FIELD
+                )
             else:
                 system_prompt = get_evaluator_system_prompt(language=eff_language)
 
@@ -160,10 +163,11 @@ class ResumeEvaluator:
         resume_name: str = HR_RAG_LOG_NAME,
         language: Optional[str] = None,
         log_dir: Optional[str] = None
-    ) -> Dict[str, List[Dict[str, str]]]:
+    ) -> Dict[str, Any]:
         """
-        Scrutinizes HR standard & hidden requirements for Implicit Assumptions, returning
-        {"standard_requirements": [...], "hidden_requirements": [...]} Clarification Questions.
+        Scrutinizes HR standard & hidden requirements for Implicit Assumptions and Combined Requirements, returning
+        {"standard_requirements": [...], "hidden_requirements": [...]} Clarification Questions and
+        "split_suggestions": {"standard_requirements": [...], "hidden_requirements": [...]}.
         Ephemeral: does not touch the RAG store. Raises on failure (fails closed).
         """
         return scrutinize_requirements_with_llm(self, standard_req, hidden_req, resume_name, language=language, log_dir=log_dir)

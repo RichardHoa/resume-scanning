@@ -85,8 +85,8 @@ async def decompose_requirements_endpoint(payload: DecomposeRequirementsRequest)
 @router.post("/rag/scrutinize")
 async def scrutinize_requirements_endpoint(payload: ScrutinizeRequirementsRequest):
     """
-    Scrutinizes HR requirements for Implicit Assumptions and returns Clarification Questions,
-    grouped by source field, without touching the RAG store. Web-only, ephemeral, fails closed:
+    Scrutinizes HR requirements for Implicit Assumptions and Combined Requirements and returns Clarification
+    Questions and split suggestions, grouped by source field, without touching the RAG store. Web-only, ephemeral, fails closed:
     an LLM/parse failure raises a 500 rather than silently returning an empty (falsely
     reassuring) result.
     """

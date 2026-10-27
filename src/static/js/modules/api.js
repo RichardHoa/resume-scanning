@@ -145,11 +145,12 @@ export const API = {
 
     /**
      * Scrutinizes HR requirements for Implicit Assumptions, returning Vietnamese Clarification Questions
-     * grouped by source field ('standard_requirements', 'hidden_requirements'). Ephemeral —
-     * does not touch the RAG store.
+     * grouped by source field ('standard_requirements', 'hidden_requirements'), and for Combined
+     * Requirements, returning split suggestions grouped the same way. Ephemeral — does not touch the RAG store.
      * @param {string} stdReq - Standard job requirements text.
      * @param {string} hiddenReq - HR hidden / culture fit requirements text.
-     * @returns {Promise<Object>} { standard_requirements: [{assumption, question}], hidden_requirements: [...] }
+     * @returns {Promise<Object>} { standard_requirements: [{assumption, question}], hidden_requirements: [...],
+     *   split_suggestions: { standard_requirements: [{requirement, parts}], hidden_requirements: [...] } }
      */
     scrutinizeRequirements(stdReq, hiddenReq) {
         return postJson('/api/rag/scrutinize', {

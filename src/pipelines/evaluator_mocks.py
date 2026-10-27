@@ -104,8 +104,10 @@ def get_mock_category_response(category: str, language: str = "vietnamese") -> s
     return json.dumps(mock_data.get(category, default_resp), ensure_ascii=False)
 
 
-def get_mock_scrutiny_response(standard_req: str, hidden_req: str, language: str = "vietnamese", max_questions: int = 5) -> Dict[str, List[Dict[str, str]]]:
-    """Generates a mock Implicit Assumption / Clarification Question response via simple keyword heuristics."""
+def get_mock_scrutiny_response(
+    standard_req: str, hidden_req: str, language: str = "vietnamese", max_questions: int = 5, max_splits: int = 8
+) -> Dict[str, Any]:
+    """Generates a mock Implicit Assumption / Clarification Question and Combined Requirement response via simple keyword heuristics."""
     is_english = is_english_language(language)
     vague_terms = ["senior", "junior", "good", "strong", "fast-paced", "flexible", "team player", "cấp cao", "tốt", "linh hoạt"]
 
@@ -128,9 +130,30 @@ def get_mock_scrutiny_response(standard_req: str, hidden_req: str, language: str
                 break
         return found[:max_questions]
 
+    def _find_combined(text: str) -> List[Dict[str, Any]]:
+        # A line joined by " + " or " và " with no alternatives or examples in it
+        found = []
+        for line in (text or "").split("\n"):
+            line = line.strip()
+            line_low = line.lower()
+            if any(w in line_low for w in ("hoặc", " or ", "(", "ít nhất")):
+                continue
+            for joiner in (" + ", " và "):
+                parts = [p.strip(" .;") for p in line.split(joiner) if p.strip(" .;")]
+                if len(parts) >= 2:
+                    found.append({"requirement": line, "parts": parts})
+                    break
+            if len(found) >= max_splits:
+                break
+        return found
+
     return {
         "standard_requirements": _find_assumptions(standard_req),
-        "hidden_requirements": _find_assumptions(hidden_req)
+        "hidden_requirements": _find_assumptions(hidden_req),
+        "split_suggestions": {
+            "standard_requirements": _find_combined(standard_req),
+            "hidden_requirements": _find_combined(hidden_req)
+        }
     }
 
 

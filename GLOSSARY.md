@@ -20,6 +20,10 @@ _Avoid_: hidden assumption (collides with Hidden Requirements)
 A question shown to HR naming an Implicit Assumption and asking HR to confirm or correct it. Between 1 and 5 are generated for each non-empty field (Standard, Hidden), none for an empty one, without padding. Each names one specific requirement and asks what it means in practice: the expected level or scope, and what may substitute for it (e.g. experience in place of a degree). It never asks whether a requirement is a must-have or a nice-to-have: that is the Criterion's Importance, which HR sets when reviewing the HR RAG. Non-blocking: HR may ignore them entirely and edit the free-text request directly instead of answering. Asked once per pass through requirement intake: after they are shown, HR's next action is decomposition, with no second check. The check runs again only if HR returns from Category review and changes the requirement text.
 _Avoid_: assumption question
 
+**Combined Requirement**:
+One line in HR's Standard or Hidden Requirements that joins two or more requirements a candidate must each meet (e.g. "JLPT N2 trở lên + kinh nghiệm thực chiến giao tiếp kỹ thuật"). Because a Criterion is copied verbatim and gets one Verdict, a candidate meeting only one part could get Partial instead of No Evidence. The same check that asks the Clarification Questions flags each one, quotes it exactly, and suggests the separate lines HR could write instead, up to 8 per field, beside the questions and not counted against them. A list of examples or alternatives, where any one item is enough (e.g. "DB (MySQL, MS SQL, MongoDB...)"), is not a Combined Requirement. Non-blocking, like the questions: HR rewrites the text or ignores the suggestion.
+_Avoid_: compound criterion, multi-requirement
+
 **Category** (also **Dimension**):
 One of five fixed buckets — `seniority_title`, `technical_skills`, `work_experience`, `education_certifications`, `hidden_culture` — that Standard/Hidden Requirements are decomposed into, after HR has reviewed any Clarification Questions.
 _Avoid_: criteria type, bucket
@@ -69,7 +73,7 @@ The stored set of Criteria (each with its Importance) and HR Check Items for one
 _Avoid_: RAG store (alone), vector DB
 
 **Verdict**:
-The judgement the LLM gives one Criterion for one candidate: Strong, Partial or No Evidence. The LLM writes its reasoning before it writes the Verdict. The LLM never produces a score; the Category score is derived from the Verdicts.
+The judgement the LLM gives one Criterion for one candidate: Strong, Partial or No Evidence. Two cases are always No Evidence, never Partial: a stated minimum not reached (JLPT N3 against "N2 trở lên", 2 years against 3), even when other parts of the Criterion are met; and context without the activity the Criterion asks for (Japanese project names without any described client communication). The LLM writes its reasoning before it writes the Verdict. The LLM never produces a score; the Category score is derived from the Verdicts.
 _Avoid_: score (for the LLM's output), category (collides with Category)
 
 **Review Panel**:

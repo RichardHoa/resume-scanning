@@ -147,7 +147,7 @@ export class EvaluatorController {
         const visible = this.storedRagItemCount > 0 && !stdReq && !hiddenReq;
         this.btnUseExistingRag.hidden = !visible;
         if (visible) {
-            this.btnUseExistingRag.textContent = `Dùng RAG đang hoạt động (${this.storedRagItemCount} tiêu chí) & Bỏ qua →`;
+            this.btnUseExistingRag.textContent = `Dùng tiêu chí đã lưu (${this.storedRagItemCount} tiêu chí) & Chọn ứng viên →`;
         }
     }
 
@@ -225,7 +225,7 @@ export class EvaluatorController {
         const { stdReq, hiddenReq } = this.readRequirementText();
 
         if (!stdReq && !hiddenReq) {
-            alert('Vui lòng nhập Yêu cầu công việc tiêu chuẩn hoặc Yêu cầu ẩn trước khi phân rã.');
+            alert('Vui lòng nhập Yêu cầu công việc tiêu chuẩn hoặc Yêu cầu ẩn trước khi tạo tiêu chí.');
             return;
         }
 
@@ -240,29 +240,34 @@ export class EvaluatorController {
 
         let stdFindings;
         let hiddenFindings;
+        let stdSplits;
+        let hiddenSplits;
         try {
             const result = await this.waitingScreen.run(
                 'scrutiny',
                 'Đang kiểm tra yêu cầu...',
-                'Đang tìm các giả định chưa được nêu rõ trước khi phân loại...',
+                'Đang tìm chỗ chưa rõ và các dòng gộp nhiều yêu cầu...',
                 () => API.scrutinizeRequirements(stdReq, hiddenReq)
             );
             this.intake.checkedText = { std: stdReq, hidden: hiddenReq };
             this.intake.checkedThisPass = true;
             stdFindings = result.standard_requirements || [];
             hiddenFindings = result.hidden_requirements || [];
+            const splits = result.split_suggestions || {};
+            stdSplits = splits.standard_requirements || [];
+            hiddenSplits = splits.hidden_requirements || [];
         } catch (err) {
             // Fail closed: a broken scrutiny call likely means decomposition would fail too.
             alert('Lỗi khi kiểm tra yêu cầu: ' + err.message);
             return;
         }
 
-        if (stdFindings.length === 0 && hiddenFindings.length === 0) {
+        if ([stdFindings, hiddenFindings, stdSplits, hiddenSplits].every(list => list.length === 0)) {
             await this.decomposeRequirements(stdReq, hiddenReq);
             return;
         }
 
-        this.renderScrutinyPanel(stdFindings, hiddenFindings);
+        this.renderScrutinyPanel(stdFindings, hiddenFindings, stdSplits, hiddenSplits);
     }
 
     /**
@@ -278,22 +283,32 @@ export class EvaluatorController {
     }
 
     /**
-     * Shows Clarification Questions beside the field they refer to and swaps the main
-     * Decompose button for the panel's own.
+     * Shows Clarification Questions, and the Combined Requirements HR could split, beside the
+     * field they refer to and swaps the main Decompose button for the panel's own.
      */
-    renderScrutinyPanel(stdFindings, hiddenFindings) {
-        const renderList = (listEl, findings) => {
-            listEl.innerHTML = findings.length > 0
+    renderScrutinyPanel(stdFindings, hiddenFindings, stdSplits, hiddenSplits) {
+        const renderList = (listEl, findings, splits) => {
+            const questions = findings.length > 0
                 ? html`${findings.map(f => html`
                     <div class="scrutiny-question-item">
                         <div class="scrutiny-question">${f.question}</div>
                     </div>
                 `)}`
-                : '<div class="scrutiny-empty-note">Không có câu hỏi</div>';
+                : html`<div class="scrutiny-empty-note">Không có câu hỏi</div>`;
+            const splitBlock = splits.length > 0 && html`
+                    <div class="scrutiny-split-title">Gợi ý tách yêu cầu (mỗi dòng chỉ nên có 1 yêu cầu)</div>
+                    ${splits.map(split => html`
+                        <div class="scrutiny-question-item scrutiny-split-item">
+                            <div class="scrutiny-split-original">“${split.requirement}”</div>
+                            <div class="scrutiny-split-hint">Nên viết thành các dòng riêng:</div>
+                            <ul class="scrutiny-split-parts">${split.parts.map(part => html`<li>${part}</li>`)}</ul>
+                        </div>
+                    `)}`;
+            listEl.innerHTML = html`${questions}${splitBlock}`;
         };
 
-        renderList(this.scrutinyListStandard, stdFindings);
-        renderList(this.scrutinyListHidden, hiddenFindings);
+        renderList(this.scrutinyListStandard, stdFindings, stdSplits);
+        renderList(this.scrutinyListHidden, hiddenFindings, hiddenSplits);
 
         this.intake.questionsShowing = true;
         this.intakePanel.classList.add('has-questions');
@@ -318,22 +333,22 @@ export class EvaluatorController {
      */
     async decomposeRequirements(stdReq, hiddenReq) {
         if (!stdReq && !hiddenReq) {
-            alert('Vui lòng nhập Yêu cầu công việc tiêu chuẩn hoặc Yêu cầu ẩn trước khi phân rã.');
+            alert('Vui lòng nhập Yêu cầu công việc tiêu chuẩn hoặc Yêu cầu ẩn trước khi tạo tiêu chí.');
             return;
         }
 
         try {
             const data = await this.waitingScreen.run(
                 'decompose',
-                'Đang phân rã yêu cầu...',
-                'Đang tách các tiêu chí đơn lẻ theo 5 chiều bằng LLM và vector embedding...',
+                'Đang tạo tiêu chí chấm điểm...',
+                'AI đang tách yêu cầu của bạn thành từng tiêu chí và xếp vào 5 nhóm...',
                 () => API.decomposeRequirements(stdReq, hiddenReq)
             );
             this.processRagSummaryData(data);
             this.setStoredRagItemCount(data);
             this.goToStage(2);
         } catch (err) {
-            alert('Lỗi khi phân loại yêu cầu: ' + err.message);
+            alert('Lỗi khi tạo tiêu chí: ' + err.message);
         }
     }
 
@@ -346,7 +361,7 @@ export class EvaluatorController {
             this.processRagSummaryData(data);
             this.goToStage(3);
         } catch (err) {
-            alert('Không tải được RAG đang hoạt động: ' + err.message);
+            alert('Không tải được tiêu chí đã lưu: ' + err.message);
         }
     }
 
@@ -354,7 +369,7 @@ export class EvaluatorController {
      * Shows the hr_rag.txt preview in the Verify step's raw-file tab.
      */
     setHrRagText(text) {
-        this.hrRagPreviewText.textContent = text || 'Chưa tạo tệp hr_rag.txt.';
+        this.hrRagPreviewText.textContent = text || 'Chưa có tiêu chí nào.';
     }
 
     /**
@@ -379,7 +394,7 @@ export class EvaluatorController {
             const updated = await this.waitingScreen.run(
                 'save_criteria',
                 'Đang lưu tiêu chí...',
-                'Đang embedding lại các tiêu chí vào kho vector RAG và cập nhật hr_rag.txt...',
+                'Đang lưu các tiêu chí để dùng khi chấm CV...',
                 () => API.updateRagCriteria(
                     this.criteriaEditor.getCategories(),
                     this.criteriaEditor.getHrCheckItems(),
@@ -390,7 +405,7 @@ export class EvaluatorController {
             this.setStoredRagItemCount(updated);
             this.setHrRagText(updated.hr_rag_text);
             if (showSuccessAlert) {
-                alert('✓ Đã lưu thay đổi vào kho vector RAG và hr_rag.txt!');
+                alert('✓ Đã lưu tiêu chí!');
             }
             return true;
         } catch (err) {
@@ -405,7 +420,7 @@ export class EvaluatorController {
     updateActiveRagBanner() {
         const totalItems = this.criteriaEditor.totalCount();
         const categoryCount = Object.keys(CATEGORY_NAMES).length;
-        this.activeRagBannerText.innerHTML = html`<strong>Tiêu chí RAG đã xác minh và đang hoạt động:</strong> ${totalItems} tiêu chí thuộc ${categoryCount} chiều được lưu trong kho vector ChromaDB.`;
+        this.activeRagBannerText.innerHTML = html`<strong>Tiêu chí đang dùng:</strong> ${totalItems} tiêu chí trong ${categoryCount} nhóm. CV sẽ được chấm theo các tiêu chí này.`;
     }
 
     /**
@@ -448,7 +463,7 @@ export class EvaluatorController {
         this.waitingScreen.startBatch(
             'evaluate_candidate',
             'Đang đánh giá hàng loạt ứng viên...',
-            'Các ứng viên được chấm điểm song song theo 5 chiều RAG, theo đúng thứ tự đánh giá. Có thể dừng lô: ứng viên đang xử lý vẫn được hoàn tất.',
+            'Các ứng viên được chấm điểm song song theo các tiêu chí đã lưu, theo đúng thứ tự đánh giá. Có thể dừng lô: ứng viên đang xử lý vẫn được hoàn tất.',
             total,
             () => API.cancelBatchJob(jobId)
         );

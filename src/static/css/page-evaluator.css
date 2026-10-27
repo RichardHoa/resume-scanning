@@ -586,6 +586,29 @@
     font-weight: 600;
 }
 
+.scrutiny-split-title {
+    margin-top: 10px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #B45309;
+}
+
+.scrutiny-split-original {
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+.scrutiny-split-hint {
+    margin-top: 4px;
+    color: var(--text-secondary);
+}
+
+.scrutiny-split-parts {
+    margin: 4px 0 0;
+    padding-left: 1.1rem;
+    color: var(--text-main);
+}
+
 /* Active RAG Banner */
 .active-rag-banner {
     display: flex;

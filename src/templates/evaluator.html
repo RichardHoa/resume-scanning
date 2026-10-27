@@ -1,8 +1,8 @@
 {# Step 2: HR Evaluator Workbench #}
 {% extends "base.html" %}
 {% block title %}Đánh giá ứng viên{% endblock %}
-{% block heading %}Bước 2: Ma trận ứng viên & Bảng điểm đánh giá{% endblock %}
-{% block description %}Nhập yêu cầu công việc và tiêu chí ẩn của HR để xếp hạng ứng viên theo 5 chiều vector, kèm phân tích bằng chứng chi tiết.{% endblock %}
+{% block heading %}Bước 2: Chấm điểm & xếp hạng ứng viên{% endblock %}
+{% block description %}Nhập yêu cầu tuyển dụng, kiểm tra các tiêu chí chấm điểm, rồi để AI chấm và xếp hạng CV ứng viên, kèm bằng chứng trích từ CV.{% endblock %}
 {% block content %}
             <!-- Stepped Progress Header Bar -->
             <div class="stepped-process-bar" role="navigation" aria-label="Các bước của quy trình đánh giá">
@@ -17,8 +17,8 @@
                 <div class="process-step" id="step-nav-2">
                     <span class="step-num">2</span>
                     <div class="step-text">
-                        <span class="step-title">2. Xác minh tiêu chí RAG</span>
-                        <span class="step-sub">5 chiều & hr_rag.txt</span>
+                        <span class="step-title">2. Kiểm tra tiêu chí</span>
+                        <span class="step-sub">Sửa, thêm hoặc xóa tiêu chí</span>
                     </div>
                 </div>
                 <div class="step-divider"></div>
@@ -45,14 +45,14 @@
                     <div class="panel intake-panel" id="intake-panel">
                         <div class="panel-header">
                             <h2>1. Nhập yêu cầu tuyển dụng</h2>
-                            <p>Nhập mô tả vị trí tiêu chuẩn và các quy tắc văn hóa nội bộ / bất thành văn để phân rã thành tiêu chí RAG.</p>
+                            <p>Nhập mô tả công việc và các yêu cầu riêng của bạn. Hệ thống sẽ tách chúng thành từng tiêu chí để chấm điểm CV.</p>
                         </div>
 
-                        <!-- Clarification Questions note: shown once the LLM finds Implicit Assumptions. -->
+                        <!-- Clarification Questions note: shown once the LLM finds Implicit Assumptions or Combined Requirements. -->
                         <div id="scrutiny-panel" class="scrutiny-panel" hidden>
                             <div class="scrutiny-panel-header">
-                                <span>⚠ Câu hỏi làm rõ</span>
-                                <span class="scrutiny-panel-sub">Đây chỉ là gợi ý — bạn có thể bỏ qua và sửa trực tiếp yêu cầu, hoặc dùng chúng để diễn đạt rõ hơn. Nhấn "Phân rã yêu cầu" khi sẵn sàng.</span>
+                                <span>⚠ Câu hỏi làm rõ & gợi ý tách yêu cầu</span>
+                                <span class="scrutiny-panel-sub">Đây chỉ là gợi ý — bạn có thể bỏ qua và sửa trực tiếp yêu cầu, hoặc dùng chúng để diễn đạt rõ hơn. Mỗi dòng gộp nhiều yêu cầu nên được viết thành các dòng riêng, vì mỗi dòng chỉ được chấm bằng một kết luận. Nhấn "Tạo tiêu chí chấm điểm" khi sẵn sàng.</span>
                             </div>
                         </div>
 
@@ -65,7 +65,7 @@
                                     <textarea id="hr-std-req" rows="6" class="form-control" placeholder="VD: Vị trí: Kỹ sư Backend cấp cao&#10;Kỹ năng bắt buộc: Python, FastAPI, PostgreSQL, Microservices&#10;Kinh nghiệm: trên 4 năm&#10;Học vấn: Cử nhân Khoa học Máy tính"></textarea>
                                 </div>
                                 <div class="scrutiny-cell">
-                                    <div class="scrutiny-field-title">Yêu cầu tiêu chuẩn — Câu hỏi làm rõ</div>
+                                    <div class="scrutiny-field-title">Yêu cầu tiêu chuẩn — Câu hỏi làm rõ & gợi ý tách</div>
                                     <div class="scrutiny-questions-list" id="scrutiny-list-standard"></div>
                                 </div>
                             </div>
@@ -75,7 +75,7 @@
                                     <textarea id="hr-hidden-req" rows="4" class="form-control form-control-hidden" placeholder="VD: Ưu tiên ứng viên từng làm việc ở startup. Giao tiếp chủ động. Gắn bó lâu dài ở các công việc trước."></textarea>
                                 </div>
                                 <div class="scrutiny-cell">
-                                    <div class="scrutiny-field-title">Yêu cầu ẩn — Câu hỏi làm rõ</div>
+                                    <div class="scrutiny-field-title">Yêu cầu ẩn — Câu hỏi làm rõ & gợi ý tách</div>
                                     <div class="scrutiny-questions-list" id="scrutiny-list-hidden"></div>
                                 </div>
                             </div>
@@ -83,15 +83,15 @@
 
                         <div class="action-row action-row--end action-row--spaced">
                             <button class="btn btn-secondary" id="btn-use-existing-rag" type="button" hidden>
-                                Dùng RAG hiện có & Chuyển đến ứng viên →
+                                Dùng tiêu chí đã lưu & Chọn ứng viên →
                             </button>
                             <button class="btn btn-primary" id="btn-decompose-reqs" type="button">
-                                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.78c0-2.33 4.67-3.5 7-3.5s7 1.17 7 3.5V19z"/></svg> Phân rã & Phân loại yêu cầu (Bước 2A)
+                                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.78c0-2.33 4.67-3.5 7-3.5s7 1.17 7 3.5V19z"/></svg> Tạo tiêu chí chấm điểm →
                             </button>
                             <!-- Shown instead of the main button while Clarification Questions are showing;
                                  always decomposes the current text directly, with no second check. -->
                             <button class="btn btn-primary" id="btn-proceed-decompose" type="button" hidden>
-                                Phân rã yêu cầu →
+                                Tạo tiêu chí chấm điểm →
                             </button>
                         </div>
                     </div>
@@ -102,12 +102,12 @@
                     <div class="panel">
                         <div class="rag-verify-header">
                             <div>
-                                <h2>2. Xác minh & Điều chỉnh phân loại RAG</h2>
-                                <p>Kiểm tra cách hệ thống phân loại yêu cầu của bạn vào 5 chiều. Thêm, sửa hoặc xóa tiêu chí nếu cần trước khi đánh giá ứng viên.</p>
+                                <h2>2. Kiểm tra tiêu chí chấm điểm</h2>
+                                <p>Hệ thống đã tách yêu cầu của bạn thành từng tiêu chí và xếp vào 5 nhóm. Sửa, thêm, xóa tiêu chí hoặc đổi mức độ quan trọng của chúng trước khi chấm CV.</p>
                             </div>
                             <div class="rag-preview-tabs">
-                                <button class="rag-tab-btn active" id="tab-btn-categories" type="button">Chỉnh sửa 5 chiều</button>
-                                <button class="rag-tab-btn" id="tab-btn-raw-file" type="button">Xem trước hr_rag.txt</button>
+                                <button class="rag-tab-btn active" id="tab-btn-categories" type="button">Chỉnh sửa tiêu chí</button>
+                                <button class="rag-tab-btn" id="tab-btn-raw-file" type="button">Xem dạng văn bản</button>
                             </div>
                         </div>
 
@@ -123,14 +123,14 @@
                         <!-- Tab Pane 1: Interactive 5-Dimension Criteria Cards -->
                         <div id="pane-categories-editor">
                             <div class="criteria-editor-grid" id="criteria-editor-container">
-                                <div class="loading-state">Đang tải kết quả phân loại...</div>
+                                <div class="loading-state">Đang tải tiêu chí...</div>
                             </div>
                         </div>
 
                         <!-- Tab Pane 2: hr_rag.txt Live Code View -->
                         <div id="pane-raw-file" class="raw-file-pane" hidden>
                             <div class="logs-content-pane">
-                                <pre><code id="hr-rag-preview-text">Đang tạo nội dung hr_rag.txt...</code></pre>
+                                <pre><code id="hr-rag-preview-text">Đang tạo bản văn bản...</code></pre>
                             </div>
                         </div>
 
@@ -141,7 +141,7 @@
                             </button>
                             <div class="action-row">
                                 <button class="btn btn-secondary" id="btn-save-criteria-changes" type="button">
-                                    <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg> Lưu thay đổi vào RAG
+                                    <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg> Lưu tiêu chí
                                 </button>
                                 <button class="btn btn-primary" id="btn-proceed-to-candidates" type="button">
                                     Xác nhận tiêu chí & Chọn ứng viên →
@@ -157,7 +157,7 @@
                     <div class="active-rag-banner" id="active-rag-banner">
                         <div class="active-rag-banner-body">
                             <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-                            <span id="active-rag-banner-text"><strong>Đã xác minh tiêu chí RAG:</strong> 5 chiều đang hoạt động và được lưu trong kho vector ChromaDB.</span>
+                            <span id="active-rag-banner-text"><strong>Tiêu chí đang dùng:</strong> CV sẽ được chấm theo các tiêu chí đã lưu.</span>
                         </div>
                         <button class="btn btn-sm btn-secondary" id="btn-back-to-rag-verify" type="button">
                             Xem lại / Điều chỉnh tiêu chí
@@ -168,7 +168,7 @@
                         <div class="panel-header-split">
                             <div>
                                 <h2>3. Chọn CV ứng viên để AI đánh giá</h2>
-                                <p>Mọi CV được chọn được đánh giá song song trong một lô, theo tiêu chí RAG đã xác minh.</p>
+                                <p>Mọi CV được chọn được đánh giá song song trong một lô, theo các tiêu chí đã lưu.</p>
                             </div>
                             <button class="btn btn-sm btn-secondary" id="btn-refresh-resumes" type="button">
                                 <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Làm mới danh sách

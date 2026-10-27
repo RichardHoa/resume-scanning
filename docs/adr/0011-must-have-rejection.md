@@ -1,6 +1,8 @@
 # A missing Must-have rejects the candidate, and only HR sets Importance
 
 > **Partly superseded by [ADR 0014](0014-nice-to-have-bonus-and-schema-enforced-criteria.md):** the schema now forces every echoed Criterion text to be exact, with one Verdict per Criterion at every Importance, so the fuzzy-match rules below no longer apply. A Nice-to-have weighs ×1 only as a bonus.
+>
+> **Narrowed by [ADR 0016](0016-combined-requirements-and-no-evidence-below-a-minimum.md):** evidence below a stated minimum (JLPT N3 against N2) or context without the activity a Criterion asks for is No Evidence, not Partial.
 
 A must-have is a requirement, not a preference, so a candidate whose resume shows No Evidence for any one Must-have Criterion is now a Must-have Rejection: out, whatever the rest of the evaluation says. This reverses ADR 0006, where a Must-have only weighed ×3 and a Missing Must-Have was a flag that never rejected anyone. Partial evidence on a Must-have never rejects. A rejected candidate is still scored in every Category, so HR can judge whether the resume just left the requirement out, but is never ranked, gets no Candidate Feedback (the Review Panel does not run), and is listed in its own section on the results pages, after the ranked tiers and before the Scanned Resumes. HR un-rejects a candidate only by changing that Criterion's Importance in the HR RAG and re-evaluating; there is no override button.
 

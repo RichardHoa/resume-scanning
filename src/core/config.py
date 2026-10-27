@@ -170,6 +170,8 @@ COMBINED_MAX_PAGES = 6
 # before decomposition). Uses a non-zero temperature deliberately — see docs/adr/0001-nondeterministic-temperature-for-scrutiny-step.md
 SCRUTINY_TEMPERATURE = 0.7
 SCRUTINY_MAX_QUESTIONS_PER_FIELD = 5
+# Combined Requirements flagged per field, beside the Clarification Questions and not counted against them (ADR 0016)
+SCRUTINY_MAX_SPLITS_PER_FIELD = 8
 
 # Default model defaults
 DEFAULT_LLM_MODEL = "aisingapore/Qwen-SEA-LION-v4.5-27B-IT"

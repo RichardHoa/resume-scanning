@@ -9,7 +9,7 @@ from typing import Dict, List, Any, NamedTuple, Optional
 
 from src.core.config import (
     CATEGORY_LABELS, MAX_NEW_TOKENS, REQUIREMENTS_DECOMPOSITION_MAX_TOKENS, HR_CHECK_ITEMS_KEY,
-    SCRUTINY_TEMPERATURE, SCRUTINY_MAX_QUESTIONS_PER_FIELD
+    SCRUTINY_TEMPERATURE, SCRUTINY_MAX_QUESTIONS_PER_FIELD, SCRUTINY_MAX_SPLITS_PER_FIELD
 )
 from src.core.logger import log_broken_json, HR_RAG_LOG_NAME
 from src.core.json_utils import clean_and_parse_json
@@ -112,12 +112,53 @@ def decompose_requirements_with_llm(
     return None
 
 
-def _validate_scrutiny_response(parsed: Any, max_questions: int) -> Optional[Dict[str, List[Dict[str, str]]]]:
-    """Validates and truncates a parsed scrutiny response to the {standard_requirements, hidden_requirements} shape."""
+def _collapse_whitespace(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _validate_split_suggestions(raw: Any, source_texts: Dict[str, str], max_splits: int) -> Optional[Dict[str, List[Dict[str, Any]]]]:
+    """
+    Validates and truncates the "split_suggestions" object to {standard_requirements, hidden_requirements}, each a
+    list of {"requirement", "parts"}. A suggestion is dropped unless its requirement appears in that field's text
+    (ignoring whitespace) and it has at least two distinct parts, none the whole requirement: HR is told to rewrite
+    that line, so it must be a line HR wrote.
+    """
+    if not isinstance(raw, dict):
+        return None
+    result: Dict[str, List[Dict[str, Any]]] = {}
+    for field, source in source_texts.items():
+        items = raw.get(field)
+        if not isinstance(items, list):
+            return None
+        source_flat = _collapse_whitespace(source)
+        cleaned = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            requirement = str(item.get("requirement", "")).strip()
+            raw_parts = item.get("parts")
+            if not requirement or not isinstance(raw_parts, list):
+                continue
+            parts = list(dict.fromkeys(str(p).strip() for p in raw_parts if str(p).strip()))
+            req_flat = _collapse_whitespace(requirement)
+            if req_flat not in source_flat or len(parts) < 2 or any(_collapse_whitespace(p) == req_flat for p in parts):
+                continue
+            cleaned.append({"requirement": requirement, "parts": parts})
+        result[field] = cleaned[:max_splits]
+    return result
+
+
+def _validate_scrutiny_response(
+    parsed: Any, max_questions: int, source_texts: Dict[str, str], max_splits: int
+) -> Optional[Dict[str, Any]]:
+    """
+    Validates and truncates a parsed scrutiny response to the {standard_requirements, hidden_requirements,
+    split_suggestions} shape. source_texts maps each field to HR's text, which every split suggestion must quote.
+    """
     if not isinstance(parsed, dict):
         return None
 
-    result: Dict[str, List[Dict[str, str]]] = {}
+    result: Dict[str, Any] = {}
     for field in ("standard_requirements", "hidden_requirements"):
         if field not in parsed:
             # A missing key is a malformed response, not "no assumptions found" — treat it as a
@@ -135,6 +176,12 @@ def _validate_scrutiny_response(parsed: Any, max_questions: int) -> Optional[Dic
             if assumption and question:
                 cleaned.append({"assumption": assumption, "question": question})
         result[field] = cleaned[:max_questions]
+
+    # A missing or malformed split_suggestions is a malformed response too, retried for the same reason
+    splits = _validate_split_suggestions(parsed.get("split_suggestions"), source_texts, max_splits)
+    if splits is None:
+        return None
+    result["split_suggestions"] = splits
     return result
 
 
@@ -145,12 +192,14 @@ def scrutinize_requirements_with_llm(
     resume_name: str = HR_RAG_LOG_NAME,
     language: Optional[str] = None,
     max_questions: int = SCRUTINY_MAX_QUESTIONS_PER_FIELD,
+    max_splits: int = SCRUTINY_MAX_SPLITS_PER_FIELD,
     max_retries: int = 5,
     log_dir: Optional[str] = None
-) -> Dict[str, List[Dict[str, str]]]:
+) -> Dict[str, Any]:
     """
     Scrutinizes HR standard & hidden requirements for Implicit Assumptions, returning up to
-    `max_questions` Clarification Questions per field. Fails closed: raises RuntimeError if a
+    `max_questions` Clarification Questions per field, and for Combined Requirements, returning up to `max_splits`
+    split suggestions per field under "split_suggestions" (ADR 0016). Fails closed: raises RuntimeError if a
     valid response can't be parsed after `max_retries` attempts, rather than silently returning
     an empty (falsely reassuring) result.
     """
@@ -159,10 +208,17 @@ def scrutinize_requirements_with_llm(
     eff_language = language or getattr(evaluator_inst, "language", "vietnamese")
 
     if not standard_req and not hidden_req:
-        return {"standard_requirements": [], "hidden_requirements": []}
+        return {
+            "standard_requirements": [], "hidden_requirements": [],
+            "split_suggestions": {"standard_requirements": [], "hidden_requirements": []}
+        }
 
     if evaluator_inst.mock:
-        return get_mock_scrutiny_response(standard_req, hidden_req, language=eff_language, max_questions=max_questions)
+        return get_mock_scrutiny_response(
+            standard_req, hidden_req, language=eff_language, max_questions=max_questions, max_splits=max_splits
+        )
+
+    source_texts = {"standard_requirements": standard_req, "hidden_requirements": hidden_req}
 
     prompt = get_requirements_scrutiny_prompt(standard_req, hidden_req, evaluator_inst.model_name, language=eff_language)
 
@@ -173,7 +229,7 @@ def scrutinize_requirements_with_llm(
             language=eff_language, temperature=SCRUTINY_TEMPERATURE, log_dir=log_dir
         )
         parsed = clean_and_parse_json(reply.text)
-        validated = _validate_scrutiny_response(parsed, max_questions)
+        validated = _validate_scrutiny_response(parsed, max_questions, source_texts, max_splits)
         if validated is not None:
             return validated
 
