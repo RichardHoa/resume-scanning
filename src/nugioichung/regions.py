@@ -1,5 +1,5 @@
 """
-The Regions the layout pass finds on a page, and the kinds of Item they belong to.
+The Regions the layout pass finds on a page, the Strips a tall one is cut into, and the kinds of Item they belong to.
 """
 from typing import List, NamedTuple, Tuple
 
@@ -37,7 +37,9 @@ class Region(NamedTuple):
     section: str
     author: str
     continues: bool     # it carries on an Item begun in an earlier Region
-    box: List[int]      # [left, top, right, bottom] in thousandths of the page
+    box: List[int]      # [left, top, right, bottom] in thousandths of the page, edges snapped onto gaps and rules
+    layout_box: List[int]       # the box as the layout pass gave it
+    strips: List[List[int]]     # the boxes of its Strips, top to bottom; [] if it is transcribed whole
 
     @property
     def key(self):
@@ -48,7 +50,25 @@ class Region(NamedTuple):
     def label(self):
         return region_label(self.page, self.n)
 
+    @property
+    def cuts(self):
+        """What its transcription requests read, in order: the Region whole, or each of its Strips."""
+        if not self.strips:
+            return [Cut(self.key, self.label, self.box, 0, 0)]
+        return [Cut(f"{self.key}-s{k:02d}", f"{self.label} strip {k}", box, k, len(self.strips))
+                for k, box in enumerate(self.strips, 1)]
+
+
+class Cut(NamedTuple):
+    """What one transcription request reads: a whole Region, or one Strip of it."""
+    key: str            # its request's name in the run folder
+    label: str
+    box: List[int]
+    strip: int          # its place among its Region's Strips, from 1; 0 for a whole Region
+    of: int             # how many Strips its Region has; 0 for a whole Region
+
 
 class PageLayout(NamedTuple):
     printed_page: str   # "" if none is printed
     regions: List[Region]
+    outside: List[List[int]]    # the boxes of printed text that falls inside no Region

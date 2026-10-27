@@ -10,3 +10,7 @@ LAYOUT_MAX_TOKENS = 16384
 TRANSCRIBE_MAX_TOKENS = 4096
 # Retries after the first attempt sample, as an identical prompt at temperature 0 fails the same way
 RETRY_TEMPERATURE = 0.3
+# How far, in thousandths of the page, a Region's box edge may move to land on a column gap or printed rule
+SNAP_REACH = 25
+# A Region taller than this, in thousandths of the page (about a third), is cut into Strips no taller than about this
+STRIP_HEIGHT = 333

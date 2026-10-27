@@ -81,8 +81,9 @@ def layout_schema():
 
 
 TRANSCRIBE_SYSTEM_PROMPT = _NEWSPAPER + """
-You get one Region of a page, cut from the scan: one part of one Item. Transcribe all the text printed in it, top
-to bottom, as Markdown in `text`.
+You get one Region of a page, cut from the scan: one part of one Item. A tall Region comes as Strips, horizontal
+slices cut between printed lines, and you get one Strip of it. Transcribe all the text printed in it, top to bottom,
+as Markdown in `text`.
 
 You copy exactly what the scan prints. You are a copyist, not an editor:
 - Copy letter by letter, diacritic by diacritic. Keep the 1918 spelling (Đờn-bà, sạch sẻ), the hyphens between
@@ -101,19 +102,28 @@ Layout of `text`:
   a poem, and the lines of an Ad.
 - A table of prices or other figures set in rows and columns: a Markdown table.
 - A Table of Contents: a nested Markdown list, its sections as items and their entries under them.
-- A Footnote starts with its number in parentheses as printed: "(7) ...".
+- A Footnote call in the text, a number in parentheses such as "(7)", is copied as printed.
 
-`starts_mid_paragraph`: true when the Region's first line carries on a paragraph from before it (the line is not
-indented and continues a sentence). `ends_mid_paragraph`: true when its last paragraph runs on past the Region's
-foot. Stop exactly where the Region stops, even mid-sentence or mid-word; never finish a sentence.
+A Footnotes Region holds the numbered notes printed under an Article. Answer it in `footnotes` instead of `text`:
+one entry per Footnote, in printed order, with `number` the number printed in its parentheses (7 for "(7)") and
+`text` the note after that number, copied by the same rules. If the Region begins partway through a Footnote whose
+number is printed before it, give that first part as an entry with `number` 0.
+
+`starts_mid_paragraph`: true when the Region's first line carries on a paragraph (or a Footnote) from before it (the
+line is not indented and continues a sentence). `ends_mid_paragraph`: true when its last paragraph (or Footnote)
+runs on past the Region's foot. Stop exactly where the Region stops, even mid-sentence or mid-word; never finish a
+sentence.
 """
 
 
-def transcribe_user_text(region):
+def transcribe_user_text(region, cut):
     what = KINDS[region.kind].label
     if region.title:
         what += f' of the Item "{region.title}"'
-    return f"Region {region.n} of PDF page {region.page}: {what}. Transcribe it."
+    where = f"Region {region.n} of PDF page {region.page}"
+    if cut.strip:
+        where = f"Strip {cut.strip} of {cut.of}, top to bottom, of {where}"
+    return f"{where}: {what}. Transcribe it."
 
 
 def transcribe_schema():
@@ -128,6 +138,29 @@ def transcribe_schema():
     }
 
 
+def footnotes_schema():
+    """The answer for a Footnotes Region: its Footnotes as {number, text}, 0 for a Footnote carried on from before."""
+    return {
+        "type": "object",
+        "properties": {
+            "footnotes": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "number": {"type": "integer", "minimum": 0},
+                        "text": {"type": "string"},
+                    },
+                    "required": ["number", "text"],
+                },
+            },
+            "starts_mid_paragraph": {"type": "boolean"},
+            "ends_mid_paragraph": {"type": "boolean"},
+        },
+        "required": ["footnotes", "starts_mid_paragraph", "ends_mid_paragraph"],
+    }
+
+
 def prompt_sha1_input(system, schema):
-    """What a pass's prompt hash is taken over: its system prompt and schema (the user text is stamped per task)."""
+    """What a pass's prompt hash is taken over: its system prompt and schema(s) (the user text is stamped per task)."""
     return system + json.dumps(schema, sort_keys=True)

@@ -1,7 +1,8 @@
 """
-Inspection: each page drawn with its Regions outlined and numbered, and one offline inspect.html that goes page →
-Regions, showing the drawn page, then each request's image as sent, its prompt and its answer side by side. Both are
-built from the saved requests and answers only.
+Inspection: each page drawn with its Regions outlined and numbered, its Strip cuts dashed and ⚠ on any printed text
+outside every Region, and one offline inspect.html that goes page → Regions → Strips, showing the drawn page, then
+each request's image as sent, its prompt and its answer side by side. Both are built from the saved requests and
+answers only.
 """
 import html
 import json
@@ -12,8 +13,10 @@ from PIL import Image, ImageDraw, ImageFont
 
 from src.nugioichung.layout import page_stamp
 from src.nugioichung.regions import KINDS, page_key
-from src.nugioichung.transcribe import region_stamp
+from src.nugioichung.transcribe import cut_stamp
 from src.providers.vlm_requests import is_current, read_result
+
+WARNING = (204, 0, 0)
 
 
 def drawn_page(page):
@@ -21,21 +24,42 @@ def drawn_page(page):
     return os.path.join("layout", f"{page_key(page)}.png")
 
 
-def draw_layout(png, regions, out_path):
-    """Writes the layout image `png` with each Region's box outlined in its kind's colour and its number."""
+def _warning_sign(draw, x, y, size, font):
+    """A ⚠ drawn as a red triangle with "!" in it, its top left at (x, y)."""
+    draw.polygon([(x, y + size), (x + size / 2, y), (x + size, y + size)], fill=WARNING)
+    draw.text((x + size / 2, y + size * 0.62), "!", fill=(255, 255, 255), font=font, anchor="mm")
+
+
+def draw_layout(png, layout, out_path):
+    """
+    Writes the layout image `png` with each Region's snapped box outlined in its kind's colour and its number, the
+    cuts between its Strips dashed, and each patch of printed text outside every Region boxed in red with a ⚠.
+    """
     img = Image.open(BytesIO(png)).convert("RGB")
     draw = ImageDraw.Draw(img)
     font = ImageFont.load_default(size=max(16, img.height // 60))
     w, h = img.size
-    for r in regions:
+
+    def px(box):
+        left, top, right, bottom = box
+        return left * w / 1000, top * h / 1000, right * w / 1000, bottom * h / 1000
+
+    for r in layout.regions:
         colour = KINDS[r.kind].colour
-        left, top, right, bottom = r.box
-        box = (left * w / 1000, top * h / 1000, right * w / 1000, bottom * h / 1000)
+        box = px(r.box)
         draw.rectangle(box, outline=colour, width=4)
+        for strip in r.strips[1:]:
+            y = strip[1] * h / 1000
+            for x in range(int(box[0]), int(box[2]), 24):
+                draw.line((x, y, min(x + 12, box[2]), y), fill=colour, width=3)
         label = str(r.n)
         tl, tt, tr, tb = draw.textbbox((box[0] + 6, box[1] + 4), label, font=font)
         draw.rectangle((tl - 4, tt - 3, tr + 4, tb + 3), fill=colour)
         draw.text((box[0] + 6, box[1] + 4), label, fill=(255, 255, 255), font=font)
+    for outside in layout.outside:
+        box = px(outside)
+        draw.rectangle(box, outline=WARNING, width=4)
+        _warning_sign(draw, box[0] + 4, box[1] + 4, font.size * 1.4, font)
     img.save(out_path)
 
 
@@ -50,7 +74,7 @@ def _pre(text, cls=""):
     return f'<pre class="{cls}">{html.escape(text)}</pre>'
 
 
-def _request_row(run_dir, results_dir, key, stamp, title, answer_view):
+def _request_row(run_dir, results_dir, key, stamp, title, answer_view, heading="h3"):
     """One request: its image as sent, its prompt and its answer, side by side. An answer not made against `stamp`
     is marked as not used."""
     folder = os.path.join(results_dir, key)
@@ -80,7 +104,7 @@ def _request_row(run_dir, results_dir, key, stamp, title, answer_view):
             answer += _pre(result["content"])
         if result.get("reasoning"):
             answer += f"<details><summary>Reasoning</summary>{_pre(result['reasoning'])}</details>"
-    return (f'<section class="request"><h3>{html.escape(title)}</h3><div class="row">'
+    return (f'<section class="request"><{heading}>{html.escape(title)}</{heading}><div class="row">'
             f'<div class="cell image">{image_cells}</div><div class="cell">{prompt}</div>'
             f'<div class="cell">{answer}</div></div></section>')
 
@@ -91,8 +115,11 @@ def _layout_answer(answer):
 
 def _transcription_answer(answer):
     flags = [f for f in ("starts_mid_paragraph", "ends_mid_paragraph") if answer.get(f)]
-    return (f'<p class="muted">{html.escape(", ".join(flags) or "whole paragraphs")}</p>'
-            + _pre(answer.get("text") or ""))
+    if "footnotes" in answer:
+        text = "\n".join(f"({f.get('number') or '…'}) {f.get('text') or ''}" for f in answer["footnotes"] or [])
+    else:
+        text = answer.get("text") or ""
+    return f'<p class="muted">{html.escape(", ".join(flags) or "whole paragraphs")}</p>' + _pre(text)
 
 
 def write_inspect(run_dir, title, pages, layouts, layout_dir, transcribe_dir, layout_stamp, transcribe_stamp):
@@ -107,16 +134,27 @@ def write_inspect(run_dir, title, pages, layouts, layout_dir, transcribe_dir, la
         regions = layout.regions if layout else []
         printed = f" (printed {html.escape(layout.printed_page)})" if layout and layout.printed_page else ""
         drawn = drawn_page(page)
+        outside = layout.outside if layout else []
         parts = [f'<h2>PDF page {page}{printed} · {len(regions)} Region(s)</h2>']
         if os.path.exists(os.path.join(run_dir, drawn)):
             parts.append(f'<a href="{drawn}"><img class="drawn" loading="lazy" src="{drawn}"></a>')
+        parts += [f'<p class="status">⚠ text outside any Region at {box} (boxed in red on the drawn page)</p>'
+                  for box in outside]
         parts.append(_request_row(run_dir, layout_dir, page_key(page), {**layout_stamp, **page_stamp(page)},
                                   "Layout request", _layout_answer))
         for r in regions:
             what = KINDS[r.kind].label + (f" · {r.title}" if r.title else "") + (" · continues" if r.continues else "")
-            parts.append(_request_row(run_dir, transcribe_dir, r.key, {**transcribe_stamp, **region_stamp(r)},
-                                      f"Region {r.n}: {what}", _transcription_answer))
-        body.append(f'<details class="page" id="p{page}"><summary>PDF page {page}{printed}</summary>'
+            box = f"box {r.box}" + (f" (layout pass gave {r.layout_box})" if r.box != r.layout_box else "")
+            if r.strips:
+                parts.append(f'<h3>Region {r.n}: {html.escape(what)} · {len(r.strips)} Strips</h3>'
+                             f'<p class="muted">{html.escape(box)}</p>')
+            parts += [_request_row(run_dir, transcribe_dir, cut.key, {**transcribe_stamp, **cut_stamp(r, cut)},
+                                   f"Region {r.n}, Strip {cut.strip} of {cut.of} · box {cut.box}" if cut.strip
+                                   else f"Region {r.n}: {what} · {box}",
+                                   _transcription_answer, heading="h4" if cut.strip else "h3")
+                      for cut in r.cuts]
+        flag = " ⚠" if outside else ""
+        body.append(f'<details class="page" id="p{page}"><summary>PDF page {page}{printed}{flag}</summary>'
                     f'{"".join(parts)}</details>')
     nav = " ".join(f'<a href="#p{p}">{p}</a>' for p in pages)
     with open(os.path.join(run_dir, "inspect.html"), "w", encoding="utf-8") as f:
@@ -133,6 +171,7 @@ details.page {{ background: #fff; border: 1px solid #ddd; border-radius: 6px; ma
 details.page > summary {{ font-weight: 600; cursor: pointer; font-size: 16px; }}
 img.drawn {{ max-width: 100%; max-height: 90vh; border: 1px solid #ccc; }}
 .request {{ border-top: 1px solid #eee; padding-top: 6px; }}
+.request h4 {{ margin-left: 16px; }}
 .row {{ display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }}
 .cell img {{ max-width: 100%; border: 1px solid #ccc; }}
 .cell.image {{ max-height: 80vh; overflow: auto; }}
