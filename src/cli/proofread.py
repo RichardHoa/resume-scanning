@@ -35,16 +35,13 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 import argparse
-import base64
 import glob
-import hashlib
 import json
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from src.core.config import (
-    DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, VLLM_MAX_MODEL_LEN, VLLM_MAX_CONCURRENT_REQUESTS,
-    PROOFREAD_PAGE_MAX_TOKENS, PROOFREAD_NOTE_MAX_TOKENS, PROOFREAD_RETRY_TEMPERATURE
+    DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, PROOFREAD_PAGE_MAX_TOKENS, PROOFREAD_NOTE_MAX_TOKENS,
+    PROOFREAD_RETRY_TEMPERATURE
 )
 from src.pipelines.proofreader import (
     FLAG, apply_note_results, assemble, enforce_spellings, flag_leftovers, note_tasks, page_names, read_page,
@@ -54,11 +51,14 @@ from src.prompts.proofread_prompts import (
     NOTE_SYSTEM_PROMPT, note_schema, note_user_text, transcribe_schema, transcribe_system_prompt,
     transcribe_user_text
 )
+from src.providers import vlm_requests
+from src.providers.vlm_requests import Model, Phase, Request, load_results, read_json, sha1, write_jsonl
 
-ATTEMPTS = 3    # the first try and two retries
 PHASES = {
-    1: dict(step="proofread_page", max_tokens=PROOFREAD_PAGE_MAX_TOKENS, thinking=False),
-    2: dict(step="proofread_note", max_tokens=PROOFREAD_NOTE_MAX_TOKENS, thinking=True),
+    1: Phase(1, step="proofread_page", max_tokens=PROOFREAD_PAGE_MAX_TOKENS, thinking=False,
+             retry_temperature=PROOFREAD_RETRY_TEMPERATURE),
+    2: Phase(2, step="proofread_note", max_tokens=PROOFREAD_NOTE_MAX_TOKENS, thinking=True,
+             retry_temperature=PROOFREAD_RETRY_TEMPERATURE),
 }
 
 
@@ -96,18 +96,6 @@ def join_blocks(blocks):
     return "\n\n".join(blocks) + "\n"
 
 
-def write_json(path, data):
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, path)
-
-
-def read_json(path):
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
-
-
 def read_yaml(path):
     import yaml
     with open(path, encoding="utf-8") as f:
@@ -117,28 +105,24 @@ def read_yaml(path):
 # -- page images
 def data_url(path):
     with open(path, "rb") as f:
-        return "data:image/jpeg;base64," + base64.b64encode(f.read()).decode("ascii")
+        return vlm_requests.data_url(f.read(), "image/jpeg")
 
 
 def messages_for(system, images, text, images_dir):
-    content = []
-    for p in images:
-        content.append({"type": "text", "text": f"Scan of PDF page {p}:"})
-        content.append({"type": "image_url", "image_url": {"url": data_url(os.path.join(images_dir, f"p{p:04d}.jpg"))}})
-    content.append({"type": "text", "text": text})
-    return [{"role": "system", "content": system}, {"role": "user", "content": content}]
+    return vlm_requests.image_messages(
+        system, [(f"Scan of PDF page {p}:", data_url(os.path.join(images_dir, f"p{p:04d}.jpg"))) for p in images], text)
 
 
-# -- tasks: (key, images, messages, schema)
+# -- tasks
 def page_requests(entries, only, images_dir, ocr_hint, names):
     system = transcribe_system_prompt(ocr_hint)
     for page in sorted(entries):
         if only and page not in only:
             continue
         text = transcribe_user_text(entries[page], ocr_hint, names.get(page, ()))
-        yield f"p{page:04d}", [page], (
+        yield Request(f"p{page:04d}", (
             lambda page=page, text=text: messages_for(system, [page], text, images_dir)
-        ), transcribe_schema()
+        ), transcribe_schema())
 
 
 def note_requests(blocks, pages, only, images_dir):
@@ -147,123 +131,19 @@ def note_requests(blocks, pages, only, images_dir):
             continue
         images = [t["note_page"]] if t["note_page"] else []
         text = note_user_text(t["note_id"], t["definition"], t["note_page"], t["candidates"], t["whole_story"])
-        yield t["note_id"], images, (
+        yield Request(t["note_id"], (
             lambda images=images, text=text: messages_for(NOTE_SYSTEM_PROMPT, images, text, images_dir)
-        ), note_schema([i for i, _ in t["candidates"]])
+        ), note_schema([i for i, _ in t["candidates"]]))
 
 
 # -- running
-def run_one(key, phase, build_messages, schema, args, out_path, stamp):
-    from src.providers import vllm_client
-    cfg = PHASES[phase]
-    result = {"task": key, "phase": phase, "model": args.model_name, **stamp}
-    for attempt in range(1, ATTEMPTS + 1):
-        result["attempts"] = attempt
-        try:
-            reply = vllm_client.chat(
-                args.vllm_url, args.model_name, build_messages(),
-                temperature=0.0 if attempt == 1 else PROOFREAD_RETRY_TEMPERATURE,
-                json_schema=schema, max_tokens=cfg["max_tokens"], step=cfg["step"],
-                enable_thinking=cfg["thinking"]
-            )
-        except RuntimeError as e:
-            too_long = "context length" in str(e) or "max_model_len" in str(e)
-            result.update(status="too_long" if too_long else "failed", error=str(e))
-            if too_long:
-                break
-            continue
-        result.update(reasoning=reply.reasoning, finish_reason=reply.finish_reason,
-                      completion_tokens=reply.completion_tokens, content=reply.content)
-        try:
-            answer = json.loads(reply.content)
-        except json.JSONDecodeError as e:
-            result.update(status="failed", error=f"answer is not JSON ({e}); finish_reason={reply.finish_reason}")
-            continue
-        result.update(status="ok", error=None, answer=answer)
-        break
-    write_json(out_path, result)
-    return result
-
-
 def run_phase(phase, requests, args, results_dir, stamp):
-    os.makedirs(results_dir, exist_ok=True)
-    todo = []
-    for key, _, build, schema in requests:
-        path = os.path.join(results_dir, f"{key}.json")
-        if os.path.exists(path):
-            done = read_json(path)
-            if done.get("status") == "ok" and all(done.get(k) == v for k, v in stamp.items()):
-                continue
-        todo.append((key, build, schema, path))
-    print(f"[Proofread] Phase {phase}: {len(todo)} task(s) to run, concurrency {VLLM_MAX_CONCURRENT_REQUESTS}")
-    counts = {}
-    with ThreadPoolExecutor(max_workers=VLLM_MAX_CONCURRENT_REQUESTS) as pool:
-        futures = {pool.submit(run_one, key, phase, build, schema, args, path, stamp): key
-                   for key, build, schema, path in todo}
-        for n, fut in enumerate(as_completed(futures), 1):
-            r = fut.result()
-            counts[r["status"]] = counts.get(r["status"], 0) + 1
-            if r["status"] != "ok":
-                print(f"  [{n}/{len(todo)}] {r['task']}: {r['status']} after {r['attempts']} attempt(s): "
-                      f"{(r.get('error') or '')[:200]}")
-            elif n % 25 == 0 or n == len(todo):
-                print(f"  [{n}/{len(todo)}] {counts}")
+    vlm_requests.run_phase(requests, results_dir, stamp, label=f"[Proofread] Phase {phase}", phase=PHASES[phase],
+                           model=Model(args.model_name, args.vllm_url))
 
 
-def load_results(results_dir, stamp):
-    """Successful answers by task key, from results made against the same input (`stamp`)."""
-    out = {}
-    for path in sorted(glob.glob(os.path.join(results_dir, "*.json"))):
-        r = read_json(path)
-        if r.get("status") == "ok" and all(r.get(k) == v for k, v in stamp.items()):
-            out[r["task"]] = r["answer"]
-    return out
-
-
-def sha1(text):
-    return hashlib.sha1(text.encode("utf-8")).hexdigest()
-
-
-# -- dry run
 def count_tokens(requests, phase, model_name, out_file):
-    from io import BytesIO
-    from PIL import Image
-    from transformers import AutoProcessor
-    processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
-    cfg = PHASES[phase]
-    counts = []
-    for key, _, build, _ in requests:
-        hf_messages = []
-        for m in build():
-            parts = m["content"] if isinstance(m["content"], list) else [{"type": "text", "text": m["content"]}]
-            hf_parts = []
-            for part in parts:
-                if part["type"] == "image_url":
-                    raw = base64.b64decode(part["image_url"]["url"].split(",", 1)[1])
-                    hf_parts.append({"type": "image", "image": Image.open(BytesIO(raw)).convert("RGB")})
-                else:
-                    hf_parts.append(part)
-            hf_messages.append({"role": m["role"], "content": hf_parts})
-        ids = processor.apply_chat_template(hf_messages, add_generation_prompt=True, tokenize=True,
-                                            return_dict=True, enable_thinking=cfg["thinking"])["input_ids"]
-        n = len(ids[0]) if ids and isinstance(ids[0], list) else len(ids)
-        counts.append(n)
-        out_file.write(json.dumps({"phase": phase, "task": key, "prompt_tokens": n,
-                                   "max_tokens": cfg["max_tokens"]}) + "\n")
-    if not counts:
-        print(f"[Dry Run] Phase {phase}: no tasks")
-        return
-    s = sorted(counts)
-    over = sum(1 for n in counts if n + cfg["max_tokens"] > VLLM_MAX_MODEL_LEN)
-    print(f"[Dry Run] Phase {phase}: {len(s)} tasks, prompt tokens p50 {s[len(s) // 2]} / "
-          f"p95 {s[min(len(s) - 1, len(s) * 95 // 100)]} / max {s[-1]}; + max_tokens {cfg['max_tokens']} "
-          f"vs context {VLLM_MAX_MODEL_LEN}: {over} task(s) would not fit")
-
-
-def write_jsonl(path, rows):
-    with open(path, "w", encoding="utf-8") as f:
-        for r in rows:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    vlm_requests.count_tokens(requests, PHASES[phase], model_name, out_file, label=f"Phase {phase}")
 
 
 def main():
