@@ -17,7 +17,7 @@
 #
 # Evaluates the extractions already in the run folder (runs/batch-cnb with --cnb, runs/batch-tech with --tech).
 # Only the folder's evaluations are wiped first (their JSONs, prompt logs, token usage and logs); the extractions stay
-# (docs/adr/0010-run-folders.md). With no extractions yet, the dataset's PDFs are extracted first, with Combined
+# (docs/adr/0004-run-folders.md). With no extractions yet, the dataset's PDFs are extracted first, with Combined
 # Extraction, so the model must then be a profile that can see images (VLLM_VISION=1).
 #
 # Each category is run several times and its median kept (DEFAULT_NUM_EVALUATIONS in src/core/config.py), then the

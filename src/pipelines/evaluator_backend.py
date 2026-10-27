@@ -199,7 +199,7 @@ def scrutinize_requirements_with_llm(
     """
     Scrutinizes HR standard & hidden requirements for Implicit Assumptions, returning up to
     `max_questions` Clarification Questions per field, and for Combined Requirements, returning up to `max_splits`
-    split suggestions per field under "split_suggestions" (ADR 0016). Fails closed: raises RuntimeError if a
+    split suggestions per field under "split_suggestions" (ADR 0010). Fails closed: raises RuntimeError if a
     valid response can't be parsed after `max_retries` attempts, rather than silently returning
     an empty (falsely reassuring) result.
     """

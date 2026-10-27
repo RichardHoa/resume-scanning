@@ -16,7 +16,7 @@
 # Usage: sbatch scripts/pipeline/extract.sh [pdf_dir] [model] --cnb|--tech
 #
 # Wipes the run folder (runs/batch-cnb with --cnb, runs/batch-tech with --tech) and extracts every PDF into it
-# (docs/adr/0010-run-folders.md). --tech reads Vietnamese-dataset/Tech as of its Reference Date (December 2015);
+# (docs/adr/0004-run-folders.md). --tech reads Vietnamese-dataset/Tech as of its Reference Date (December 2015);
 # an explicit PDF dir argument still overrides the dataset folder. No evaluation runs, so no HR RAG is needed.
 # Every resume is extracted with Combined Extraction: vLLM is served with vision on and the extractor also sees each
 # page's image, for layout only (values still come from the PDF text). It needs a profile that can see images

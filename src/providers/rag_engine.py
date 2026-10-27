@@ -23,7 +23,7 @@ NO_HR_RAG_MESSAGE = (
     "Criteria) before running an evaluation; evaluation never builds or changes the HR RAG."
 )
 
-# A Nice-to-have only adds bonus points on top of a Category's Must-have and Standard Criteria (docs/adr/0014)
+# A Nice-to-have only adds bonus points on top of a Category's Must-have and Standard Criteria (ADR 0007)
 BONUS_ONLY_CATEGORY_MESSAGE = (
     "A Category's Criteria are all Nice-to-have (Ưu tiên). Give it at least one Must-have or Standard Criterion "
     "on the website's RAG page"
@@ -56,7 +56,7 @@ def hr_rag_problem(categories: Dict[str, List[Any]]) -> str:
 
 
 # Set on every Criterion saved since only HR sets Importance. A saved Criterion without it has an Importance the
-# decomposer proposed, which HR may never have reviewed, and a Must-have now rejects candidates (docs/adr/0011)
+# decomposer proposed, which HR may never have reviewed, and a Must-have now rejects candidates (ADR 0008)
 IMPORTANCE_SET_BY_HR_KEY = "importance_set_by_hr"
 
 
@@ -328,7 +328,7 @@ class LocalCriteriaRAG:
                                 "type": req_type
                             }
                             meta = {"category": cat, "type": req_type, "created_at": now_str}
-                            # HR Check Items are never scored, so they carry no Importance (ADR 0004)
+                            # HR Check Items are never scored, so they carry no Importance (ADR 0006)
                             if cat == HR_CHECK_ITEMS_KEY:
                                 normalized[cat].append(cleaned_item)
                             else:

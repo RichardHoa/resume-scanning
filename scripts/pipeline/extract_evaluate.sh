@@ -20,7 +20,7 @@
 # category is run several times and its median kept (DEFAULT_NUM_EVALUATIONS in src/core/config.py), then the Review
 # Panel writes each report's Candidate Feedback. Token usage per step is printed at the end. Every
 # output of the job goes into the run folder: its logs, prompt logs, extraction markdown and JSON, evaluation JSON
-# and resume PDFs (docs/adr/0010-run-folders.md). SLURM's own .out/.err files stay in logging/.
+# and resume PDFs (docs/adr/0004-run-folders.md). SLURM's own .out/.err files stay in logging/.
 #
 # Evaluation uses the HR RAG as HR set it on the website's RAG page, and never builds,
 # changes or clears it: set the HR RAG for the job before submitting, or the job stops

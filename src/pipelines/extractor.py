@@ -41,7 +41,7 @@ FIDELITY_SHORT_SEGMENT_TOKENS = 3
 FIDELITY_WINDOW_BASE_SPREAD = 10
 # Values shorter than this (in tokens) never pass by the ordered window alone
 FIDELITY_WINDOW_MIN_TOKENS = 5
-# A language name the model infers from a certificate (ADR 0003) is accepted when the markdown names one of these
+# A language name the model infers from a certificate (ADR 0001) is accepted when the markdown names one of these
 FIDELITY_LANGUAGE_CERTIFICATES = {
     "english": ("TOEIC", "IELTS", "TOEFL", "Cambridge", "APTIS", "VSTEP"),
     "japanese": ("JLPT", "日本語能力試験"),
@@ -243,7 +243,7 @@ def render_page_images(pdf_path: str) -> tuple[list[PageImage], list[int]]:
     """
     Renders a PDF's text pages as JPEG page images for Combined Extraction, at most COMBINED_MAX_PAGES in page order.
     Returns the images and the 1-based numbers of the text pages left out past that cap. A page without text is
-    never shown: nothing could check what the model read from it (ADR 0007).
+    never shown: nothing could check what the model read from it (ADR 0002).
     """
     import pymupdf
     images, left_out = [], []
@@ -268,7 +268,7 @@ def extract_text_from_pdf(pdf_path: str) -> tuple[str, list[str]]:
     if len(textless_pages) == page_count:
         raise ScannedResumeError(SCANNED_RESUME_MESSAGE)
 
-    # PyMuPDF4LLM only: Docling was tried and could not detect tables at all, do not switch back (ADR 0008)
+    # PyMuPDF4LLM only: Docling was tried and could not detect tables at all, do not switch back (ADR 0002)
     try:
         import pymupdf4llm
         print(f"Parsing PDF with PyMuPDF4LLM: {pdf_path}", file=sys.stderr)

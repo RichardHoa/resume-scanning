@@ -1,5 +1,0 @@
-# Non-zero temperature for the requirement-scrutiny step
-
-> **Narrowed by [ADR 0012](0012-sampled-evaluation-runs.md):** Category evaluation is at `temperature=0.0` for run 1 only; later runs sample.
-
-Every other LLM call in this pipeline (decomposition, category evaluation) uses `temperature=0.0` for reproducibility, since a dedicated bias-testing suite depends on deterministic scoring. The new requirement-scrutiny step — which surfaces Implicit Assumptions as Clarification Questions before decomposition — deliberately uses `temperature=0.7` instead. This step is advisory and web-only (CLI/script pipelines skip it entirely and go straight to decomposition), so its output never affects scoring determinism or the bias-testing suite; a higher temperature lets the model surface a more varied set of ambiguities across scrutiny runs on the same text, which is more useful for an HR user re-checking their edits than a single fixed set of questions would be. Do not "fix" this back to `0.0` to match the rest of the pipeline — the two steps have different goals.

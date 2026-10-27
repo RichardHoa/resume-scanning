@@ -41,7 +41,7 @@ require_hr_rag() {
   return 1
 }
 
-# Run folders (docs/adr/0010-run-folders.md): every output of one pipeline job lives in runs/batch-cnb, or
+# Run folders (docs/adr/0004-run-folders.md): every output of one pipeline job lives in runs/batch-cnb, or
 # runs/batch-tech for the Tech resume set. Exports RUN_DIR (which src/core/config.py builds every path from) and
 # the folder's subfolders. Call with the dataset, "CnB" or "Tech"
 use_pipeline_run_dir() {

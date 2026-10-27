@@ -9,7 +9,7 @@ This report covers the runs `runs/consistency-cnb` and `runs/consistency-tech`, 
   - Of the 4,248 field paths compared, 45 (1.1%) differed between runs.
   - 7 resumes (8%) differed in content rather than formatting. Only 2 of them had a large difference, each caused by a single outlier run.
   - No run failed, and no output was cut off.
-- **The extractor follows the copy-only rule (ADR 0003) nearly always.** We checked all 129 Fidelity Warnings by hand and with scripts:
+- **The extractor follows the copy-only rule (ADR 0001) nearly always.** We checked all 129 Fidelity Warnings by hand and with scripts:
   - **12 are real rule breaks**, in 6 resumes. That is 0.4% of the roughly 3,200 non-empty values extracted. Examples: a company name read from a logo, a translated language name, "present" filled in with a date, a silently corrected typo.
   - **101 (78%) are false warnings.** The value is in the PDF text, but the checker misses it.
   - **16 are correct values that no text-only check can prove.**
@@ -33,7 +33,7 @@ Evaluation, scoring and the HR RAG are not part of this test.
 |---|---|---|
 | Folder | `Vietnamese-dataset/CnB/` | `Vietnamese-dataset/Tech/` |
 | Files in the folder | 38 PDFs | 53 PDFs, 6 `.docx` (ignored; the job reads PDFs only) |
-| Scanned Resumes skipped (no text layer, ADR 0007) | 3: Doan Thi Anh Tuyet, NGUYEN THANH TRUNG, TRAN THI TUYET TRINH | 0 |
+| Scanned Resumes skipped (no text layer, ADR 0002) | 3: Doan Thi Anh Tuyet, NGUYEN THANH TRUNG, TRAN THI TUYET TRINH | 0 |
 | **Resumes extracted** | **35** | **53** |
 | Language of the resumes | Vietnamese, English, bilingual | English, Vietnamese, Japanese (BrSE) |
 | Reference Date | today (2026-10-25) | 2015-12-31 |
@@ -45,7 +45,7 @@ Evaluation, scoring and the HR RAG are not part of this test.
 |---|---|
 | Model | `aisingapore/Qwen-SEA-LION-v4.5-27B-IT` (profile `sea-lion-v4.5-27b`, the default) |
 | Served by | vLLM, one GPU (RTX PRO 6000 Blackwell 96 GB), vision on, `CONCURRENCY=40` |
-| Extraction mode | **Combined Extraction**: the page images and the PyMuPDF4LLM markdown in one prompt (ADR 0013) |
+| Extraction mode | **Combined Extraction**: the page images and the PyMuPDF4LLM markdown in one prompt (ADR 0003) |
 | Page images | at most 6 pages, 150 DPI JPEG |
 | Temperature | 0.0 (production setting) |
 | Output cap | 8,192 new tokens |
@@ -159,7 +159,7 @@ Every one of the 129 warnings, sorted by cause:
 | Text layer splits a word or URL | 23 | 18% | No | `www.linkedin.com/in/nguye nducnham180992`, `Hongtuyet1993@gmail.co m` |
 | Model joins bullets or parts that are apart in the markdown | 23 | 18% | No | multi-bullet responsibilities with the KPI block merged in, as the prompt asks; `04/2025 … Now` → "04/2025 - Now" |
 | Text interleaved with another column | 19 | 15% | No | `CÔNG HR Lead Quy mô: 70-80 người TY CP ỨNG DỤNG … PKH` → "CÔNG TY CP ỨNG DỤNG PKH" |
-| Language named from its certificate (allowed by ADR 0003) | 6 | 5% | No | TOEIC 870 → "English", JLPT → "Japanese" |
+| Language named from its certificate (allowed by ADR 0001) | 6 | 5% | No | TOEIC 870 → "English", JLPT → "Japanese" |
 | **Correct, but no text-only check can prove it** | 16 | 12% | No | Japanese 履歴書 table: year cell + month cell + `年`/`月` headers → `2013年7月`; dates split across far-apart lines |
 | **Real rule break** | **12** | **9%** | **Yes** | see below |
 
@@ -167,7 +167,7 @@ Every one of the 129 warnings, sorted by cause:
 
 | Resume | Field | What the model did | Rule broken |
 |---|---|---|---|
-| CnB - Hoang Tan Tai | `work_experience[0].company_name` "Vietravel Airlines" | read it from a logo that has no text layer | images are for layout only (ADR 0013) |
+| CnB - Hoang Tan Tai | `work_experience[0].company_name` "Vietravel Airlines" | read it from a logo that has no text layer | images are for layout only (ADR 0003) |
 | CnB - Tran Ngoc Thien Trang | `skills[0–2]`, `work_experience[1].responsibilities` (4 values) | the text layer is garbled (`Tr�ng Đąi hc`, `n học văn phòng`), so the model read clean text from the image | images are for layout only. The result is right, but nothing can check it. |
 | CnB - Pham Truong Hoai Tram | `certifications[0].issuing_organization` | corrected the resume's typo "ĐÀO TÀO" to "ĐÀO TẠO" | copy verbatim |
 | Nguyen Anh Tho_BrSE | `languages[1].language` "English" | translated "英語" from the self-PR | never translate |

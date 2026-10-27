@@ -12,20 +12,20 @@ design decisions are recorded in [`docs/adr/`](docs/adr/).
 
 ## 💡 How It Works
 
-1. **Parse**: PyMuPDF4LLM turns the PDF into layout-aware Markdown (Docling was tried and rejected, ADR 0008). A
-   Scanned Resume (no page has text) is rejected and HR asks the candidate for a text PDF; no OCR is run (ADR 0007).
-2. **Extract** (Combined Extraction, ADR 0013 / 0015): the model sees each page's image as well as the text. The
-   images give only the layout; every value is copied from the PDF text (ADR 0003), and a fidelity check flags any
+1. **Parse**: PyMuPDF4LLM turns the PDF into layout-aware Markdown (Docling was tried and rejected, ADR 0002). A
+   Scanned Resume (no page has text) is rejected and HR asks the candidate for a text PDF; no OCR is run (ADR 0002).
+2. **Extract** (Combined Extraction, ADR 0003): the model sees each page's image as well as the text. The
+   images give only the layout; every value is copied from the PDF text (ADR 0001), and a fidelity check flags any
    value not found there as a Fidelity Warning. The output follows `schemas/qwen_schema.json`. Extraction needs a
    model that can see images.
 3. **Set the HR RAG** (website, RAG page): HR's requirement text is checked for Implicit Assumptions (Clarification
-   Questions), then split into Criteria across five Categories, with HR Check Items set aside (ADR 0004). HR reviews
-   the Criteria and sets each one's Importance: Must-have, Standard or Nice-to-have (ADR 0006 / 0011 / 0014).
+   Questions), then split into Criteria across five Categories, with HR Check Items set aside (ADR 0006). HR reviews
+   the Criteria and sets each one's Importance: Must-have, Standard or Nice-to-have (ADR 0007 / 0008).
    Evaluation only reads the HR RAG and stops if there is none (ADR 0005).
-4. **Evaluate**: each Category is judged in three runs (run 1 greedy, later runs sampled, ADR 0012). The LLM gives
+4. **Evaluate**: each Category is judged in three runs (run 1 greedy, later runs sampled, ADR 0009). The LLM gives
    each Criterion a Verdict; the code turns the Verdicts into Category Scores (median run), the Overall Score and the
    Match Recommendation. A Must-have with No Evidence in most runs is a Must-have Rejection.
-5. **Review Panel** (ADR 0002): three Panelists and a Coordinator write the Candidate Feedback. It never changes the
+5. **Review Panel** (ADR 0011): three Panelists and a Coordinator write the Candidate Feedback. It never changes the
    scores, and runs only for fully scored candidates that are not rejected.
 
 ### Model
@@ -67,7 +67,7 @@ exist only on the compute machine.
 
 ### Where outputs go
 
-Every output lives in one run folder under `runs/` (ADR 0010):
+Every output lives in one run folder under `runs/` (ADR 0004):
 
 | Run folder | Written by | Wiped |
 | --- | --- | --- |

@@ -33,7 +33,7 @@ if PARENT_DIR not in sys.path:
     sys.path.insert(0, PARENT_DIR)
 
 # The website writes only to its own run folder, one per resume set, or runs/web with no resume set
-# (docs/adr/0010-run-folders.md). Set before any src import, since src.core.config builds every path from it when
+# (docs/adr/0004-run-folders.md). Set before any src import, since src.core.config builds every path from it when
 # first imported
 if "--tech" in sys.argv[1:]:
     os.environ["RUN_DIR"] = "web-tech"

@@ -90,7 +90,7 @@ VLLM_PORT_FILE="logs/vllm.port"
 VLLM_LOG_FILE="logs/vllm_server.log"
 
 WEB_PID_FILE="logs/web.pid"
-# The website's run folder (docs/adr/0010-run-folders.md), never wiped; src/server.py picks the same one from
+# The website's run folder (docs/adr/0004-run-folders.md), never wiped; src/server.py picks the same one from
 # --cnb or --tech
 case "${SET_ARGS[0]}" in
   --cnb) WEB_RUN_DIR="runs/web-cnb"; RESUME_SET_LABEL="CnB" ;;

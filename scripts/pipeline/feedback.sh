@@ -22,7 +22,7 @@
 # are skipped and listed at the end. Rerunning on a finished directory makes no LLM calls.
 #
 # When REPORT_DIR is the evaluation_json of a run folder (runs/batch-*, runs/web*), the Review Panel's prompt logs
-# and token usage go to that run folder (docs/adr/0010-run-folders.md); otherwise to runs/batch-cnb. Nothing in the
+# and token usage go to that run folder (docs/adr/0004-run-folders.md); otherwise to runs/batch-cnb. Nothing in the
 # run folder is wiped: the printed token stats cover the whole run folder, the Review Panel step included. The vLLM
 # log is logs/vllm_batch.log.
 # -----------------------------------------------------------------------------
@@ -86,7 +86,7 @@ cd "$PROJECT_ROOT" || exit 1
 # Setup optimization & threading environment variables
 setup_vllm_env
 
-# Review Panel prompt logs and token usage go to the run folder the reports are in (docs/adr/0010-run-folders.md)
+# Review Panel prompt logs and token usage go to the run folder the reports are in (docs/adr/0004-run-folders.md)
 case "$(basename "$(dirname "$REPORT_DIR")")" in
   batch-cnb|batch-tech|web|web-cnb|web-tech) export RUN_DIR="$(dirname "$REPORT_DIR")" ;;
 esac

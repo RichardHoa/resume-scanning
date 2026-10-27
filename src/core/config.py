@@ -18,7 +18,7 @@ APPROVED_DIR = os.path.join(ROOT_DIR, "approved_jsons")
 PDF_DIR = os.path.join(ROOT_DIR, "pdfs")
 SERVER_STATE_DIR = os.path.join(ROOT_DIR, "server_state")
 
-# Run folders (docs/adr/0010-run-folders.md): every output of one source of work lives in one folder under runs/.
+# Run folders (docs/adr/0004-run-folders.md): every output of one source of work lives in one folder under runs/.
 # A pipeline job wipes its folder before it starts; the website's folder is never wiped. The scripts in scripts/
 # repeat these folder and subfolder names
 RUNS_DIR = os.path.join(ROOT_DIR, "runs")
@@ -111,9 +111,9 @@ DIMENSION_WEIGHTS = {
 
 # Importance of one Criterion inside its Category, set only by HR in the HR RAG. The Must-have and Standard Criteria
 # share the Category's 100 points by these weights, so an all-Standard Category scores as an unweighted mean. A
-# Nice-to-have only adds bonus points at its weight, capped at the Category's 100, and never costs any (ADR 0014).
+# Nice-to-have only adds bonus points at its weight, capped at the Category's 100, and never costs any (ADR 0007).
 # A Must-have weighs the same as a Standard: what sets it apart is the Must-have Rejection (NO_EVIDENCE on any one
-# rejects the candidate, ADR 0011). The single source of the levels: the API, hr_rag.txt and the criteria editor
+# rejects the candidate, ADR 0008). The single source of the levels: the API, hr_rag.txt and the criteria editor
 # (through the RAG summary) read them here
 MUST_HAVE = "must_have"
 DEFAULT_IMPORTANCE = "standard"
@@ -150,7 +150,7 @@ CATEGORY_EVAL_MAX_TOKENS = 8192
 CATEGORY_EVAL_RETRY_TEMPERATURE = 0.5
 # Evaluation runs per Category: the Category score is their median, and a Must-have rejects only on a majority of
 # No Evidence. Run 1 is greedy; later runs sample at CATEGORY_EVAL_SAMPLE_TEMPERATURE so they are independent
-# judgements instead of copies of run 1 (ADR 0012)
+# judgements instead of copies of run 1 (ADR 0009)
 DEFAULT_NUM_EVALUATIONS = 3
 CATEGORY_EVAL_SAMPLE_TEMPERATURE = 0.5
 DSPY_MAX_TOKENS = 4096    # DSPy prompt optimization output token limit
@@ -167,10 +167,10 @@ COMBINED_IMAGE_DPI = 150
 COMBINED_MAX_PAGES = 6
 
 # Requirement-scrutiny step (web-only; surfaces Implicit Assumptions as Clarification Questions
-# before decomposition). Uses a non-zero temperature deliberately — see docs/adr/0001-nondeterministic-temperature-for-scrutiny-step.md
+# before decomposition). Uses a non-zero temperature deliberately — see docs/adr/0009-evaluation-runs-and-temperatures.md
 SCRUTINY_TEMPERATURE = 0.7
 SCRUTINY_MAX_QUESTIONS_PER_FIELD = 5
-# Combined Requirements flagged per field, beside the Clarification Questions and not counted against them (ADR 0016)
+# Combined Requirements flagged per field, beside the Clarification Questions and not counted against them (ADR 0010)
 SCRUTINY_MAX_SPLITS_PER_FIELD = 8
 
 # Default model defaults

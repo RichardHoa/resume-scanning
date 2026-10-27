@@ -1,7 +1,7 @@
 """
 Review Panel: three Panelists discuss one evaluated candidate and a Coordinator merges their final
 views into Candidate Feedback for the HR user. Built on Microsoft Agent Framework (see
-docs/adr/0002-agent-framework-only-for-review-panel.md); every other LLM call stays on vllm_client.
+docs/adr/0011-agent-framework-only-for-review-panel.md); every other LLM call stays on vllm_client.
 
 The panel reads the evaluation report but never writes any score, weight, recommendation or Category field.
 """

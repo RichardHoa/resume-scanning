@@ -1,5 +1,5 @@
 """
-The files one resume has in a run folder (docs/adr/0010-run-folders.md), and clearing them when that resume's
+The files one resume has in a run folder (docs/adr/0004-run-folders.md), and clearing them when that resume's
 work is redone, so a run folder always holds one consistent pass per resume.
 
 Run as a module to clear every evaluation in the active run folder, keeping the extractions it reads:
