@@ -6,11 +6,6 @@ import json
 
 from src.nugioichung.regions import KINDS
 
-# A transcribed text with no run of more than three dots, spaces between them or not: each run of spaces and dots
-# between two other characters holds at most three dots. Structured output enforces it, so the model can't copy a
-# row of leader dots one by one until it runs out of tokens
-NO_DOT_RUN = r"^ *(\. *){0,3}([^. ] *(\. *){0,3})*$"
-
 _NEWSPAPER = """\
 The pages are scans of Nữ Giới Chung (Femina Annamite), a Vietnamese weekly newspaper printed in Saigon in 1918. The
 print is old, faint and speckled. Some pages carry handwriting added later by a library (shelf numbers, dates,
@@ -144,7 +139,7 @@ def transcribe_schema():
     return {
         "type": "object",
         "properties": {
-            "text": {"type": "string", "pattern": NO_DOT_RUN},
+            "text": {"type": "string"},
             "starts_mid_paragraph": {"type": "boolean"},
             "ends_mid_paragraph": {"type": "boolean"},
         },
@@ -163,7 +158,7 @@ def footnotes_schema():
                     "type": "object",
                     "properties": {
                         "number": {"type": "integer", "minimum": 0},
-                        "text": {"type": "string", "pattern": NO_DOT_RUN},
+                        "text": {"type": "string"},
                     },
                     "required": ["number", "text"],
                 },

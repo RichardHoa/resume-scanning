@@ -2,12 +2,19 @@
 Transcription pass: each Region is cut from the full 300 dpi scan and transcribed as a Faithful Transcription, whole
 or Strip by Strip if it is tall. A Footnotes Region answers as a list of Footnotes.
 """
+import re
+
 from src.nugioichung.pages import crop_image
 from src.nugioichung.prompts import (
     TRANSCRIBE_SYSTEM_PROMPT, footnotes_schema, transcribe_schema, transcribe_user_text
 )
 from src.nugioichung.regions import FOOTNOTES
 from src.providers.vlm_requests import Request, data_url, image_messages, sha1
+
+# A run of more than three dots, spaces between them or not. The prompt asks for `...`; a run the model copies dot by
+# dot anyway is collapsed here, not by a schema pattern: vLLM's grammar engine computes a regex this ambiguous on the
+# CPU for every token of every request, which slowed decoding about 60-fold
+DOT_RUN = re.compile(r"\.(?: *\.){3,}")
 
 
 def cut_stamp(region, cut):
@@ -38,8 +45,12 @@ def check_transcription(region, answer):
         "ends_mid_paragraph": bool(answer.get("ends_mid_paragraph")),
     }
     if region.kind == FOOTNOTES:
-        checked["footnotes"] = [{"number": max(0, int(f.get("number") or 0)), "text": (f.get("text") or "").strip()}
-                                for f in answer.get("footnotes") or [] if (f.get("text") or "").strip()]
+        checked["footnotes"] = [{"number": max(0, int(f.get("number") or 0)), "text": _clean(f.get("text"))}
+                                for f in answer.get("footnotes") or [] if _clean(f.get("text"))]
     else:
-        checked["text"] = (answer.get("text") or "").strip()
+        checked["text"] = _clean(answer.get("text"))
     return checked
+
+
+def _clean(text):
+    return DOT_RUN.sub("...", text or "").strip()

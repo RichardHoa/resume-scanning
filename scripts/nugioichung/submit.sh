@@ -30,6 +30,7 @@
 NUGIOICHUNG_CONCURRENCY=40    # the default profile's
 MAX_IMAGES_PER_PROMPT=1    # a layout request sends its page; a transcription request its Region's crop
 WATCH_SERVER_EVERY=30    # seconds between samples of the server's state in the metrics log
+VLLM_ENFORCE_EAGER=0    # CUDA graphs on: decode is bound by the engine's CPU thread in eager mode (vllm_utils.sh)
 
 # Every WATCH_SERVER_EVERY seconds while the vLLM server runs, appends to <log>: GPU utilization and memory, the
 # CPU use of the vLLM processes and the node's load, and vLLM's own counters (requests running/waiting,

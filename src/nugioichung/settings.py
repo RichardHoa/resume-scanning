@@ -7,10 +7,11 @@ CROP_DPI = 300
 # The layout pass answers without thinking: when it thinks, it works its boxes out as round figures in words instead
 # of placing them on the scan. A page's answer is a few dozen Regions, with titles in Vietnamese, which tokenises long
 LAYOUT_MAX_TOKENS = 8192
-# A transcription answer is the text of one Region
-TRANSCRIBE_MAX_TOKENS = 4096
+# A transcription answer is the text of one Region or Strip, a few hundred tokens. The cap also stops a runaway
+# answer (a row of leader dots copied dot by dot) well inside REQUEST_TIMEOUT
+TRANSCRIBE_MAX_TOKENS = 2048
 # Seconds to wait for one request's answer before it fails and is retried
-REQUEST_TIMEOUT = 120
+REQUEST_TIMEOUT = 180
 # Retries after the first attempt sample, as an identical prompt at temperature 0 fails the same way
 RETRY_TEMPERATURE = 0.3
 # How far, in thousandths of the page, a Region's box edge may move to land on a column gap or printed rule. The

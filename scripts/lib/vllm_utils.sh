@@ -85,6 +85,8 @@ stop_vllm_server() {
 # Usage: start_vllm_server <MODEL_NAME> <PORT> [LOG_FILE]
 #   (defaults: the default profile's model, port 8100, logs/vllm_server.log)
 # Optional: VLLM_EXTRA_ARGS bash array of extra `vllm serve` flags (see model_profiles.sh)
+# Optional: VLLM_ENFORCE_EAGER=0 serves with CUDA graphs: a faster decode (eager mode launches every kernel from
+#   Python, so the engine's one CPU thread bounds it), for a slower start and a few GB more VRAM. Default 1, eager
 # Waits up to 3600s for /v1/models, and traps EXIT/INT/TERM so the server dies with the calling shell
 # -----------------------------------------------------------------------------
 start_vllm_server() {
@@ -124,6 +126,9 @@ start_vllm_server() {
 
   mkdir -p "$(dirname "$log_file")"
 
+  local eager_args=(--enforce-eager)
+  [ "${VLLM_ENFORCE_EAGER:-1}" = "0" ] && eager_args=()
+
   $vllm_cmd "$model" \
     --dtype auto \
     --port "$port" \
@@ -132,7 +137,7 @@ start_vllm_server() {
     --max-num-seqs 256 \
     --enable-prefix-caching \
     --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.85}" \
-    --enforce-eager \
+    "${eager_args[@]}" \
     --trust-remote-code \
     --served-model-name "$model" \
     "${VLLM_EXTRA_ARGS[@]}" \
