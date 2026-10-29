@@ -1,6 +1,6 @@
 """
-Prompts and output schemas for the two Nữ Giới Chung passes (docs/adr/0001-two-pass-vlm-no-ocr-draft.md), kept apart
-from the book proofreader's.
+Prompts and output schemas for the two Nữ Giới Chung passes (docs/adr/0001-two-pass-vlm-no-ocr-draft.md), the
+transcription pass as a read and a format request, kept apart from the book proofreader's.
 """
 import json
 
@@ -81,18 +81,38 @@ def layout_schema():
     }
 
 
-TRANSCRIBE_SYSTEM_PROMPT = _NEWSPAPER + """
+_CROP = """
 You get one Region of a page, cut from the scan: one part of one Item. A tall Region comes as Strips, horizontal
-slices cut between printed lines, and you get one Strip of it. Transcribe all the text printed in it, top to bottom,
-as Markdown in `text`.
+slices cut between printed lines, and you get one Strip of it.
+"""
+
+READ_SYSTEM_PROMPT = _NEWSPAPER + _CROP + """
+Copy its printed lines, top to bottom, one printed line per entry of `lines`.
 
 You copy exactly what the scan prints. You are a copyist, not an editor:
 - Copy letter by letter, diacritic by diacritic. Keep the 1918 spelling (Đờn-bà, sạch sẻ), the hyphens between
   syllables, the Hán characters and the newspaper's own typos exactly as printed. Never modernise, correct or
   reword anything.
+- Copy each line as it is printed, the hyphen at its end included. Never join lines, and never add Markdown or any
+  other formatting: another step lays the text out.
 - Leave out Library Marks: handwriting, shelf numbers and stamps added to the scan.
 - Leave out the running header and the page number if part of one shows.
-- Write a printed picture as `[Hình]` on its own line, with no description.
+- Write a printed picture as the entry `[Hình]`, with no description.
+- A run of dots, spaced or not (the leader dots between a label and its price or page number, or a long ellipsis),
+  is written as three dots `...`, however long it is printed. Never copy dots one by one.
+- A Footnote's number, in parentheses such as "(7)", is copied at the start of its line as printed.
+
+`starts_mid_paragraph`: true when the first line carries on a paragraph (or a Footnote) from before it (the line is
+not indented and continues a sentence). `ends_mid_paragraph`: true when its last paragraph (or Footnote) runs on past
+its foot. Stop exactly where the image stops, even mid-sentence or mid-word; never finish a sentence.
+"""
+
+FORMAT_SYSTEM_PROMPT = _NEWSPAPER + _CROP + """
+You also get its printed lines, already copied from the scan one per line. Write the same text as Markdown in
+`text`, looking at the scan to see how it is laid out.
+
+Change no letter. Never add, drop, correct, reword or reorder a word, a letter, a diacritic or a hyphen: you only
+decide where lines break and add Markdown marks.
 
 Layout of `text`:
 - A title or section heading on its own line, starting with `### `. A heading set over several printed lines (an
@@ -104,70 +124,47 @@ Layout of `text`:
   next line with no space, keeping the hyphen. A new paragraph starts where the scan shows one (an indented first
   line, or after a line that stops short, such as a slogan, a shop's name or its address in an Ad); separate
   paragraphs with a blank line.
-- Keep the printed line breaks, one printed line per line, only in: a Hán saying with its phiên âm and its
-  translation, and a poem.
-- A table of prices or other figures set in rows and columns: a Markdown table.
+- Keep the printed line breaks only in a Hán saying with its phiên âm and its translation, and in a poem: one
+  printed line per line, each starting with `> `.
+- `[Hình]`, a printed picture, on its own line.
+- A table of prices or other figures set in rows and columns: a Markdown table, the leader dots left out, the label
+  and the figure in their own columns.
 - A Table of Contents: a nested Markdown list, its sections as items and their entries under them.
-- A Footnote call in the text, a number in parentheses such as "(7)", is copied as printed.
-- A run of dots, spaced or not (the leader dots between a label and its price or page number, or a long ellipsis),
-  is written as three dots `...`, however long it is printed. Never copy dots one by one. In a Markdown table the
-  leader dots are left out: the label and the figure go in their own columns.
-
-A Footnotes Region holds the numbered notes printed under an Article. Answer it in `footnotes` instead of `text`:
-one entry per Footnote, in printed order, with `number` the number printed in its parentheses (7 for "(7)") and
-`text` the note after that number, copied by the same rules. If the Region begins partway through a Footnote whose
-number is printed before it, give that first part as an entry with `number` 0.
-
-`starts_mid_paragraph`: true when the Region's first line carries on a paragraph (or a Footnote) from before it (the
-line is not indented and continues a sentence). `ends_mid_paragraph`: true when its last paragraph (or Footnote)
-runs on past the Region's foot. Stop exactly where the Region stops, even mid-sentence or mid-word; never finish a
-sentence.
 """
 
 
-def transcribe_user_text(region, cut):
+def _where(region, cut):
     what = KINDS[region.kind].label
     if region.title:
         what += f' of the Item "{region.title}"'
     where = f"Region {region.n} of PDF page {region.page}"
     if cut.strip:
         where = f"Strip {cut.strip} of {cut.of}, top to bottom, of {where}"
-    return f"{where}: {what}. Transcribe it."
+    return f"{where}: {what}."
 
 
-def transcribe_schema():
+def read_user_text(region, cut):
+    return f"{_where(region, cut)} Copy its printed lines."
+
+
+def format_user_text(region, cut, lines):
+    return f"{_where(region, cut)} Its printed lines:\n\n" + "\n".join(lines) + "\n\nWrite them as Markdown."
+
+
+def read_schema():
     return {
         "type": "object",
         "properties": {
-            "text": {"type": "string"},
+            "lines": {"type": "array", "items": {"type": "string"}},
             "starts_mid_paragraph": {"type": "boolean"},
             "ends_mid_paragraph": {"type": "boolean"},
         },
-        "required": ["text", "starts_mid_paragraph", "ends_mid_paragraph"],
+        "required": ["lines", "starts_mid_paragraph", "ends_mid_paragraph"],
     }
 
 
-def footnotes_schema():
-    """The answer for a Footnotes Region: its Footnotes as {number, text}, 0 for a Footnote carried on from before."""
-    return {
-        "type": "object",
-        "properties": {
-            "footnotes": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "number": {"type": "integer", "minimum": 0},
-                        "text": {"type": "string"},
-                    },
-                    "required": ["number", "text"],
-                },
-            },
-            "starts_mid_paragraph": {"type": "boolean"},
-            "ends_mid_paragraph": {"type": "boolean"},
-        },
-        "required": ["footnotes", "starts_mid_paragraph", "ends_mid_paragraph"],
-    }
+def format_schema():
+    return {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
 
 
 def prompt_sha1_input(system, schema):

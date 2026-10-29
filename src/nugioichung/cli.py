@@ -6,24 +6,27 @@ CLI Entrypoint for transcribing one Nữ Giới Chung Issue PDF (e.g. vsc-projec
 Writes to vsc-project/NuGioiChung/runs/<issue>/<time>/ (or --run-dir):
 
   requests/layout/pNN.json          one layout answer per page; pNN/ holds its image as sent and its prompts
-  requests/transcribe/pNN-rMM.json  one transcription per Region, or pNN-rMM-sKK.json per Strip of a tall Region;
-                                    the folder of the same name holds its crop as sent and its prompts
+  requests/read/pNN-rMM.json        the printed lines of each Region, or pNN-rMM-sKK.json of each Strip of a tall
+                                    Region; the folder of the same name holds its crop as sent and its prompts
+  requests/format/pNN-rMM.json      the same Region's or Strip's lines as Markdown, likewise (none for Footnotes)
   layout/pNN.png                    each page with its snapped Regions outlined and numbered, Strip cuts dashed,
                                     and ⚠ on printed text outside any Region
   issue.md                          the Issue as Markdown, its Items in reading order, Footnotes paired with calls
   articles.csv                      one row per Article, in the old datasheet's columns
   dropped.jsonl                     what needs looking at, and why: pages with no layout, Regions left out,
-                                    requests with no transcription, unpaired Footnotes and calls, and text outside
-                                    any Region
+                                    requests with no transcription, Regions or Strips whose read lines were used
+                                    unformatted, unpaired Footnotes and calls, and text outside any Region
   inspect.html                      page → Regions → Strips: the drawn page, then each request's image, prompt and
                                     answer
   token_usage.jsonl                 one line per request sent in this run folder, summarized at the end
 
 Saved answers are stamped with the PDF's hash, the image settings and a hash of the prompts, so a run continued
 with --run-dir only redoes requests that failed or never ran, and the outputs are always rebuilt from all saved
-answers. --pages picks the pages whose requests run. --dry-run sends nothing: it counts each request's prompt tokens
+answers. The transcription pass runs each Region's or Strip's read request, then its format request. --pages picks
+the pages whose requests run. --dry-run sends nothing: it counts each request's prompt tokens
 with the model's own processor (images included) to check they fit the context window; transcription requests can
-only be counted for pages that already have a layout answer.
+only be counted for pages that already have a layout answer, and format requests for Regions and Strips that
+already have a read answer.
 """
 import os
 import sys
@@ -47,14 +50,16 @@ from src.nugioichung.inspection import draw_layout, drawn_page, write_inspect
 from src.nugioichung.layout import check_layout, layout_requests, page_stamp
 from src.nugioichung.pages import layout_image
 from src.nugioichung.prompts import (
-    LAYOUT_SYSTEM_PROMPT, TRANSCRIBE_SYSTEM_PROMPT, footnotes_schema, layout_schema, prompt_sha1_input,
-    transcribe_schema
+    FORMAT_SYSTEM_PROMPT, LAYOUT_SYSTEM_PROMPT, READ_SYSTEM_PROMPT, format_schema, layout_schema, prompt_sha1_input,
+    read_schema
 )
 from src.nugioichung.settings import (
     CROP_DPI, LAYOUT_LONG_SIDE, LAYOUT_MAX_TOKENS, REQUEST_TIMEOUT, RETRY_TEMPERATURE, TRANSCRIBE_MAX_TOKENS
 )
 from src.nugioichung.regions import ARTICLE, page_key
-from src.nugioichung.transcribe import check_transcription, cut_stamp, transcribe_requests
+from src.nugioichung.transcribe import (
+    check_read, format_requests, format_stamp, needs_format, read_requests, read_stamp, transcription
+)
 from src.providers import vlm_requests
 from src.providers.vlm_requests import Model, Phase, current_answer, is_current, read_result, sha1, write_jsonl
 
@@ -62,8 +67,10 @@ RUNS_DIR = os.path.join(_PROJECT_ROOT, "vsc-project", "NuGioiChung", "runs")
 PASSES = {
     "layout": Phase("layout", step="nugioichung_layout", max_tokens=LAYOUT_MAX_TOKENS, thinking=False,
                     retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT),
-    "transcribe": Phase("transcribe", step="nugioichung_transcribe", max_tokens=TRANSCRIBE_MAX_TOKENS,
-                        thinking=False, retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT),
+    "read": Phase("read", step="nugioichung_read", max_tokens=TRANSCRIBE_MAX_TOKENS, thinking=False,
+                  retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT),
+    "format": Phase("format", step="nugioichung_format", max_tokens=TRANSCRIBE_MAX_TOKENS, thinking=False,
+                    retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT),
 }
 MONTHS = {"jan": "Janvier", "feb": "Février", "mar": "Mars", "apr": "Avril", "may": "Mai", "jun": "Juin",
           "jul": "Juillet", "aug": "Août", "sep": "Septembre", "oct": "Octobre", "nov": "Novembre", "dec": "Décembre"}
@@ -139,7 +146,8 @@ def main():
     run_dir = os.path.abspath(args.run_dir) if args.run_dir else os.path.join(
         RUNS_DIR, stem, datetime.now().strftime("%Y%m%d-%H%M%S"))
     layout_dir = os.path.join(run_dir, "requests", "layout")
-    transcribe_dir = os.path.join(run_dir, "requests", "transcribe")
+    read_dir = os.path.join(run_dir, "requests", "read")
+    format_dir = os.path.join(run_dir, "requests", "format")
     usage_file = os.path.join(run_dir, "token_usage.jsonl")
     os.makedirs(run_dir, exist_ok=True)
     print(f"[Nữ Giới Chung] Số {issue['number']}, {issue['date']}: {n_pages} pages, running "
@@ -148,9 +156,10 @@ def main():
     pdf_sha1 = file_sha1(pdf)
     layout_stamp = {"pdf_sha1": pdf_sha1, "layout_long_side": LAYOUT_LONG_SIDE,
                     "prompt_sha1": sha1(prompt_sha1_input(LAYOUT_SYSTEM_PROMPT, layout_schema()))}
-    transcribe_stamp = {"pdf_sha1": pdf_sha1, "crop_dpi": CROP_DPI,
-                        "prompt_sha1": sha1(prompt_sha1_input(TRANSCRIBE_SYSTEM_PROMPT,
-                                                              [transcribe_schema(), footnotes_schema()]))}
+    read_pass_stamp = {"pdf_sha1": pdf_sha1, "crop_dpi": CROP_DPI,
+                       "prompt_sha1": sha1(prompt_sha1_input(READ_SYSTEM_PROMPT, read_schema()))}
+    format_pass_stamp = {"pdf_sha1": pdf_sha1, "crop_dpi": CROP_DPI,
+                         "prompt_sha1": sha1(prompt_sha1_input(FORMAT_SYSTEM_PROMPT, format_schema()))}
 
     def saved_layouts():
         """Checked layouts of every page with a current layout answer, the Regions they left out, and why each other
@@ -165,6 +174,16 @@ def main():
             problems += left_out
         return layouts, problems, no_layout
 
+    def saved_reads(layouts):
+        """{cut key: (checked read answer or None, why it has none)} for every Region and Strip laid out."""
+        reads = {}
+        for layout in layouts.values():
+            for region in layout.regions:
+                for cut in region.cuts:
+                    answer, why = current_answer(read_dir, cut.key, {**read_pass_stamp, **read_stamp(region, cut)})
+                    reads[cut.key] = (check_read(answer) if answer is not None else None, why)
+        return reads
+
     model = Model(args.model_name, args.vllm_url)
     if args.dry_run:
         with open(os.path.join(run_dir, "dry_run_tokens.jsonl"), "w", encoding="utf-8") as out:
@@ -173,11 +192,14 @@ def main():
                                           label="Layout pass")
             if "transcribe" in passes:
                 layouts, _, _ = saved_layouts()
-                vlm_requests.count_tokens(list(transcribe_requests(doc, layouts, only)), PASSES["transcribe"],
-                                          args.model_name, out, label="Transcription pass")
+                vlm_requests.count_tokens(list(read_requests(doc, layouts, only)), PASSES["read"],
+                                          args.model_name, out, label="Read requests")
+                vlm_requests.count_tokens(list(format_requests(doc, layouts, only, saved_reads(layouts))),
+                                          PASSES["format"], args.model_name, out, label="Format requests")
                 missing = [p for p in only if p not in layouts]
                 if missing:
                     print(f"[Dry Run] Transcription requests not counted for page(s) {missing}: no layout answer yet")
+                print("[Dry Run] Format requests are counted only for Regions and Strips with a read answer")
         print(f"[Dry Run] Per-request counts in {run_dir}/dry_run_tokens.jsonl")
         return
 
@@ -186,20 +208,35 @@ def main():
                                phase=PASSES["layout"], model=model, save_requests=True, usage_file=usage_file)
     layouts, dropped, no_layout = saved_layouts()
     if "transcribe" in passes:
-        vlm_requests.run_phase(transcribe_requests(doc, layouts, only), transcribe_dir, transcribe_stamp,
-                               label="[Nữ Giới Chung] Transcription pass", phase=PASSES["transcribe"], model=model,
+        vlm_requests.run_phase(read_requests(doc, layouts, only), read_dir, read_pass_stamp,
+                               label="[Nữ Giới Chung] Read requests", phase=PASSES["read"], model=model,
+                               save_requests=True, usage_file=usage_file)
+    reads = saved_reads(layouts)
+    if "transcribe" in passes:
+        vlm_requests.run_phase(format_requests(doc, layouts, only, reads), format_dir, format_pass_stamp,
+                               label="[Nữ Giới Chung] Format requests", phase=PASSES["format"], model=model,
                                save_requests=True, usage_file=usage_file)
 
     # -- outputs, rebuilt from the saved answers alone
-    transcriptions, transcribe_statuses = {}, []
+    transcriptions, read_statuses, format_statuses, unformatted = {}, [], [], []
     for layout in layouts.values():
         for region in layout.regions:
             for cut in region.cuts:
-                stamp = {**transcribe_stamp, **cut_stamp(region, cut)}
-                answer, why = current_answer(transcribe_dir, cut.key, stamp)
-                checked = check_transcription(region, answer) if answer is not None else None
-                transcriptions[cut.key] = (checked, why)
-                transcribe_statuses.append(request_status(transcribe_dir, cut.key, stamp))
+                read, why = reads[cut.key]
+                read_statuses.append(request_status(read_dir, cut.key, {**read_pass_stamp, **read_stamp(region, cut)}))
+                if read is None:
+                    transcriptions[cut.key] = (None, why)
+                    continue
+                formatted = None
+                if needs_format(region, read):
+                    stamp = {**format_pass_stamp, **format_stamp(region, cut, read)}
+                    formatted, why = current_answer(format_dir, cut.key, stamp)
+                    format_statuses.append(request_status(format_dir, cut.key, stamp))
+                checked, fallback = transcription(region, read, formatted, why)
+                transcriptions[cut.key] = (checked, None)
+                # As with layouts, a format request outside --pages counts only if it ran and failed
+                if fallback and (region.page in only or why != "never ran"):
+                    unformatted.append({"task": cut.label, "why": fallback})
     items = join_items(layouts)
     texts, gaps, unpaired = render_items(items, transcriptions)
     with open(os.path.join(run_dir, "issue.md"), "w", encoding="utf-8") as f:
@@ -210,25 +247,26 @@ def main():
     for page, layout in layouts.items():
         draw_layout(layout_image(doc, page), layout, os.path.join(run_dir, drawn_page(page)))
     shown = sorted(set(only) | set(layouts))
-    write_inspect(run_dir, issue_title(issue), shown, layouts, layout_dir,
-                  transcribe_dir, layout_stamp, transcribe_stamp)
+    write_inspect(run_dir, issue_title(issue), shown, layouts, reads, layout_dir, read_dir, format_dir,
+                  layout_stamp, read_pass_stamp, format_pass_stamp)
 
     # A page outside --pages counts only if its layout request ran and failed
     unread = [{"task": f"page {p}", "why": f"no layout answer: {why}"} for p, why in sorted(no_layout.items())
               if p in only or why != "never ran"]
     outside = [{"task": f"page {p}", "why": f"text outside any Region at {box}"}
                for p, layout in sorted(layouts.items()) for box in layout.outside]
-    write_jsonl(os.path.join(run_dir, "dropped.jsonl"), unread + dropped + gaps + unpaired + outside)
+    write_jsonl(os.path.join(run_dir, "dropped.jsonl"), unread + dropped + gaps + unformatted + unpaired + outside)
 
     layout_statuses = [request_status(layout_dir, page_key(p), {**layout_stamp, **page_stamp(p)}) for p in shown]
-    for name, statuses in (("Layout", layout_statuses), ("Transcription", transcribe_statuses)):
+    for name, statuses in (("Layout", layout_statuses), ("Read", read_statuses), ("Format", format_statuses)):
         print(f"[Nữ Giới Chung] {name} requests: {({s: statuses.count(s) for s in sorted(set(statuses))})}")
     n_regions = sum(len(layout.regions) for layout in layouts.values())
     n_strips = sum(len(r.strips) for layout in layouts.values() for r in layout.regions)
     print(f"[Nữ Giới Chung] {len(layouts)} page(s) laid out, {n_regions} Region(s), {n_strips} Strip(s), "
           f"{len(items)} Item(s), {sum(i['kind'] == ARTICLE for i in items)} Article(s)")
     print(f"[Nữ Giới Chung] To look at (see dropped.jsonl): {len(unread)} page(s) with no layout, {len(dropped)} "
-          f"Region(s) left out, {len(gaps)} request(s) with no transcription, {len(unpaired)} unpaired Footnote(s) "
+          f"Region(s) left out, {len(gaps)} request(s) with no transcription, {len(unformatted)} left unformatted, "
+          f"{len(unpaired)} unpaired Footnote(s) "
           f"or call(s), {len(outside)} patch(es) of text outside any Region")
     print(f"[Nữ Giới Chung] Open {run_dir}/inspect.html to check the run, and read {run_dir}/issue.md")
     subprocess.run([sys.executable, os.path.join(_PROJECT_ROOT, "scripts", "checks", "token_stats.py"),

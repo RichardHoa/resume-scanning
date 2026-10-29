@@ -1,7 +1,8 @@
 """
 Inspection: each page drawn with its Regions outlined and numbered, its Strip cuts dashed and ⚠ on any printed text
 outside every Region, and one offline inspect.html that goes page → Regions → Strips, showing the drawn page, then
-each request's image as sent, its prompt and its answer side by side. Both are built from the saved requests and
+each request's image as sent, its prompt and its answer side by side (a read and a format request per Region or
+Strip). Both are built from the saved requests and
 answers only.
 """
 import html
@@ -13,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from src.nugioichung.layout import page_stamp
 from src.nugioichung.regions import KINDS, page_key
-from src.nugioichung.transcribe import cut_stamp
+from src.nugioichung.transcribe import format_stamp, needs_format, read_stamp
 from src.providers.vlm_requests import is_current, read_result
 
 WARNING = (204, 0, 0)
@@ -113,20 +114,36 @@ def _layout_answer(answer):
     return _pre(json.dumps(answer, ensure_ascii=False, indent=1))
 
 
-def _transcription_answer(answer):
+def _read_answer(answer):
     flags = [f for f in ("starts_mid_paragraph", "ends_mid_paragraph") if answer.get(f)]
-    if "footnotes" in answer:
-        text = "\n".join(f"({f.get('number') or '…'}) {f.get('text') or ''}" for f in answer["footnotes"] or [])
-    else:
-        text = answer.get("text") or ""
-    return f'<p class="muted">{html.escape(", ".join(flags) or "whole paragraphs")}</p>' + _pre(text)
+    return (f'<p class="muted">{html.escape(", ".join(flags) or "whole paragraphs")}</p>'
+            + _pre("\n".join(line or "" for line in answer.get("lines") or [])))
 
 
-def write_inspect(run_dir, title, pages, layouts, layout_dir, transcribe_dir, layout_stamp, transcribe_stamp):
+def _format_answer(answer):
+    return _pre(answer.get("text") or "")
+
+
+def _cut_rows(run_dir, r, cut, reads, read_dir, format_dir, read_pass_stamp, format_pass_stamp):
+    """A Region's or Strip's read request and, if it has one, its format request."""
+    title = f"Region {r.n}, Strip {cut.strip} of {cut.of}" if cut.strip else f"Region {r.n}"
+    heading = "h4" if cut.strip else "h3"
+    rows = [_request_row(run_dir, read_dir, cut.key, {**read_pass_stamp, **read_stamp(r, cut)},
+                         f"{title} · read", _read_answer, heading)]
+    read, _ = reads.get(cut.key, (None, None))
+    if read is not None and needs_format(r, read):
+        rows.append(_request_row(run_dir, format_dir, cut.key, {**format_pass_stamp, **format_stamp(r, cut, read)},
+                                 f"{title} · format", _format_answer, heading))
+    return rows
+
+
+def write_inspect(run_dir, title, pages, layouts, reads, layout_dir, read_dir, format_dir, layout_stamp,
+                  read_pass_stamp, format_pass_stamp):
     """
     Writes <run-dir>/inspect.html for `pages` (PDF page numbers), from the drawn pages in <run-dir>/layout/ and the
-    saved requests and answers. `layouts`: {pdf page: checked layout}, for the pages that have one. The stamps are
-    the passes' own, so an answer the outputs don't use is shown as such.
+    saved requests and answers. `layouts`: {pdf page: checked layout}, for the pages that have one; `reads`: {cut
+    key: (checked read answer or None, why)}, which say what each format request was sent. The stamps are the
+    passes' own, so an answer the outputs don't use is shown as such.
     """
     body = []
     for page in pages:
@@ -145,14 +162,12 @@ def write_inspect(run_dir, title, pages, layouts, layout_dir, transcribe_dir, la
         for r in regions:
             what = KINDS[r.kind].label + (f" · {r.title}" if r.title else "") + (" · continues" if r.continues else "")
             box = f"box {r.box}" + (f" (layout pass gave {r.layout_box})" if r.box != r.layout_box else "")
-            if r.strips:
-                parts.append(f'<h3>Region {r.n}: {html.escape(what)} · {len(r.strips)} Strips</h3>'
-                             f'<p class="muted">{html.escape(box)}</p>')
-            parts += [_request_row(run_dir, transcribe_dir, cut.key, {**transcribe_stamp, **cut_stamp(r, cut)},
-                                   f"Region {r.n}, Strip {cut.strip} of {cut.of} · box {cut.box}" if cut.strip
-                                   else f"Region {r.n}: {what} · {box}",
-                                   _transcription_answer, heading="h4" if cut.strip else "h3")
-                      for cut in r.cuts]
+            strips = f" · {len(r.strips)} Strips" if r.strips else ""
+            parts.append(f'<h3>Region {r.n}: {html.escape(what)}{strips}</h3><p class="muted">{html.escape(box)}</p>')
+            for cut in r.cuts:
+                if cut.strip:
+                    parts.append(f'<p class="muted">Strip {cut.strip} of {cut.of} · box {cut.box}</p>')
+                parts += _cut_rows(run_dir, r, cut, reads, read_dir, format_dir, read_pass_stamp, format_pass_stamp)
         flag = " ⚠" if outside else ""
         body.append(f'<details class="page" id="p{page}"><summary>PDF page {page}{printed}{flag}</summary>'
                     f'{"".join(parts)}</details>')

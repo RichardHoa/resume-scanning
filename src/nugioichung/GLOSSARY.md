@@ -28,6 +28,14 @@ _Avoid_: block, zone, box (alone)
 A horizontal slice of a tall Region, cut at a blank gap between printed lines so no line is split or repeated. A Region is transcribed whole, or Strip by Strip if it is tall.
 _Avoid_: tile, chunk, slice
 
+**Read**:
+The first request for a Region or Strip: the model copies its printed lines exactly, one per line, as a Faithful Transcription with no formatting.
+_Avoid_: OCR, transcription (alone), draft
+
+**Format**:
+The second request for a Region or Strip: the model sees the crop again with the lines it Read and writes the same text as Markdown (headings, paragraphs, tables, lists, verse), changing no letter. Code checks the letters match and falls back to the Read lines when they don't. A Footnotes Region has no Format request: code splits its Read lines into Footnotes.
+_Avoid_: cleanup, post-processing, rewrite
+
 **Footnote**:
 A numbered note printed under an Article, called in its text by the same number in parentheses, e.g. "(7)". Numbers run on across the Article's pages, and a Footnote belongs to the Article it is printed under.
 _Avoid_: note (alone), chú thích (alone)

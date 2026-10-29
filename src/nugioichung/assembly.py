@@ -12,7 +12,7 @@ NEWSPAPER = "Nữ-Giới-Chung"
 FLAG = "⚠"
 
 # Lines of a transcription that are Markdown structure, never the tail or head of a paragraph cut by a boundary
-_STRUCTURE = re.compile(r"^(#|\||- |\* |\d+\. |\[Hình\])")
+_STRUCTURE = re.compile(r"^(#|\||- |\* |\d+\. |> |\[Hình\])")
 # A Footnote call in an Article's text, e.g. "(7)"
 _CALL = re.compile(r"\((\d{1,3})\)")
 # The old datasheet's columns, Chủ đề (topic) left empty
