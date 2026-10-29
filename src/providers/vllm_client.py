@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import threading
+import time
 from datetime import datetime
 import urllib.request
 import urllib.error
@@ -80,12 +81,15 @@ def _with_reasoning_strength(messages: List[Dict[str, str]]) -> List[Dict[str, s
 
 def record_usage(
     step: str, prompt_tokens: Optional[int], completion_tokens: Optional[int], finish_reason: Optional[str], max_tokens: int,
-    resume_name: Optional[str] = None
+    resume_name: Optional[str] = None, usage_file: Optional[str] = None, elapsed_s: Optional[float] = None,
+    error: Optional[str] = None
 ) -> None:
     """
-    Appends one request's token counts to TOKEN_USAGE_FILE, with the resume it was made for (None for calls made
-    for no resume). Never fails the request it describes.
+    Appends one request's token counts to `usage_file` (default TOKEN_USAGE_FILE), with the resume it was made for
+    (None for calls made for no resume), how long it took, and for a request that got no answer, why (its
+    finish_reason is then "error"). Never fails the request it describes.
     """
+    usage_file = usage_file or TOKEN_USAGE_FILE
     record = {
         "timestamp": datetime.now().isoformat(),
         "step": step,
@@ -93,13 +97,15 @@ def record_usage(
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "max_tokens": max_tokens,
-        "finish_reason": finish_reason
+        "finish_reason": finish_reason,
+        "elapsed_s": elapsed_s,
+        "error": error
     }
     try:
-        with _usage_lock, open(TOKEN_USAGE_FILE, "a", encoding="utf-8") as f:
+        with _usage_lock, open(usage_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
     except OSError as e:
-        print(f"[Token Usage] Failed to record usage to {TOKEN_USAGE_FILE}: {e}", file=sys.stderr)
+        print(f"[Token Usage] Failed to record usage to {usage_file}: {e}", file=sys.stderr)
 
 
 def _is_resume_record(record: Any, resume_name: str) -> bool:
@@ -167,6 +173,9 @@ def _post_chat_completion(vllm_url: str, payload: Dict[str, Any], timeout: int) 
             payload.pop(culprit)
         except urllib.error.URLError as e:
             raise _connection_error(vllm_url, e) from e
+        # A read that outlasts `timeout`, or a dropped connection, fails this request alone, like any other failure
+        except OSError as e:
+            raise RuntimeError(f"vLLM request failed after sending ({type(e).__name__}: {e})") from e
 
 
 def chat(
@@ -180,13 +189,15 @@ def chat(
     max_tokens: int = MAX_NEW_TOKENS,
     step: str = "unlabeled",
     enable_thinking: Optional[bool] = None,
-    resume_name: Optional[str] = None
+    resume_name: Optional[str] = None,
+    usage_file: Optional[str] = None
 ) -> ChatResult:
     """
     Sends a chat completion constrained to JSON output: to `json_schema` when given, else any JSON object.
     Reasoning in the result is empty unless the model profile lets the model think. `step` and `resume_name`
-    label the request's token usage record. `enable_thinking` overrides the model profile's thinking setting for this
-    request. A message's content may be a list of OpenAI content parts (text and image_url) for vision models.
+    label the request's token usage record, written to `usage_file` (default TOKEN_USAGE_FILE). `enable_thinking`
+    overrides the model profile's thinking setting for this request. A message's content may be a list of OpenAI
+    content parts (text and image_url) for vision models.
     """
     payload: Dict[str, Any] = {
         "model": model_name,
@@ -206,11 +217,19 @@ def chat(
         # Legacy `guided_json` is silently ignored by current vLLM; `structured_outputs` enforces the schema
         payload["structured_outputs"] = {"json": json_schema}
 
-    body = _post_chat_completion(vllm_url, payload, timeout)
+    started = time.monotonic()
+    try:
+        body = _post_chat_completion(vllm_url, payload, timeout)
+    except RuntimeError as e:
+        record_usage(step, None, None, "error", max_tokens, resume_name, usage_file,
+                     elapsed_s=round(time.monotonic() - started, 1), error=str(e)[:300])
+        raise
+    elapsed_s = round(time.monotonic() - started, 1)
     choice = body["choices"][0]
     message = choice["message"]
     usage = body.get("usage") or {}
-    record_usage(step, usage.get("prompt_tokens"), usage.get("completion_tokens"), choice.get("finish_reason"), max_tokens, resume_name)
+    record_usage(step, usage.get("prompt_tokens"), usage.get("completion_tokens"), choice.get("finish_reason"),
+                 max_tokens, resume_name, usage_file, elapsed_s=elapsed_s)
     return ChatResult(
         content=message.get("content") or "",
         reasoning=message.get("reasoning") or "",

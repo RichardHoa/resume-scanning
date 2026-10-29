@@ -17,6 +17,7 @@ Writes to vsc-project/NuGioiChung/runs/<issue>/<time>/ (or --run-dir):
                                     any Region
   inspect.html                      page → Regions → Strips: the drawn page, then each request's image, prompt and
                                     answer
+  token_usage.jsonl                 one line per request sent in this run folder, summarized at the end
 
 Saved answers are stamped with the PDF's hash, the image settings and a hash of the prompts, so a run continued
 with --run-dir only redoes requests that failed or never ran, and the outputs are always rebuilt from all saved
@@ -35,6 +36,7 @@ if _PROJECT_ROOT not in sys.path:
 import argparse
 import hashlib
 import re
+import subprocess
 from datetime import datetime
 
 import fitz
@@ -49,7 +51,7 @@ from src.nugioichung.prompts import (
     transcribe_schema
 )
 from src.nugioichung.settings import (
-    CROP_DPI, LAYOUT_LONG_SIDE, LAYOUT_MAX_TOKENS, RETRY_TEMPERATURE, TRANSCRIBE_MAX_TOKENS
+    CROP_DPI, LAYOUT_LONG_SIDE, LAYOUT_MAX_TOKENS, REQUEST_TIMEOUT, RETRY_TEMPERATURE, TRANSCRIBE_MAX_TOKENS
 )
 from src.nugioichung.regions import ARTICLE, page_key
 from src.nugioichung.transcribe import check_transcription, cut_stamp, transcribe_requests
@@ -59,9 +61,9 @@ from src.providers.vlm_requests import Model, Phase, current_answer, is_current,
 RUNS_DIR = os.path.join(_PROJECT_ROOT, "vsc-project", "NuGioiChung", "runs")
 PASSES = {
     "layout": Phase("layout", step="nugioichung_layout", max_tokens=LAYOUT_MAX_TOKENS, thinking=False,
-                    retry_temperature=RETRY_TEMPERATURE),
+                    retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT),
     "transcribe": Phase("transcribe", step="nugioichung_transcribe", max_tokens=TRANSCRIBE_MAX_TOKENS,
-                        thinking=False, retry_temperature=RETRY_TEMPERATURE),
+                        thinking=False, retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT),
 }
 MONTHS = {"jan": "Janvier", "feb": "Février", "mar": "Mars", "apr": "Avril", "may": "Mai", "jun": "Juin",
           "jul": "Juillet", "aug": "Août", "sep": "Septembre", "oct": "Octobre", "nov": "Novembre", "dec": "Décembre"}
@@ -138,6 +140,7 @@ def main():
         RUNS_DIR, stem, datetime.now().strftime("%Y%m%d-%H%M%S"))
     layout_dir = os.path.join(run_dir, "requests", "layout")
     transcribe_dir = os.path.join(run_dir, "requests", "transcribe")
+    usage_file = os.path.join(run_dir, "token_usage.jsonl")
     os.makedirs(run_dir, exist_ok=True)
     print(f"[Nữ Giới Chung] Số {issue['number']}, {issue['date']}: {n_pages} pages, running "
           f"{'+'.join(passes)} on {len(only)}; run folder {run_dir}")
@@ -180,12 +183,12 @@ def main():
 
     if "layout" in passes:
         vlm_requests.run_phase(layout_requests(doc, only), layout_dir, layout_stamp, label="[Nữ Giới Chung] Layout pass",
-                               phase=PASSES["layout"], model=model, save_requests=True)
+                               phase=PASSES["layout"], model=model, save_requests=True, usage_file=usage_file)
     layouts, dropped, no_layout = saved_layouts()
     if "transcribe" in passes:
         vlm_requests.run_phase(transcribe_requests(doc, layouts, only), transcribe_dir, transcribe_stamp,
                                label="[Nữ Giới Chung] Transcription pass", phase=PASSES["transcribe"], model=model,
-                               save_requests=True)
+                               save_requests=True, usage_file=usage_file)
 
     # -- outputs, rebuilt from the saved answers alone
     transcriptions, transcribe_statuses = {}, []
@@ -228,6 +231,8 @@ def main():
           f"Region(s) left out, {len(gaps)} request(s) with no transcription, {len(unpaired)} unpaired Footnote(s) "
           f"or call(s), {len(outside)} patch(es) of text outside any Region")
     print(f"[Nữ Giới Chung] Open {run_dir}/inspect.html to check the run, and read {run_dir}/issue.md")
+    subprocess.run([sys.executable, os.path.join(_PROJECT_ROOT, "scripts", "checks", "token_stats.py"),
+                    "--file", usage_file])
 
 if __name__ == "__main__":
     main()

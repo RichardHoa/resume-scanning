@@ -29,6 +29,30 @@
 
 NUGIOICHUNG_CONCURRENCY=40    # the default profile's
 MAX_IMAGES_PER_PROMPT=1    # a layout request sends its page; a transcription request its Region's crop
+WATCH_SERVER_EVERY=30    # seconds between samples of the server's state in the metrics log
+
+# Every WATCH_SERVER_EVERY seconds while the vLLM server runs, appends to <log>: GPU utilization and memory, the
+# CPU use of the vLLM processes and the node's load, and vLLM's own counters (requests running/waiting,
+# preemptions, tokens, KV cache, and the sum/count of its latency histograms: queue, prefill, decode, per output
+# token). A low GPU utilization while decoding is slow points at CPU-side work, such as enforcing the JSON schema.
+# Usage: watch_server <port> <log>
+watch_server() {
+  local port="$1" log="$2"
+  while kill -0 "$VLLM_PID" 2>/dev/null; do
+    {
+      echo "=== $(date +'%Y-%m-%d %H:%M:%S')"
+      echo "gpu: $(nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader 2>/dev/null)"
+      echo "load: $(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null)"
+      # top's second sample is the CPU use over the last second (ps would give the average since each process began);
+      # the pattern also matches the Nữ Giới Chung CLI, through its --vllm-url
+      top -b -n 2 -d 1 -c -p "$(pgrep -d, -f '(vllm|EngineCore)' 2>/dev/null | cut -d, -f1-20)" 2>/dev/null \
+        | awk '/^ *PID/ {n++; next} n == 2 && $1 ~ /^[0-9]+$/ {printf "cpu: pid %s %s%% %s %s %s\n", $1, $9, $12, $13, $14}'
+      curl -s "http://127.0.0.1:$port/metrics" 2>/dev/null | grep -E \
+        '^vllm:(num_requests_[a-z]+|num_preemptions[a-z_]*|(prompt|generation)_tokens_total|[a-z_]*cache_usage_perc|[a-z_]*_seconds_(sum|count))[{ ]'
+    } >> "$log"
+    sleep "$WATCH_SERVER_EVERY"
+  done
+}
 
 # -----------------------------------------------------------------------------
 # Location of the shared helpers (scripts/lib). SLURM runs a copy of this script, so under sbatch they are found
@@ -120,6 +144,10 @@ echo "[$(date +'%H:%M:%S')] Target Model: $MODEL (concurrency $CONCURRENCY, visi
 echo "[$(date +'%H:%M:%S')] Allocated Server Port: $PORT"
 
 start_vllm_server "$MODEL" "$PORT" "$PROJECT_ROOT/logs/vllm_nugioichung.log" || exit 1
+METRICS_LOG="$PROJECT_ROOT/logs/vllm_nugioichung_metrics_${SLURM_JOB_ID:-$(date +%Y%m%d-%H%M%S)}.log"
+watch_server "$PORT" "$METRICS_LOG" &
+WATCH_PID=$!
+echo "[$(date +'%H:%M:%S')] Sampling the server every ${WATCH_SERVER_EVERY}s into $METRICS_LOG"
 
 echo "=== vLLM Server Ready! Starting Nữ Giới Chung transcription ==="
 python3 -u -m src.nugioichung.cli \
@@ -128,7 +156,11 @@ python3 -u -m src.nugioichung.cli \
   "${NUGIOICHUNG_ARGS[@]}"
 STATUS=$?
 
+# The server's full metrics as the run ends, for the histograms' buckets
+{ echo "=== final $(date +'%Y-%m-%d %H:%M:%S')"; curl -s "http://127.0.0.1:$PORT/metrics"; } >> "$METRICS_LOG"
+kill "$WATCH_PID" 2>/dev/null
 stop_vllm_server
-python3 "$PROJECT_ROOT/scripts/checks/token_stats.py"
+echo "[$(date +'%H:%M:%S')] Server samples in $METRICS_LOG; server log in $PROJECT_ROOT/logs/vllm_nugioichung.log"
+# cli.py prints the token stats of its own run folder
 echo "=== [$(date +'%Y-%m-%d %H:%M:%S')] Nữ Giới Chung transcription Finished ==="
 exit $STATUS

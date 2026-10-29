@@ -12,12 +12,16 @@ import glob
 import hashlib
 import json
 import os
+import threading
+import time
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, NamedTuple, Optional
 
-from src.core.config import VLLM_MAX_MODEL_LEN, VLLM_MAX_CONCURRENT_REQUESTS
+from src.core.config import VLLM_MAX_MODEL_LEN, VLLM_MAX_CONCURRENT_REQUESTS, VLLM_REQUEST_TIMEOUT
 
 ATTEMPTS = 3    # the first try and two retries
+WATCH_EVERY = 60    # seconds between reports of the requests still waiting for an answer
 
 
 class Phase(NamedTuple):
@@ -26,6 +30,7 @@ class Phase(NamedTuple):
     max_tokens: int
     thinking: bool
     retry_temperature: float    # for the attempts after the first, which is at temperature 0
+    timeout: int = VLLM_REQUEST_TIMEOUT     # seconds to wait for one attempt's answer
 
 
 class Model(NamedTuple):
@@ -118,44 +123,97 @@ def is_current(result, stamp):
     return result.get("status") == "ok" and all(result.get(k) == v for k, v in stamp.items())
 
 
-def run_one(req, out_path, stamp, *, phase, model, request_dir=None):
+class InFlight:
+    """The attempts waiting for an answer, by task key: (attempt, when it was sent), for the watchdog."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._started = {}
+
+    def start(self, key, attempt):
+        with self._lock:
+            self._started[key] = (attempt, time.monotonic())
+
+    def end(self, key):
+        with self._lock:
+            self._started.pop(key, None)
+
+    def oldest(self):
+        """[(key, attempt, seconds waited)], longest wait first."""
+        now = time.monotonic()
+        with self._lock:
+            waits = [(key, attempt, now - t) for key, (attempt, t) in self._started.items()]
+        return sorted(waits, key=lambda w: -w[2])
+
+
+def _log_attempt(key, attempt, outcome, elapsed, completion_tokens, finish_reason, error):
+    """One line per attempt: how long it took and how fast the answer came, to tell slow decoding from stuck ones."""
+    speed = f", {completion_tokens / elapsed:.1f} tok/s" if completion_tokens and elapsed > 0 else ""
+    detail = f", finish_reason {finish_reason}" if finish_reason else ""
+    why = f": {error[:150]}" if error else ""
+    print(f"    {key} attempt {attempt}: {outcome} in {elapsed:.0f}s, {completion_tokens or 0} token(s){speed}"
+          f"{detail}{why}")
+
+
+def run_one(req, out_path, stamp, *, phase, model, request_dir=None, usage_file=None, in_flight=None):
     from src.providers import vllm_client
-    result = {"task": req.key, "phase": phase.id, "model": model.name, **stamp}
+    result = {"task": req.key, "phase": phase.id, "model": model.name, **stamp, "attempt_log": []}
     for attempt in range(1, ATTEMPTS + 1):
         result["attempts"] = attempt
         messages = req.build()
         if request_dir and attempt == 1:
             save_request(messages, request_dir)
+        if in_flight:
+            in_flight.start(req.key, attempt)
+        started = time.monotonic()
+        reply = None
         try:
             reply = vllm_client.chat(
                 model.vllm_url, model.name, messages,
                 temperature=0.0 if attempt == 1 else phase.retry_temperature,
                 json_schema=req.schema, max_tokens=phase.max_tokens, step=phase.step,
-                enable_thinking=phase.thinking
+                enable_thinking=phase.thinking, timeout=phase.timeout, usage_file=usage_file
             )
         except RuntimeError as e:
             too_long = "context length" in str(e) or "max_model_len" in str(e)
             result.update(status="too_long" if too_long else "failed", error=str(e))
-            if too_long:
-                break
-            continue
-        result.update(reasoning=reply.reasoning, finish_reason=reply.finish_reason,
-                      completion_tokens=reply.completion_tokens, content=reply.content)
-        try:
-            answer = json.loads(reply.content)
-        except json.JSONDecodeError as e:
-            result.update(status="failed", error=f"answer is not JSON ({e}); finish_reason={reply.finish_reason}")
-            continue
-        result.update(status="ok", error=None, answer=answer)
-        break
+        else:
+            result.update(reasoning=reply.reasoning, finish_reason=reply.finish_reason,
+                          completion_tokens=reply.completion_tokens, content=reply.content)
+            try:
+                result.update(status="ok", error=None, answer=json.loads(reply.content))
+            except json.JSONDecodeError as e:
+                result.update(status="failed",
+                              error=f"answer is not JSON ({e}); finish_reason={reply.finish_reason}")
+        finally:
+            if in_flight:
+                in_flight.end(req.key)
+        elapsed = time.monotonic() - started
+        tokens, finish_reason = (reply.completion_tokens, reply.finish_reason) if reply else (None, None)
+        result["attempt_log"].append({"attempt": attempt, "status": result["status"], "elapsed_s": round(elapsed, 1),
+                                      "completion_tokens": tokens, "finish_reason": finish_reason,
+                                      "error": result["error"]})
+        _log_attempt(req.key, attempt, result["status"], elapsed, tokens, finish_reason, result["error"])
+        if result["status"] in ("ok", "too_long"):
+            break
     write_json(out_path, result)
     return result
 
 
-def run_phase(requests, results_dir, stamp, *, label, phase, model, save_requests=False):
+def _watch(in_flight, done, total, stop, label):
+    """Every WATCH_EVERY seconds until `stop`, prints how many requests wait for an answer and the five longest."""
+    while not stop.wait(WATCH_EVERY):
+        waits = in_flight.oldest()
+        longest = ", ".join(f"{key} (attempt {attempt}, {s:.0f}s)" for key, attempt, s in waits[:5])
+        print(f"  [watch {datetime.now():%H:%M:%S}] {label}: {done[0]}/{total} done, {len(waits)} waiting"
+              f"{'; longest: ' + longest if longest else ''}")
+
+
+def run_phase(requests, results_dir, stamp, *, label, phase, model, save_requests=False, usage_file=None):
     """
     Runs every request with no current result in `results_dir`. With `save_requests`, each request's images and
-    prompts as sent go to <results-dir>/<key>/ (see `save_request`).
+    prompts as sent go to <results-dir>/<key>/ (see `save_request`). Token usage goes to `usage_file` (default the
+    active run folder's, see vllm_client.record_usage).
     """
     os.makedirs(results_dir, exist_ok=True)
     todo = []
@@ -165,20 +223,31 @@ def run_phase(requests, results_dir, stamp, *, label, phase, model, save_request
         if os.path.exists(path) and is_current(read_json(path), task_stamp):
             continue
         todo.append((req, path, task_stamp))
-    print(f"{label}: {len(todo)} task(s) to run, concurrency {VLLM_MAX_CONCURRENT_REQUESTS}")
+    print(f"{label}: {len(todo)} task(s) to run, concurrency {VLLM_MAX_CONCURRENT_REQUESTS}, "
+          f"timeout {phase.timeout}s per attempt, max_tokens {phase.max_tokens}")
     counts = {}
-    with ThreadPoolExecutor(max_workers=VLLM_MAX_CONCURRENT_REQUESTS) as pool:
-        futures = {pool.submit(run_one, req, path, task_stamp, phase=phase, model=model,
-                               request_dir=os.path.join(results_dir, req.key) if save_requests else None): req.key
-                   for req, path, task_stamp in todo}
-        for n, fut in enumerate(as_completed(futures), 1):
-            r = fut.result()
-            counts[r["status"]] = counts.get(r["status"], 0) + 1
-            if r["status"] != "ok":
-                print(f"  [{n}/{len(todo)}] {r['task']}: {r['status']} after {r['attempts']} attempt(s): "
-                      f"{(r.get('error') or '')[:200]}")
-            elif n % 25 == 0 or n == len(todo):
-                print(f"  [{n}/{len(todo)}] {counts}")
+    in_flight, done, stop = InFlight(), [0], threading.Event()
+    watchdog = threading.Thread(target=_watch, args=(in_flight, done, len(todo), stop, label), daemon=True)
+    watchdog.start()
+    started = time.monotonic()
+    try:
+        with ThreadPoolExecutor(max_workers=VLLM_MAX_CONCURRENT_REQUESTS) as pool:
+            futures = {pool.submit(run_one, req, path, task_stamp, phase=phase, model=model,
+                                   request_dir=os.path.join(results_dir, req.key) if save_requests else None,
+                                   usage_file=usage_file, in_flight=in_flight): req.key
+                       for req, path, task_stamp in todo}
+            for n, fut in enumerate(as_completed(futures), 1):
+                r = fut.result()
+                done[0] = n
+                counts[r["status"]] = counts.get(r["status"], 0) + 1
+                if r["status"] != "ok":
+                    print(f"  [{n}/{len(todo)}] {r['task']}: {r['status']} after {r['attempts']} attempt(s): "
+                          f"{(r.get('error') or '')[:200]}")
+                elif n % 25 == 0 or n == len(todo):
+                    print(f"  [{n}/{len(todo)}] {counts}")
+    finally:
+        stop.set()
+    print(f"{label}: finished in {time.monotonic() - started:.0f}s: {counts}")
 
 
 def load_results(results_dir, stamp):

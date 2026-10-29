@@ -9,6 +9,8 @@ CROP_DPI = 300
 LAYOUT_MAX_TOKENS = 8192
 # A transcription answer is the text of one Region
 TRANSCRIBE_MAX_TOKENS = 4096
+# Seconds to wait for one request's answer before it fails and is retried
+REQUEST_TIMEOUT = 120
 # Retries after the first attempt sample, as an identical prompt at temperature 0 fails the same way
 RETRY_TEMPERATURE = 0.3
 # How far, in thousandths of the page, a Region's box edge may move to land on a column gap or printed rule. The
