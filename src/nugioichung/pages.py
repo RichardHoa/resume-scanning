@@ -3,7 +3,8 @@ Page images of an Issue PDF, rendered with PyMuPDF in grayscale: the whole page 
 Region cut at full scan resolution for the transcription pass. Both are PNG, as sent to the model.
 
 Also the analysis of the bilevel scan at full resolution: snapping a Region's box edges onto column gaps and printed
-rules, cutting a tall Region into Strips at blank gaps between lines, and finding printed text outside every Region.
+rules with a margin of blank paper, cutting a tall Region into Strips at blank gaps between lines, and finding printed
+text outside every Region.
 Boxes are [left, top, right, bottom] in thousandths of the page, as the layout pass gives them.
 """
 import math
@@ -25,12 +26,18 @@ BLANK_SHARE = 0.002
 BLANK_PX = 2
 # ...and a printed rule when at least this share of it is ink
 RULE_SHARE = 0.5
+# A box edge with no gap within reach may still land on a speckled gap: a run of lines as long as a gap, each at most
+# this share ink (or BLANK_PX pixels), as a column gap is where the scan is speckled and no line through text is
+SPECKLED_SHARE = 0.02
 # A gap between printed lines, or between columns, is a run of at least this many blank pixel lines: shorter runs
 # are inside a line of text (between a tone mark and its letter, or between two letters)
 MIN_LINE_GAP_PX = 5
 MIN_COLUMN_GAP_PX = 10
 # Moving a box edge inward, which may leave a line out of its Region, costs this many times moving it outward
 INWARD_COST = 2
+# A snapped box edge is moved outward by up to this many thousandths of the page while it stays on blank or speckled
+# paper, so a Region's crop has a margin around its outermost letters without reaching a rule or the next Region's text
+EDGE_PAD = 6
 
 # Text outside any Region: ink within this many thousandths of the page's edges is the scan's border, not print
 EDGE_MARGIN = 25
@@ -88,18 +95,26 @@ def _line_ink(profile, t):
     return max(profile[a], profile[b])
 
 
+def _gap_lines(profile, extent, min_gap, share=BLANK_SHARE):
+    """
+    For each pixel line of `profile` (the ink count of each line, `extent` pixels long), whether it is in a run of at
+    least `min_gap` lines each at most `share` of it ink, or BLANK_PX pixels.
+    """
+    blank = profile <= max(BLANK_PX, extent * share)
+    gaps = np.zeros(len(profile), bool)
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], blank.astype(np.int8), [0]))))
+    for start, stop in zip(edges[::2], edges[1::2]):
+        if stop - start >= min_gap:
+            gaps[start:stop] = True
+    return gaps
+
+
 def _safe_lines(profile, extent, min_gap):
     """
     For each pixel line of `profile` (the ink count of each line, `extent` pixels long), whether a box edge can run
     along it without cutting text: it is in a run of at least `min_gap` blank lines, or on a printed rule.
     """
-    blank = profile <= max(BLANK_PX, extent * BLANK_SHARE)
-    safe = profile >= extent * RULE_SHARE
-    edges = np.flatnonzero(np.diff(np.concatenate(([0], blank.astype(np.int8), [0]))))
-    for start, stop in zip(edges[::2], edges[1::2]):
-        if stop - start >= min_gap:
-            safe[start:stop] = True
-    return safe
+    return _gap_lines(profile, extent, min_gap) | (profile >= extent * RULE_SHARE)
 
 
 def _is_safe(safe, t):
@@ -112,33 +127,50 @@ def _span(t0, t1, size):
     return slice(_px(t0, size)[0], _px(t1, size)[1] + 1)
 
 
-def _snap_edge(safe, edge, outward):
+def _snap_edge(safe, speckled, edge, outward):
     """
     `edge` moved to the nearest place within SNAP_REACH where it runs along a gap or a printed rule (`safe`, from
-    `_safe_lines`), so it cuts no line of text; unmoved if there is none. `outward`: -1 for a left or top edge, +1
-    for a right or bottom one.
+    `_safe_lines`), so it cuts no line of text; if there is none, to the nearest speckled gap (`speckled`, from
+    `_gap_lines` with SPECKLED_SHARE); unmoved if there is neither. Moving inward costs INWARD_COST times moving
+    outward. Then, unless it is on a rule, moved on outward by up to EDGE_PAD while it stays on a blank or speckled gap.
+    `outward`: -1 for a left or top edge, +1 for a right or bottom one.
     """
-    best, best_cost = edge, None
-    for t in range(max(0, edge - SNAP_REACH), min(1000, edge + SNAP_REACH) + 1):
-        if not _is_safe(safe, t):
-            continue
-        cost = abs(t - edge) * (1 if (t - edge) * outward >= 0 else INWARD_COST)
-        if best_cost is None or cost < best_cost:
-            best, best_cost = t, cost
-    return best
+    def cost(t):
+        return abs(t - edge) * (1 if (t - edge) * outward >= 0 else INWARD_COST)
+
+    reach = range(max(0, edge - SNAP_REACH), min(1000, edge + SNAP_REACH) + 1)
+    places = [t for t in reach if _is_safe(safe, t)] or [t for t in reach if _is_safe(speckled, t)]
+    if not places:
+        return edge
+    snapped = min(places, key=cost)
+    if not _is_safe(speckled, snapped):
+        return snapped      # on a rule: the margin beyond it is the next Region's
+    padded = snapped
+    for t in range(snapped + outward, snapped + outward * (EDGE_PAD + 1), outward):
+        if not (0 <= t <= 1000 and _is_safe(speckled, t)):
+            break
+        padded = t
+    return padded
+
+
+def _snap_pair(profile, extent, min_gap, low, high):
+    """A box's low and high edges along one axis, snapped by `_snap_edge` onto `profile`, the ink count of each pixel
+    line across the box (`extent` pixels long), whose gaps are runs of at least `min_gap` lines."""
+    safe = _safe_lines(profile, extent, min_gap)
+    speckled = _gap_lines(profile, extent, min_gap, SPECKLED_SHARE)
+    return _snap_edge(safe, speckled, low, -1), _snap_edge(safe, speckled, high, +1)
 
 
 def snap_box(ink, box):
     """`box` with its left and right edges moved onto the nearest column gap or vertical rule, then its top and
-    bottom onto the nearest blank line or horizontal rule. `ink`: the page from `page_ink`."""
+    bottom onto the nearest blank line or horizontal rule, each with a margin of blank paper. `ink`: the page from
+    `page_ink`."""
     h, w = ink.shape
     left, top, right, bottom = box
     rows = _span(top, bottom, h)
-    columns = _safe_lines(ink[rows, :].sum(axis=0), rows.stop - rows.start, MIN_COLUMN_GAP_PX)
-    left, right = _snap_edge(columns, left, -1), _snap_edge(columns, right, +1)
+    left, right = _snap_pair(ink[rows, :].sum(axis=0), rows.stop - rows.start, MIN_COLUMN_GAP_PX, left, right)
     cols = _span(left, right, w)
-    lines = _safe_lines(ink[:, cols].sum(axis=1), cols.stop - cols.start, MIN_LINE_GAP_PX)
-    top, bottom = _snap_edge(lines, top, -1), _snap_edge(lines, bottom, +1)
+    top, bottom = _snap_pair(ink[:, cols].sum(axis=1), cols.stop - cols.start, MIN_LINE_GAP_PX, top, bottom)
     return [left, top, right, bottom]
 
 

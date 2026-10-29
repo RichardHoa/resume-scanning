@@ -4,13 +4,15 @@
 LAYOUT_LONG_SIDE = 1600
 # Each Region is cut from the scan at its own 300 dpi, so every diacritic is readable
 CROP_DPI = 300
-# The layout pass thinks before it answers (reading order, continuations), so it gets room for both
-LAYOUT_MAX_TOKENS = 16384
+# The layout pass answers without thinking: when it thinks, it works its boxes out as round figures in words instead
+# of placing them on the scan. A page's answer is a few dozen Regions, with titles in Vietnamese, which tokenises long
+LAYOUT_MAX_TOKENS = 8192
 # A transcription answer is the text of one Region
 TRANSCRIBE_MAX_TOKENS = 4096
 # Retries after the first attempt sample, as an identical prompt at temperature 0 fails the same way
 RETRY_TEMPERATURE = 0.3
-# How far, in thousandths of the page, a Region's box edge may move to land on a column gap or printed rule
-SNAP_REACH = 25
+# How far, in thousandths of the page, a Region's box edge may move to land on a column gap or printed rule. The
+# layout pass's edges are often 30-40 off (it guesses round figures), under half a column's width
+SNAP_REACH = 60
 # A Region taller than this, in thousandths of the page (about a third), is cut into Strips no taller than about this
 STRIP_HEIGHT = 333

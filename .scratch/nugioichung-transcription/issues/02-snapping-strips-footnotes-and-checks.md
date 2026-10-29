@@ -16,7 +16,7 @@ See the spec (`.scratch/nugioichung-transcription/spec.md`), the Nữ Giới Chu
 
 **Status:** ready-for-agent
 
-- [x] Each Region's box edges are moved onto the nearest column gap or printed rule found on the bilevel scan, so no crop cuts through a line of text. The drawn layout page shows the adjusted boxes.
+- [x] Each Region's box edges are moved onto the nearest column gap or printed rule found on the bilevel scan (or, failing those, a speckled gap), then out by a small margin of blank paper that never crosses a rule, so no crop cuts through a line of text. The drawn layout page shows the adjusted boxes.
 - [x] A Region taller than about a third of the page is cut into Strips at blank gaps between printed lines, with no overlap. Each Strip is its own transcription request, saved like any other, and listed under its Region in `inspect.html`.
 - [x] A paragraph cut by a Strip or Region boundary is joined back into one paragraph, using the `starts_mid_paragraph`/`ends_mid_paragraph` flags.
 - [x] A Footnotes Region is transcribed as a list of {number, text}. Each call "(n)" in an Article's text is paired with Footnote n of the same Article, with numbers running across its pages. Pairs are written as Markdown footnotes `[^n]`. An unpaired call or Footnote is marked ⚠.

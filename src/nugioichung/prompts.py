@@ -6,6 +6,11 @@ import json
 
 from src.nugioichung.regions import KINDS
 
+# A transcribed text with no run of more than three dots, spaces between them or not: each run of spaces and dots
+# between two other characters holds at most three dots. Structured output enforces it, so the model can't copy a
+# row of leader dots one by one until it runs out of tokens
+NO_DOT_RUN = r"^ *(\. *){0,3}([^. ] *(\. *){0,3})*$"
+
 _NEWSPAPER = """\
 The pages are scans of Nữ Giới Chung (Femina Annamite), a Vietnamese weekly newspaper printed in Saigon in 1918. The
 print is old, faint and speckled. Some pages carry handwriting added later by a library (shelf numbers, dates,
@@ -41,8 +46,9 @@ For each Region give:
 - `continues`: true when this Region carries on an Item begun in an earlier Region, on this page or a previous one
   (the second column of an Article; the top of the first column, when it carries on the previous page's Article).
   false when the Region begins its Item.
-- `box`: [left, top, right, bottom] in thousandths of the image's width and height, tight around the Region's
-  printed text, its heading included.
+- `box`: [left, top, right, bottom] in thousandths of the image's width and height, around all of the Region's
+  printed text, its heading included: every letter of its first and last line and of both ends of each line falls
+  inside. Look at where the text actually starts and stops on the scan; never guess round figures.
 
 The order of `regions` is the reading order: a column top to bottom, columns left to right, and an Article's
 columns before the next Item that starts under them. Also give the printed page number in `printed_page` ("" if
@@ -94,15 +100,23 @@ You copy exactly what the scan prints. You are a copyist, not an editor:
 - Write a printed picture as `[Hình]` on its own line, with no description.
 
 Layout of `text`:
-- A title or section heading on its own line, starting with `### `.
-- A paragraph on one line, however many printed lines it takes. Join the printed lines with a space; a line that
-  ends in a hyphen joins the next line with no space, keeping the hyphen. A new paragraph starts where the scan
-  shows one (an indented first line, or after a line that stops short); separate paragraphs with a blank line.
-- Keep the printed line breaks, one printed line per line, in: a Hán saying with its phiên âm and its translation,
-  a poem, and the lines of an Ad.
+- A title or section heading on its own line, starting with `### `. A heading set over several printed lines (an
+  Ad's name: "TỦ SẮT" / "HIỆU" / "WERSTAEN") is one heading line, its printed lines joined with a space. Words in
+  large type that a sentence runs through ("nên mua TỦ SẮT WERSTAEN mà dùng.") are not a heading: they stay in
+  the sentence, as printed.
+- A paragraph on one line, however many printed lines it takes, in an Ad as in an Article. Join the printed lines
+  with a space, so a sentence or a word broken across lines reads whole; a line that ends in a hyphen joins the
+  next line with no space, keeping the hyphen. A new paragraph starts where the scan shows one (an indented first
+  line, or after a line that stops short, such as a slogan, a shop's name or its address in an Ad); separate
+  paragraphs with a blank line.
+- Keep the printed line breaks, one printed line per line, only in: a Hán saying with its phiên âm and its
+  translation, and a poem.
 - A table of prices or other figures set in rows and columns: a Markdown table.
 - A Table of Contents: a nested Markdown list, its sections as items and their entries under them.
 - A Footnote call in the text, a number in parentheses such as "(7)", is copied as printed.
+- A run of dots, spaced or not (the leader dots between a label and its price or page number, or a long ellipsis),
+  is written as three dots `...`, however long it is printed. Never copy dots one by one. In a Markdown table the
+  leader dots are left out: the label and the figure go in their own columns.
 
 A Footnotes Region holds the numbered notes printed under an Article. Answer it in `footnotes` instead of `text`:
 one entry per Footnote, in printed order, with `number` the number printed in its parentheses (7 for "(7)") and
@@ -130,7 +144,7 @@ def transcribe_schema():
     return {
         "type": "object",
         "properties": {
-            "text": {"type": "string"},
+            "text": {"type": "string", "pattern": NO_DOT_RUN},
             "starts_mid_paragraph": {"type": "boolean"},
             "ends_mid_paragraph": {"type": "boolean"},
         },
@@ -149,7 +163,7 @@ def footnotes_schema():
                     "type": "object",
                     "properties": {
                         "number": {"type": "integer", "minimum": 0},
-                        "text": {"type": "string"},
+                        "text": {"type": "string", "pattern": NO_DOT_RUN},
                     },
                     "required": ["number", "text"],
                 },

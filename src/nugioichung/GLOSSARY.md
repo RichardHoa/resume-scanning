@@ -37,5 +37,5 @@ Handwriting added to the scan after printing, such as a library's shelf number o
 _Avoid_: annotation, note
 
 **Faithful Transcription**:
-Copying exactly what the page prints: the 1918 spelling, hyphens, Hán characters and the newspaper's own typos, never modernised or corrected.
+Copying exactly what the page prints: the 1918 spelling, hyphens, Hán characters and the newspaper's own typos, never modernised or corrected. The one exception is a run of dots (leader dots or a long ellipsis), written as three dots `...` and left out of a table.
 _Avoid_: cleaned text, normalised text

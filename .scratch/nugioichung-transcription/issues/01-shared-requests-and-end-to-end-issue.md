@@ -24,13 +24,13 @@ See the spec (`.scratch/nugioichung-transcription/spec.md`), the Nữ Giới Chu
 - [x] The command line takes the Issue PDF, `--run-dir`, `--pages`, `--pass layout|transcribe|all`, `--model-name`, `--vllm-url` and `--dry-run`. The Issue number and date come from the file name (e.g. `So1_Feb1_1918`).
 - [x] The run folder is `vsc-project/NuGioiChung/runs/<issue>/<time>/`, unless `--run-dir` names another. A continued run redoes only failed or missing requests. Saved answers are stamped with the PDF's hash, the image settings and a hash of the prompts. All outputs are rebuilt from the saved answers on every run.
 - [x] Layout pass:
-  - Input: the whole page rendered in grayscale at about 1600 px on its long side, with thinking on.
+  - Input: the whole page rendered in grayscale at about 1600 px on its long side, with thinking off.
   - Output per Region: a box in thousandths, a kind (article text, Footnotes, Ad, Notice, Table of Contents), its Item's title ("" if none), section and author when printed, and a "continues the previous Region of this Item" flag. The order of the list is the reading order.
   - Output per page: the printed page number.
   - Library Marks are never Regions.
 - [x] Transcription pass:
   - Input: each Region cropped from the 300 dpi render in grayscale and sent whole, with thinking off.
-  - The prompt enforces Faithful Transcription: 1918 spelling, hyphens, Hán characters and typos exactly as printed, Library Marks left out, a bare `[Hình]` for a picture, price tables as Markdown tables, the Table of Contents as a nested list, and printed line breaks kept for Hán sayings with phiên âm and translation, poems and Ad lines. All other text is joined into paragraphs.
+  - The prompt enforces Faithful Transcription: 1918 spelling, hyphens, Hán characters and typos exactly as printed, Library Marks left out, a bare `[Hình]` for a picture, price tables as Markdown tables, the Table of Contents as a nested list, and printed line breaks kept for Hán sayings with phiên âm and translation, and poems. All other text, Ads included, is joined into paragraphs.
   - The answer includes `starts_mid_paragraph` and `ends_mid_paragraph`.
 - [x] Assembly joins Regions into Items across columns and pages by title and continuation flag in reading order, never across Issues. It writes `issue.md`:
   - a title line naming the newspaper, Issue number and date

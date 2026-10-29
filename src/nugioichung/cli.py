@@ -58,7 +58,7 @@ from src.providers.vlm_requests import Model, Phase, current_answer, is_current,
 
 RUNS_DIR = os.path.join(_PROJECT_ROOT, "vsc-project", "NuGioiChung", "runs")
 PASSES = {
-    "layout": Phase("layout", step="nugioichung_layout", max_tokens=LAYOUT_MAX_TOKENS, thinking=True,
+    "layout": Phase("layout", step="nugioichung_layout", max_tokens=LAYOUT_MAX_TOKENS, thinking=False,
                     retry_temperature=RETRY_TEMPERATURE),
     "transcribe": Phase("transcribe", step="nugioichung_transcribe", max_tokens=TRANSCRIBE_MAX_TOKENS,
                         thinking=False, retry_temperature=RETRY_TEMPERATURE),
