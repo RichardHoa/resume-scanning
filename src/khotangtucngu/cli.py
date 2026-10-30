@@ -14,6 +14,9 @@ Writes to the Part's store, vsc-project/khoTangTucNguoiNguoiViet/store/<part>/:
                           headings out of order, unknown Source Abbreviations, Citations with no pages or that cannot
                           be split, page numbers out of step, failed or missing pages, and Leading Blocks with no owner
   pages/pNNN.png          each page, for the review server
+  serve.py, web/          the review server and its page, copied from this package: `python3 serve.py` in the store
+                          (on any machine, nothing to install)
+  review.jsonl            the review log of checks and Fixes, which serve.py appends to. No run writes or deletes it
   token_usage.jsonl       one line per request sent to this store, summarized at the end
 
 Saved answers are stamped with the PDF's hash, the image settings and a hash of the prompts, so a run only redoes pages
@@ -30,6 +33,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 import argparse
+import shutil
 import unicodedata
 
 import fitz
@@ -48,6 +52,7 @@ from src.providers.vlm_requests import (
     unique_ids, write_json
 )
 
+HERE = os.path.dirname(os.path.abspath(__file__))
 PHASE = Phase("page", step="khotangtucngu_page", max_tokens=PAGE_MAX_TOKENS, thinking=False,
               retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT)
 
@@ -144,6 +149,9 @@ def main():
         p["image"] = f"pages/{page_key(p['pdf'])}.png"
     write_json(os.path.join(store, "entries.json"), {"part": args.part, "pages": pages, "entries": entries})
     write_json(os.path.join(store, "warnings.json"), warnings)
+    # The review server's single master copy is this package's; review.jsonl beside it is never touched
+    shutil.copyfile(os.path.join(HERE, "serve.py"), os.path.join(store, "serve.py"))
+    shutil.copytree(os.path.join(HERE, "web"), os.path.join(store, "web"), dirs_exist_ok=True)
 
     kinds = {}
     for w in warnings:
@@ -151,6 +159,7 @@ def main():
     print(f"[Kho tàng tục ngữ] {len(answers)} page(s) with an answer in the store, {len(entries)} Proverb Entries")
     print(f"[Kho tàng tục ngữ] {len(warnings)} Warning(s): {kinds}")
     print(f"[Kho tàng tục ngữ] Entries in {store}/entries.json, Warnings in {store}/warnings.json")
+    print(f"[Kho tàng tục ngữ] To review the Part: cd {store} && python3 serve.py")
     print_token_stats(usage_file)
 
 

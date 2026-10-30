@@ -200,6 +200,94 @@ or not, compare two runs of the same slice against the reviewer's own correction
 python3 scripts/proofread/compare_ocr_hint.py vsc-project/ai-pass/<with-hint> vsc-project/ai-pass/<without>
 ```
 
+### Kho tàng tục ngữ người Việt (scanned proverb collection)
+
+`src/khotangtucngu` transcribes the Proverb Entries of one PDF Part of the book with the default vision model,
+one request per PDF page. It then lets you review them page by page against the scan and exports website data.
+Its terms (PDF Part, Proverb Entry, Citation, Warning, Fix, ...) are in
+[`vsc-project/khoTangTucNguoiNguoiViet/GLOSSARY.md`](vsc-project/khoTangTucNguoiNguoiViet/GLOSSARY.md). The Parts,
+their proverb pages and book page offsets are in `src/khotangtucngu/settings.py`; only `--part-1` (PDF pages 36–865)
+is set up now.
+
+Everything for one Part lives in its store, `vsc-project/khoTangTucNguoiNguoiViet/store/<part>/`. `vsc-project/` is
+not in git apart from `front-matter.md`, so first copy the Part's PDF there on the cluster
+(`kho tàng tục ngữ người việt tập 1 - p1.pdf`).
+
+**1. Transcribe (cluster, from the repository root).**
+
+```bash
+bash scripts/khotangtucngu/submit.sh --part-1 --dry-run            # login node: token counts, sends nothing
+sbatch scripts/khotangtucngu/submit.sh --part-1 --pages 36-45,420-421   # a trial, with an entry over a page break
+sbatch scripts/khotangtucngu/submit.sh --part-1                    # every proverb page of the Part
+sbatch scripts/khotangtucngu/submit.sh --part-1 --pages 420        # redo the pages you name (ranges and single pages)
+```
+
+- Each page's answer is saved as soon as it arrives. A rerun only redoes pages that failed, never ran, or were made
+  under a different prompt, image setting or PDF. If the full run hits the job's 4-hour limit, submit the same
+  command again and it carries on.
+- Runs over different pages add up in the store. The outputs are rebuilt from every saved answer each time.
+- `--dry-run` writes its per-request counts to `store/<part>/dry_run_tokens.jsonl`.
+- Logs: `logging/slurm_khotangtucngu_<job>.out`, plus `logs/vllm_khotangtucngu.log` for the server.
+
+A run writes into the store:
+
+| File | What it holds |
+| --- | --- |
+| `requests/pNNN.json` | each PDF page's answer: its printed page number and its Blocks |
+| `entries.json` | the verbatim Proverb Entries, plus each page's book page, answer hash and entries |
+| `warnings.json` | every Warning, with its kind, reason and PDF page |
+| `pages/pNNN.png` | each page's scan, for the review server |
+| `serve.py`, `web/` | the review server and its page |
+| `review.jsonl` | the review log of checks and Fixes; written only by `serve.py`, never by a run |
+| `token_usage.jsonl` | one line per request sent |
+
+Warnings flag:
+- number gaps and duplicates within a letter;
+- letter headings out of order;
+- unknown Source Abbreviations;
+- Citations with no pages or that can't be split;
+- page numbers out of step with the PDF page;
+- failed or missing pages;
+- Leading Blocks with no Proverb Entry to join.
+
+**2. Review (any machine, nothing to install).** Copy the store to the laptop, into the same path in your clone of
+this repository, then start the server in it:
+
+```bash
+rsync -a --exclude review.jsonl <user>@<login node>:<repo>/vsc-project/khoTangTucNguoiNguoiViet/store/part-1/ \
+      vsc-project/khoTangTucNguoiNguoiViet/store/part-1/
+cd vsc-project/khoTangTucNguoiNguoiViet/store/part-1 && python3 serve.py   # http://127.0.0.1:8000/, --port to change
+```
+
+- **The page:** each page's scan is on the left, and its Proverb Entries on the right as transcribed, with italics
+  shown. The page's Warnings sit above its entries.
+- **Moving around:** ◀ ▶ (or ← →) step through the pages. "Next with Warnings" (`w`) and "Next unchecked" (`u`) jump
+  ahead.
+- **Checks and Fixes:** mark each entry checked, or save a Fix, which is the whole entry edited as JSON. Both are
+  appended to `review.jsonl`.
+- **Stale Fixes:** if a rerun changes the answer a Fix was made against, the Fix is shown as stale and isn't applied
+  until you save it again or drop it.
+- **Keep your review log:** `review.jsonl` is written where you review. When you pull a rerun's store again, keep
+  `--exclude review.jsonl` so the copy on the cluster never overwrites your review.
+- **Fixing the model's reading:** to redo pages, rerun them on the cluster with `--pages` and pull the store again.
+
+**3. Export (laptop, no GPU).**
+
+```bash
+python3 -m src.khotangtucngu.export
+```
+
+- **Which Parts:** it exports every Part whose store has an `entries.json`, so a See-also resolves across Parts.
+- **Fixes:** Fixes that aren't stale replace the model's entries.
+- **Output:** it empties and rewrites each `store/<part>/export/` and writes nothing outside it:
+  - `letters/<letter>.json`, one record per Proverb Entry;
+  - `sources.json`, the 63 Sources with their Source Notes;
+  - `intro.md`, the cleaned Front Matter;
+  - `expansions.json`, every General Abbreviation it wrote out, to check by eye;
+  - `unresolved_see_also.json`.
+- **Into the website:** copy the export folder into `digitizing-vietnam-website` by hand. The card that will read it
+  is specced in `.scratch/kho-tang-tuc-ngu-website/spec.md`, which isn't settled yet.
+
 ### Audio transcription
 
 `scripts/audio/transcribe.sh` and `sbatch scripts/audio/submit_transcript.sh` turn an interview recording into a

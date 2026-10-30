@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="vi" data-writable="__WRITABLE__"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proverb review</title>
+<link rel="stylesheet" href="web/style.css">
+</head><body>
+<header>
+  <h1 id="title">Loading…</h1>
+  <span id="progress"></span>
+  <span id="readonly" hidden>Read-only: this store can't be written, so checks and Fixes can't be saved</span>
+</header>
+<nav id="pagebar">
+  <button id="prev" title="Previous page (←)">◀</button>
+  <select id="pick"></select>
+  <button id="next" title="Next page (→)">▶</button>
+  <button id="next-warn" title="Next page with Warnings (w)">Next with Warnings ⚠</button>
+  <button id="next-open" title="Next page with entries not yet checked (u)">Next unchecked</button>
+  <span class="zoom">
+    <button id="smaller" title="Smaller">−</button>
+    <button id="larger" title="Larger">+</button>
+  </span>
+</nav>
+<main>
+  <section id="left"><div id="sheet"></div></section>
+  <section id="right">
+    <div id="pageinfo"></div>
+    <div id="warnings"></div>
+    <div id="entries"></div>
+  </section>
+</main>
+<div id="toast" hidden></div>
+<script src="web/app.js"></script>
+</body></html>

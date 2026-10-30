@@ -21,3 +21,7 @@
 - [ ] Saving a Fix appends it to the review log; reloading shows the Fix in place of the model's entry
 - [ ] After a rerun that changes the page's answer, its Fix is shown as stale
 - [ ] A new run does not touch the review log
+
+## Comments
+
+- From 03 (export): `review_fixes` in `src/khotangtucngu/export.py` reads the Fixes of `<store>/review.jsonl` in the shape `serve.py`'s docstring defines (`{"type": "fix", "name", "answer_sha1": {PDF page: hash}, "entry"}`, `"entry": null` to drop; a later record on the same name replaces an earlier one). It ignores checks. Note: `web/app.js` currently writes a different shape (`entry`/`fixed`/`answers` and `type: "drop"`), which `serve.py`'s validator would reject; it needs to match the docstring.
