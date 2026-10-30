@@ -47,3 +47,15 @@ _Avoid_: annotation, note
 **Faithful Transcription**:
 Copying exactly what the page prints: the 1918 spelling, hyphens, Hán characters and the newspaper's own typos, never modernised or corrected. The one exception is a run of dots (leader dots or a long ellipsis), written as three dots `...` and left out of a table.
 _Avoid_: cleaned text, normalised text
+
+**Warning**:
+Something code flags in a transcribed Issue for the developer to look at, always with its reason and the place on a page it concerns: printed text outside every Region, a Region the layout pass left out, a Region or Strip with no transcription, a Footnote or call left unpaired, printed lines that could not be matched to the lines Read, or a Format answer that was not used. A Warning with no narrower place concerns its whole page.
+_Avoid_: flag, error, dropped (alone)
+
+**Resolution**:
+The developer's verdict on one Warning, with an optional note. Printed text outside every Region is resolved as not printed text (a speck, the scan's border, a Library Mark), a picture, or missed text, with what it says; any other Warning as a false alarm or a real problem.
+_Avoid_: dismissal, ack
+
+**Correction**:
+The developer's fix to the transcribed text of one place in an Issue: the text before, the text after, and an optional note on why. It is feedback for improving the transcription, not an edit of the Issue's output.
+_Avoid_: edit (alone), fix, patch

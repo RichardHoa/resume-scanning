@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="vi" data-writable="__WRITABLE__"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Issue review</title>
+<link rel="stylesheet" href="web/style.css">
+</head><body>
+<header>
+  <h1 id="title">Loading…</h1>
+  <span id="readonly" hidden>Read-only: this folder can't be written, so Resolutions and Corrections can't be saved</span>
+</header>
+<main>
+  <section id="left">
+    <div class="tabs">
+      <button id="tab-text" class="on">Text</button>
+      <button id="tab-warnings">Warnings</button>
+      <label><input type="checkbox" id="only-open"> Only unresolved Warnings</label>
+    </div>
+    <div class="scroll" id="text"></div>
+    <div class="scroll" id="warnings" hidden></div>
+  </section>
+  <section id="right">
+    <div id="pagebar"></div>
+    <div id="rightbody">
+      <div id="pagewrap"><div id="sheet"></div></div>
+      <aside id="drawer" hidden>
+        <header><h2 id="drawer-title"></h2><button id="drawer-close" title="Close">✕</button></header>
+        <div id="drawer-body"></div>
+      </aside>
+    </div>
+  </section>
+</main>
+<div id="toast" hidden></div>
+<script src="web/app.js"></script>
+</body></html>

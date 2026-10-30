@@ -3,18 +3,22 @@ Page images of an Issue PDF, rendered with PyMuPDF in grayscale: the whole page 
 Region cut at full scan resolution for the transcription pass. Both are PNG, as sent to the model.
 
 Also the analysis of the bilevel scan at full resolution: snapping a Region's box edges onto column gaps and printed
-rules with a margin of blank paper, cutting a tall Region into Strips at blank gaps between lines, and finding printed
-text outside every Region.
+rules with a margin of blank paper, cutting a tall Region into Strips at blank gaps between lines, finding the printed
+lines of a Region or Strip and where each starts and stops, and finding printed text outside every Region.
 Boxes are [left, top, right, bottom] in thousandths of the page, as the layout pass gives them.
 """
 import math
 import threading
+from typing import List, NamedTuple
 
 import fitz
 import numpy as np
 from scipy import ndimage
 
-from src.nugioichung.settings import CROP_DPI, LAYOUT_LONG_SIDE, SNAP_REACH, STRIP_HEIGHT
+from src.nugioichung.settings import (
+    CENTRED_LINES, CENTRED_SKEW, CROP_DPI, INDENT_LINES, LAYOUT_LONG_SIDE, LINE_GAP_SHARE, PAGE_IMAGE_LONG_SIDE,
+    PICTURE_INK, PICTURE_LINES, SHORT_LINE_SHARE, SNAP_REACH, STRIP_HEIGHT, TONE_BAND_SHARE, VALLEY_SHARE
+)
 
 # PyMuPDF documents are not thread-safe, and requests build their images in the phase's worker threads
 _render_lock = threading.Lock()
@@ -38,6 +42,16 @@ INWARD_COST = 2
 # A snapped box edge is moved outward by up to this many thousandths of the page while it stays on blank or speckled
 # paper, so a Region's crop has a margin around its outermost letters without reaching a rule or the next Region's text
 EDGE_PAD = 6
+
+# Printed lines: a column of pixels with an unbroken run of ink this long (half an inch, three lines or more) is a
+# vertical rule, which a box edge snapped onto it takes in; it and RULE_PAD columns either side are left out
+MIN_RULE_RUN_PX = 150
+RULE_PAD = 3
+# A run of rows at least RULE_SHARE ink, at most this many thick, is a horizontal rule (a picture's dark rows are more)
+MAX_RULE_PX = 12
+# A line's ends are those of its runs of ink with at least this much ink (a full stop alone is about 40 pixels), so
+# specks in the margin beside it don't move them
+LINE_END_INK = 40
 
 # Text outside any Region: ink within this many thousandths of the page's edges is the scan's border, not print
 EDGE_MARGIN = 25
@@ -73,6 +87,14 @@ def crop_image(doc, page, box):
                          r.x0 + r.width * right / 1000, r.y0 + r.height * bottom / 1000)
         zoom = CROP_DPI / 72
         return p.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip, colorspace=fitz.csGRAY).tobytes("png")
+
+
+def page_image(doc, page):
+    """PDF page `page` (1-based) whole, about PAGE_IMAGE_LONG_SIDE px on its long side, for the review viewer."""
+    with _render_lock:
+        p = doc[page - 1]
+        zoom = PAGE_IMAGE_LONG_SIDE / max(p.rect.width, p.rect.height)
+        return p.get_pixmap(matrix=fitz.Matrix(zoom, zoom), colorspace=fitz.csGRAY).tobytes("png")
 
 
 def page_ink(doc, page):
@@ -198,6 +220,136 @@ def strip_boxes(ink, box):
                                                 abs(t - target))))
     cuts.append(bottom)
     return [[left, a, right, b] for a, b in zip(cuts, cuts[1:])]
+
+
+class PrintedLine(NamedTuple):
+    """One printed line of a Region or Strip, as found on the scan."""
+    box: List[float]    # [left, top, right, bottom] in thousandths of the page, to a tenth: its rows, its ink's ends
+    indented: bool      # it starts well right of its Cut's usual left edge
+    short: bool         # it stops well short of its Cut's usual right edge
+    centred: bool       # both its margins are wide and about even
+    picture: bool       # a printed picture, not a line of text
+
+
+def _rule_columns(area):
+    """For each column of `area` (a bool ink array), whether it is on a vertical rule or within RULE_PAD of one."""
+    edges = np.diff(np.pad(area.astype(np.int8), ((1, 1), (0, 0))), axis=0).T
+    cols, starts = np.nonzero(edges == 1)
+    _, stops = np.nonzero(edges == -1)
+    longest = np.zeros(area.shape[1], int)
+    np.maximum.at(longest, cols, stops - starts)
+    rules = (longest >= MIN_RULE_RUN_PX).astype(int)
+    return np.convolve(rules, np.ones(2 * RULE_PAD + 1, int), "same") > 0
+
+
+def _line_ends(ink_cols, reach):
+    """A line's left and right ends (the right one exclusive), from `ink_cols`, the ink in each of its columns: the
+    ends of its ink in runs of columns less than `reach` apart (a word space is less than half a line's height),
+    leaving out runs with less than LINE_END_INK (specks). (0, 0) if it has none."""
+    inked = np.flatnonzero(ink_cols)
+    if not len(inked):
+        return 0, 0
+    breaks = np.flatnonzero(np.diff(inked) > reach)
+    starts = np.concatenate(([inked[0]], inked[breaks + 1]))
+    stops = np.concatenate((inked[breaks], [inked[-1]])) + 1
+    total = np.concatenate(([0], np.cumsum(ink_cols)))
+    kept = [(a, b) for a, b in zip(starts, stops) if total[b] - total[a] >= LINE_END_INK]
+    if not kept:
+        return 0, 0
+    return int(kept[0][0]), int(kept[-1][1])
+
+
+def _usual(ends, reach, lowest):
+    """The most common of `ends`, give or take `reach`: the median of the most ends within reach of one of them,
+    the lowest such group if `lowest` and several are as big, else the highest."""
+    ends = np.array(ends)
+    near = [np.abs(ends - e) <= reach for e in ends]
+    best = max(range(len(ends)), key=lambda i: (near[i].sum(), -ends[i] if lowest else ends[i]))
+    return float(np.median(ends[near[best]]))
+
+
+def printed_lines(ink, box):
+    """
+    The printed lines inside `box` (a Region or Strip), top to bottom. Its printed rules left out, a line is a band
+    of rows each with more ink than LINE_GAP_SHARE of a busy row; a band thinner than TONE_BAND_SHARE of the median
+    line (tone marks above capitals, a dot under a letter, a speck, a dotted rule) is merged into the line nearest it,
+    and a band about two or more lines tall is cut at its valleys; a line with no run of ink big enough to have ends
+    is left out. Each line is then placed against the Cut's usual left and right edges, the most common ends of its
+    lines, so an indented first line doesn't move them. `ink`: the page from `page_ink`.
+    """
+    h, w = ink.shape
+    rows, cols = _span(box[1], box[3], h), _span(box[0], box[2], w)
+    area = ink[rows, cols] & ~_rule_columns(ink[rows, cols])
+    profile = area.sum(axis=1)
+    ruled = profile >= RULE_SHARE * area.shape[1]
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], ruled.astype(np.int8), [0]))))
+    for a, b in zip(edges[::2], edges[1::2]):
+        if b - a <= MAX_RULE_PX:
+            profile[a:b] = 0
+    inked = profile > max(BLANK_PX, LINE_GAP_SHARE * np.percentile(profile, 90))
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], inked.astype(np.int8), [0]))))
+    bands = [[int(a), int(b)] for a, b in zip(edges[::2], edges[1::2]) if profile[a:b].sum() >= LINE_END_INK]
+    if not bands:
+        return []
+    heights = np.array([b - a for a, b in bands])
+    line = np.median(heights)
+    line = float(np.median(heights[heights >= TONE_BAND_SHARE * line]))
+    # Lines that touch make one band about a whole number of lines tall: it is cut at the emptiest row near each place
+    # a line should end, where that row is a valley (a tall line of large type has none)
+    touching, bands = bands, []
+    for a, b in touching:
+        n = round((b - a) / line)
+        start, middle, reach = a, np.median(profile[a:b]), round(line / 3)
+        for k in range(1, n):
+            target = a + round((b - a) * k / n)
+            lo, hi = max(start + 1, target - reach), min(b - 1, target + reach)
+            if lo < hi:
+                gap = lo + int(np.argmin(profile[lo:hi]))
+                if profile[gap] <= VALLEY_SHARE * middle:
+                    bands.append([start, gap])
+                    start = gap + 1
+        bands.append([start, b])
+    # Each line keeps its core, the band it was before thin ones were merged into it, which alone gives its ends: a
+    # dotted rule under it or a speck beside it would move them
+    bands = [[a, b, a, b] for a, b in bands]
+    while len(bands) > 1:
+        thin = [i for i, (a, b, _, _) in enumerate(bands) if b - a < TONE_BAND_SHARE * line]
+        if not thin:
+            break
+        i = thin[0]
+        above = bands[i][0] - bands[i - 1][1] if i > 0 else math.inf
+        below = bands[i + 1][0] - bands[i][1] if i + 1 < len(bands) else math.inf
+        lo, hi = (i - 1, i) if above < below else (i, i + 1)
+        core = max(bands[lo], bands[hi], key=lambda band: band[3] - band[2])[2:]
+        bands[lo:hi + 1] = [[bands[lo][0], bands[hi][1]] + core]
+
+    found = []
+    for a, b, core_top, core_bottom in bands:
+        ink_cols = area[core_top:core_bottom].sum(axis=0)
+        left, right = _line_ends(ink_cols, round(line / 2))
+        if right <= left:
+            continue
+        picture = (b - a >= PICTURE_LINES * line
+                   and ink_cols.sum() >= PICTURE_INK * (core_bottom - core_top) * max(1, right - left))
+        found.append((a, b, left, right, picture))
+
+    text = [f for f in found if not f[4]]
+    if text:
+        usual_left = _usual([f[2] for f in text], line / 2, lowest=True)
+        usual_right = _usual([f[3] for f in text], line / 2, lowest=False)
+    lines = []
+    for a, b, left, right, picture in found:
+        indented = short = centred = False
+        if not picture:
+            margin_left, margin_right = left - usual_left, usual_right - right
+            indented = margin_left > INDENT_LINES * line
+            short = margin_right > SHORT_LINE_SHARE * (usual_right - usual_left)
+            centred = (min(margin_left, margin_right) > CENTRED_LINES * line
+                       and abs(margin_left - margin_right) <= CENTRED_SKEW * max(margin_left, margin_right))
+        place = [round((cols.start + left) * 1000 / w, 1), round((rows.start + a) * 1000 / h, 1),
+                 round((cols.start + right) * 1000 / w, 1), round((rows.start + b) * 1000 / h, 1)]
+        lines.append(PrintedLine(place, bool(indented), bool(short), bool(centred), bool(picture)))
+    return lines
 
 
 def text_outside(ink, boxes):

@@ -6,7 +6,9 @@ as a CSV. An Item never runs across Issues: each run assembles one Issue.
 import csv
 import re
 
-from src.nugioichung.regions import ARTICLE, FOOTNOTES, KINDS
+from src.nugioichung.placed import PlacedText
+from src.nugioichung.regions import ARTICLE, FOOTNOTES, KINDS, warning
+from src.nugioichung.transcribe import ends_paragraph, starts_paragraph
 
 NEWSPAPER = "Nữ-Giới-Chung"
 FLAG = "⚠"
@@ -15,6 +17,8 @@ FLAG = "⚠"
 _STRUCTURE = re.compile(r"^(#|\||- |\* |\d+\. |> |\[Hình\])")
 # A Footnote call in an Article's text, e.g. "(7)"
 _CALL = re.compile(r"\((\d{1,3})\)")
+# What parts two blocks of an Item's text
+_BLANK_LINE = re.compile(r"\n[ \t]*\n\s*")
 # The old datasheet's columns, Chủ đề (topic) left empty
 CSV_COLUMNS = ["Chủ đề", "Bài viết", "Tác giả", "Chuyên mục", "Số báo", "Ngày xuất bản", "Nội dung"]
 
@@ -67,11 +71,19 @@ def join_items(layouts):
     return items
 
 
-def _joins(text, piece, answer, prev_ends):
-    """Whether `piece` carries on the paragraph `text` ends with, across a Strip or Region boundary."""
-    if not text or not (prev_ends or answer["starts_mid_paragraph"]):
+def _joins(text, piece, prev, answer):
+    """
+    Whether `piece`, the text of `answer`, carries on the paragraph `text` ends with, across a Strip or Region
+    boundary from the cut whose answer is `prev` (None after a gap): when both cuts' printed lines matched, if the
+    last line before stops at the right edge and the first after is not indented; else as the read answers flag it.
+    """
+    if not text or prev is None:
         return False
-    return not _STRUCTURE.match(text.rsplit("\n", 1)[-1]) and not _STRUCTURE.match(piece)
+    if prev["printed"] and answer["printed"]:
+        runs_on = not ends_paragraph(prev["printed"][-1]) and not starts_paragraph(answer["printed"][0])
+    else:
+        runs_on = prev["ends_mid_paragraph"] or answer["starts_mid_paragraph"]
+    return runs_on and not _STRUCTURE.match(text.text.rsplit("\n", 1)[-1]) and not _STRUCTURE.match(piece.text)
 
 
 def _carry_on(text, piece):
@@ -79,39 +91,46 @@ def _carry_on(text, piece):
     return text + piece if text.endswith("-") else text + " " + piece
 
 
-def _gap(cut, why, gaps):
-    """The ⚠ gap a request with no transcription leaves in its Item, logged in `gaps`."""
-    gaps.append({"task": cut.label, "why": why})
-    return f"{FLAG} *[{cut.label} not transcribed: {why}]*"
+def locate(cuts, place):
+    """(PDF page, box) of a place in the text: its printed line's box, or its cut's. `cuts`: {cut key: Cut}."""
+    key, line = place
+    cut = cuts[key]
+    return cut.page, (cut.lines[line].box if line is not None else cut.box)
 
 
-def _join_text(regions, transcriptions, gaps, calls=None):
+def _gap(cut, why, warnings):
+    """The ⚠ gap a request with no transcription leaves in its Item, with its Warning in `warnings`."""
+    warnings.append(warning("not_transcribed", cut.key, f"{cut.label} not transcribed: {why}", cut.page, cut.box))
+    return PlacedText.at(f"{FLAG} *[{cut.label} not transcribed: {why}]*", (cut.key, None))
+
+
+def _join_text(regions, transcriptions, warnings, calls=None):
     """
     The text of a list of Regions, Strip by Strip, with a paragraph cut by a Strip or Region boundary joined back
     into one, and a ⚠ gap for each request with no transcription. `calls` rewrites the Footnote calls of each answer.
     """
-    text, prev_ends = "", False
+    text, prev = PlacedText(), None
     for region in regions:
         for cut in region.cuts:
             answer, why = transcriptions[cut.key]
             if answer is None:
-                piece = _gap(cut, why, gaps)
-                text, prev_ends = (text + "\n\n" + piece if text else piece), False
+                piece = _gap(cut, why, warnings)
+                text, prev = (text + "\n\n" + piece if text else piece), None
                 continue
             piece = answer["text"]
             if not piece:
                 continue
             if calls:
                 piece = calls(piece)
-            if _joins(text, piece, answer, prev_ends):
+            if _joins(text, piece, prev, answer):
                 text = _carry_on(text, piece)
             else:
                 text = text + "\n\n" + piece if text else piece
-            prev_ends = answer["ends_mid_paragraph"]
+            prev = answer
     return text
 
 
-def _join_footnotes(regions, transcriptions, gaps):
+def _join_footnotes(regions, transcriptions, warnings):
     """
     The Footnotes of a list of Footnotes Regions in printed order, as [number, text], a Footnote cut by a Strip or
     Region boundary (given back with number 0) joined to the one before; [None, ⚠ gap] for a request with no
@@ -122,7 +141,7 @@ def _join_footnotes(regions, transcriptions, gaps):
         for cut in region.cuts:
             answer, why = transcriptions[cut.key]
             if answer is None:
-                notes.append([None, _gap(cut, why, gaps)])
+                notes.append([None, _gap(cut, why, warnings)])
                 continue
             for i, note in enumerate(answer["footnotes"]):
                 if i == 0 and note["number"] == 0 and notes and notes[-1][0]:
@@ -132,18 +151,27 @@ def _join_footnotes(regions, transcriptions, gaps):
     return notes
 
 
-def _render_item(n, item, transcriptions, gaps, unresolved):
+def _place_name(place):
+    """A place as part of a Warning's id."""
+    key, line = place
+    return key if line is None else f"{key}-l{line + 1:02d}"
+
+
+def _render_item(n, item, transcriptions, cuts, warnings):
     """
-    Item number `n`'s Markdown text: its body, then its Footnotes. Each call "(k)" with a Footnote k of the same
-    Item becomes the Markdown footnote [^n-k] (labels must be unique in the Issue); an unpaired call or Footnote is
-    marked ⚠ and logged in `unresolved`. Calls are looked for only in an Item that has Footnotes.
+    Item number `n`'s blocks: each paragraph (or heading, table, ⚠ gap) of its body, then each of its Footnotes, as
+    {kind "paragraph" or "footnote", text as PlacedText, label: the Markdown footnote label of a paired Footnote}.
+    Each call "(k)" with a Footnote k of the same Item becomes the Markdown footnote [^n-k] (labels must be unique in
+    the Issue); an unpaired call or Footnote is marked ⚠ and given a Warning. Calls are looked for only in an Item
+    that has Footnotes.
     """
     where = f"{item_heading(item)} ({pages_label(item['pages'])})"
+    first_page = item["pages"][0][0]
     called = set()
     if item["kind"] == FOOTNOTES:
-        notes, text = _join_footnotes(item["body"], transcriptions, gaps), ""
+        notes, text = _join_footnotes(item["body"], transcriptions, warnings), PlacedText()
     else:
-        notes = _join_footnotes(item["footnotes"], transcriptions, gaps)
+        notes = _join_footnotes(item["footnotes"], transcriptions, warnings)
         numbers = {k for k, _ in notes if k}
 
         def calls(piece):
@@ -152,16 +180,21 @@ def _render_item(n, item, transcriptions, gaps, unresolved):
                 if k in numbers:
                     called.add(k)
                     return f"[^{n}-{k}]"
-                unresolved.append({"task": where, "why": f"Footnote call ({k}) has no Footnote {k}"})
+                place = piece.place_at(m.start())
+                page, box = locate(cuts, place) if place else (first_page, None)
+                warnings.append(warning("unpaired_call", f"{_place_name(place) if place else n}:({k})",
+                                        f"Footnote call ({k}) has no Footnote {k}, in {where}", page, box))
                 return m.group(0) + FLAG
-            return _CALL.sub(call, piece)
+            return piece.sub(_CALL, call)
 
-        text = _join_text(item["body"], transcriptions, gaps, calls if notes else None)
+        text = _join_text(item["body"], transcriptions, warnings, calls if notes else None)
 
-    lines, written = [], set()
+    blocks = [{"kind": "paragraph", "text": block, "label": None}
+              for block in (b.strip() for b in text.split(_BLANK_LINE)) if block]
+    written = set()
     for k, note in notes:
         if k is None:
-            lines.append(note)
+            blocks.append({"kind": "footnote", "text": note, "label": None})
             continue
         if item["kind"] == FOOTNOTES:
             why = "Footnotes with no Article to pair with"
@@ -173,21 +206,30 @@ def _render_item(n, item, transcriptions, gaps, unresolved):
             why = f"Footnote {k} has no call ({k}) in the text"
         else:
             written.add(k)
-            lines.append(f"[^{n}-{k}]: {note}")
+            blocks.append({"kind": "footnote", "text": f"[^{n}-{k}]: " + note, "label": f"{n}-{k}"})
             continue
-        unresolved.append({"task": where, "why": why})
-        lines.append(f"{FLAG} ({k or '?'}) {note}")
-    return "\n\n".join(x for x in [text] + lines if x)
+        place = note.places()[0] if note.places() else None
+        page, box = locate(cuts, place) if place else (first_page, None)
+        warnings.append(warning("unpaired_footnote", f"{_place_name(place) if place else n}:({k or '?'})",
+                                f"{why}, in {where}", page, box))
+        blocks.append({"kind": "footnote", "text": f"{FLAG} ({k or '?'}) " + note, "label": None})
+    return blocks
 
 
-def render_items(items, transcriptions):
+def render_items(items, transcriptions, cuts):
     """
-    Each Item's Markdown text, and the dropped log rows of the requests with no transcription and of the Footnote
-    calls and Footnotes left unpaired. `transcriptions`: {request key: (answer or None, why it has none)}.
+    Each Item's blocks (see `_render_item`), and the Warnings of the requests with no transcription and of the
+    Footnote calls and Footnotes left unpaired. `transcriptions`: {request key: (answer or None, why it has none)};
+    `cuts`: {cut key: Cut}.
     """
-    gaps, unresolved = [], []
-    texts = [_render_item(n, item, transcriptions, gaps, unresolved) for n, item in enumerate(items, 1)]
-    return texts, gaps, unresolved
+    warnings = []
+    blocks = [_render_item(n, item, transcriptions, cuts, warnings) for n, item in enumerate(items, 1)]
+    return blocks, warnings
+
+
+def item_text(blocks):
+    """An Item's Markdown text, from its blocks."""
+    return "\n\n".join(block["text"].text for block in blocks)
 
 
 def page_numbers(pages):
@@ -215,13 +257,18 @@ def item_heading(item):
     return item["title"] or f"{KINDS[item['kind']].label}, {word} {labels[0]}"
 
 
+def item_byline(item):
+    """The line under its heading: its kind, section, author and pages."""
+    return " · ".join(x for x in (KINDS[item["kind"]].label, item["section"], item["author"],
+                                  pages_label(item["pages"])) if x)
+
+
 def issue_markdown(issue, items, texts):
-    """The Issue as Markdown, from its Items and their texts (`render_items`)."""
+    """The Issue as Markdown, from its Items and their texts (`item_text`)."""
     out = [f"# {issue_title(issue)}"]
     for item, text in zip(items, texts):
         out.append(f"## {item_heading(item)}")
-        out.append("*" + " · ".join(x for x in (KINDS[item["kind"]].label, item["section"], item["author"],
-                                                 pages_label(item["pages"])) if x) + "*")
+        out.append(f"*{item_byline(item)}*")
         if text:
             out.append(text)
     return "\n\n".join(out) + "\n"

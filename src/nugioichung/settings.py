@@ -19,3 +19,29 @@ RETRY_TEMPERATURE = 0.3
 SNAP_REACH = 60
 # A Region taller than this, in thousandths of the page (about a third), is cut into Strips no taller than about this
 STRIP_HEIGHT = 333
+# Printed lines of a Region or Strip (docs/adr/0002-paragraphs-from-line-geometry.md), tuned on Số 1. Its lines touch
+# where accents and descenders meet, so a row of pixels is between lines when it holds at most this share of the ink
+# of a busy row of the Cut (its 90th percentile)
+LINE_GAP_SHARE = 0.08
+# A band about two or more lines tall is lines that touch, cut where a row holds at most this share of the band's
+# median row ink
+VALLEY_SHARE = 0.35
+# A band of ink thinner than this share of the Cut's median line (a row of tone marks, a dot under a letter, a speck)
+# is merged into the line next to it
+TONE_BAND_SHARE = 0.5
+# A band of ink this many times as tall as the median line, and at least this share ink, is a printed picture; a
+# taller band with less ink is a line of large type
+PICTURE_LINES = 3
+PICTURE_INK = 0.3
+# A line starts a paragraph when its left end is more than this share of the Cut's median line height (accents and
+# descenders included) right of the Cut's usual left edge: Số 1 indents a paragraph about a line height, and the
+# ends of other lines vary by about a seventh of one...
+INDENT_LINES = 0.5
+# ...and ends one when its right end stops more than this share of the Cut's width short of its usual right edge
+SHORT_LINE_SHARE = 0.15
+# A line is centred, a line of its own, when both its margins are wider than this many median line heights and differ
+# by at most this share of the wider
+CENTRED_LINES = 2
+CENTRED_SKEW = 0.35
+# The review viewer shows each page about this many px on its long side
+PAGE_IMAGE_LONG_SIDE = 2000

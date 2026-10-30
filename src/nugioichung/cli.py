@@ -8,22 +8,26 @@ Writes to vsc-project/NuGioiChung/runs/<issue>/<time>/ (or --run-dir):
   requests/layout/pNN.json          one layout answer per page; pNN/ holds its image as sent and its prompts
   requests/read/pNN-rMM.json        the printed lines of each Region, or pNN-rMM-sKK.json of each Strip of a tall
                                     Region; the folder of the same name holds its crop as sent and its prompts
-  requests/format/pNN-rMM.json      the same Region's or Strip's lines as Markdown, likewise (none for Footnotes)
-  layout/pNN.png                    each page with its snapped Regions outlined and numbered, Strip cuts dashed,
-                                    and ⚠ on printed text outside any Region
+  requests/format/pNN-rMM.json      the same Region's or Strip's text as Markdown, likewise (none for Footnotes)
   issue.md                          the Issue as Markdown, its Items in reading order, Footnotes paired with calls
   articles.csv                      one row per Article, in the old datasheet's columns
-  dropped.jsonl                     what needs looking at, and why: pages with no layout, Regions left out,
-                                    requests with no transcription, Regions or Strips whose read lines were used
-                                    unformatted, unpaired Footnotes and calls, and text outside any Region
-  inspect.html                      page → Regions → Strips: the drawn page, then each request's image, prompt and
-                                    answer
+  pages/pNN.png                     each page, for the review viewer
+  viewer.json                       the Issue's Items with the place on a page each stretch of their text was
+                                    printed, each page's Regions and Strips with their printed lines and requests,
+                                    and every Warning: pages with no layout, Regions left out, requests with no
+                                    transcription, printed lines that didn't match the lines read, format answers not
+                                    used, unpaired Footnotes and calls, and text outside any Region
+  serve.py                          the review viewer: `python3 serve.py` in the run folder (on any machine, nothing
+                                    to install) shows the Issue's text beside its pages, and appends each Resolution
+                                    of a Warning and each Correction of the text to review.jsonl
+  web/                              the viewer's page (index.html, style.css, app.js), served by serve.py
   token_usage.jsonl                 one line per request sent in this run folder, summarized at the end
 
 Saved answers are stamped with the PDF's hash, the image settings and a hash of the prompts, so a run continued
 with --run-dir only redoes requests that failed or never ran, and the outputs are always rebuilt from all saved
-answers. The transcription pass runs each Region's or Strip's read request, then its format request. --pages picks
-the pages whose requests run. --dry-run sends nothing: it counts each request's prompt tokens
+answers (review.jsonl is kept). The transcription pass runs each Region's or Strip's read request, then its format
+request, given the read lines joined into paragraphs by code where they match the printed lines found on the scan.
+--pages picks the pages whose requests run. --dry-run sends nothing: it counts each request's prompt tokens
 with the model's own processor (images included) to check they fit the context window; transcription requests can
 only be counted for pages that already have a layout answer, and format requests for Regions and Strips that
 already have a read answer.
@@ -45,10 +49,10 @@ from datetime import datetime
 import fitz
 
 from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL
-from src.nugioichung.assembly import issue_markdown, issue_title, join_items, render_items, write_articles_csv
-from src.nugioichung.inspection import draw_layout, drawn_page, write_inspect
+from src.nugioichung.assembly import (
+    issue_markdown, issue_title, item_text, join_items, render_items, write_articles_csv
+)
 from src.nugioichung.layout import check_layout, layout_requests, page_stamp
-from src.nugioichung.pages import layout_image
 from src.nugioichung.prompts import (
     FORMAT_SYSTEM_PROMPT, LAYOUT_SYSTEM_PROMPT, READ_SYSTEM_PROMPT, format_schema, layout_schema, prompt_sha1_input,
     read_schema
@@ -56,12 +60,13 @@ from src.nugioichung.prompts import (
 from src.nugioichung.settings import (
     CROP_DPI, LAYOUT_LONG_SIDE, LAYOUT_MAX_TOKENS, REQUEST_TIMEOUT, RETRY_TEMPERATURE, TRANSCRIBE_MAX_TOKENS
 )
-from src.nugioichung.regions import ARTICLE, page_key
+from src.nugioichung.regions import ARTICLE, page_key, warning
 from src.nugioichung.transcribe import (
     check_read, format_requests, format_stamp, needs_format, read_requests, read_stamp, transcription
 )
 from src.providers import vlm_requests
-from src.providers.vlm_requests import Model, Phase, current_answer, is_current, read_result, sha1, write_jsonl
+from src.nugioichung.viewer import request_entry, write_viewer
+from src.providers.vlm_requests import Model, Phase, current_answer, is_current, read_result, sha1
 
 RUNS_DIR = os.path.join(_PROJECT_ROOT, "vsc-project", "NuGioiChung", "runs")
 PASSES = {
@@ -123,6 +128,16 @@ def request_status(results_dir, key, stamp):
     return r.get("status")
 
 
+def unique_ids(warnings):
+    """`warnings` with a repeated id made unique by its count, "#2" on, in order."""
+    seen = {}
+    for w in warnings:
+        seen[w["id"]] = seen.get(w["id"], 0) + 1
+        if seen[w["id"]] > 1:
+            w["id"] += f"#{seen[w['id']]}"
+    return warnings
+
+
 def file_sha1(path):
     h = hashlib.sha1()
     with open(path, "rb") as f:
@@ -162,8 +177,8 @@ def main():
                          "prompt_sha1": sha1(prompt_sha1_input(FORMAT_SYSTEM_PROMPT, format_schema()))}
 
     def saved_layouts():
-        """Checked layouts of every page with a current layout answer, the Regions they left out, and why each other
-        page has none."""
+        """Checked layouts of every page with a current layout answer, the Warnings of the Regions they left out, and
+        why each other page has none."""
         layouts, problems, no_layout = {}, [], {}
         for page in range(1, n_pages + 1):
             answer, why = current_answer(layout_dir, page_key(page), {**layout_stamp, **page_stamp(page)})
@@ -181,7 +196,7 @@ def main():
             for region in layout.regions:
                 for cut in region.cuts:
                     answer, why = current_answer(read_dir, cut.key, {**read_pass_stamp, **read_stamp(region, cut)})
-                    reads[cut.key] = (check_read(answer) if answer is not None else None, why)
+                    reads[cut.key] = (check_read(answer, cut) if answer is not None else None, why)
         return reads
 
     model = Model(args.model_name, args.vllm_url)
@@ -206,7 +221,7 @@ def main():
     if "layout" in passes:
         vlm_requests.run_phase(layout_requests(doc, only), layout_dir, layout_stamp, label="[Nữ Giới Chung] Layout pass",
                                phase=PASSES["layout"], model=model, save_requests=True, usage_file=usage_file)
-    layouts, dropped, no_layout = saved_layouts()
+    layouts, left_out, no_layout = saved_layouts()
     if "transcribe" in passes:
         vlm_requests.run_phase(read_requests(doc, layouts, only), read_dir, read_pass_stamp,
                                label="[Nữ Giới Chung] Read requests", phase=PASSES["read"], model=model,
@@ -218,57 +233,69 @@ def main():
                                save_requests=True, usage_file=usage_file)
 
     # -- outputs, rebuilt from the saved answers alone
-    transcriptions, read_statuses, format_statuses, unformatted = {}, [], [], []
+    transcriptions, cuts, requests, mismatched, unformatted = {}, {}, {}, [], []
+    read_statuses, format_statuses = [], []
     for layout in layouts.values():
         for region in layout.regions:
             for cut in region.cuts:
+                cuts[cut.key] = cut
                 read, why = reads[cut.key]
-                read_statuses.append(request_status(read_dir, cut.key, {**read_pass_stamp, **read_stamp(region, cut)}))
+                status = request_status(read_dir, cut.key, {**read_pass_stamp, **read_stamp(region, cut)})
+                read_statuses.append(status)
+                requests[cut.key] = [request_entry(run_dir, read_dir, "read", cut.key, status)]
                 if read is None:
                     transcriptions[cut.key] = (None, why)
                     continue
+                if read["printed"] is None:
+                    mismatched.append(warning("lines", cut.key, f"{cut.label}: {len(cut.lines)} printed lines found, "
+                                              f"{len(read['lines'])} read", cut.page, cut.box))
                 formatted = None
                 if needs_format(region, read):
                     stamp = {**format_pass_stamp, **format_stamp(region, cut, read)}
                     formatted, why = current_answer(format_dir, cut.key, stamp)
-                    format_statuses.append(request_status(format_dir, cut.key, stamp))
-                checked, fallback = transcription(region, read, formatted, why)
+                    status = request_status(format_dir, cut.key, stamp)
+                    format_statuses.append(status)
+                    requests[cut.key].append(request_entry(run_dir, format_dir, "format", cut.key, status))
+                checked, fallback = transcription(region, cut, read, formatted, why)
                 transcriptions[cut.key] = (checked, None)
                 # As with layouts, a format request outside --pages counts only if it ran and failed
                 if fallback and (region.page in only or why != "never ran"):
-                    unformatted.append({"task": cut.label, "why": fallback})
+                    unformatted.append(warning("unformatted", cut.key, f"{cut.label}: {fallback}", cut.page, cut.box))
     items = join_items(layouts)
-    texts, gaps, unpaired = render_items(items, transcriptions)
+    blocks, assembled = render_items(items, transcriptions, cuts)
+    gaps = [w for w in assembled if w["kind"] == "not_transcribed"]
+    unpaired = [w for w in assembled if w["kind"] != "not_transcribed"]
+    texts = [item_text(item_blocks) for item_blocks in blocks]
     with open(os.path.join(run_dir, "issue.md"), "w", encoding="utf-8") as f:
         f.write(issue_markdown(issue, items, texts))
     write_articles_csv(os.path.join(run_dir, "articles.csv"), issue, items, texts)
 
-    os.makedirs(os.path.join(run_dir, "layout"), exist_ok=True)
-    for page, layout in layouts.items():
-        draw_layout(layout_image(doc, page), layout, os.path.join(run_dir, drawn_page(page)))
-    shown = sorted(set(only) | set(layouts))
-    write_inspect(run_dir, issue_title(issue), shown, layouts, reads, layout_dir, read_dir, format_dir,
-                  layout_stamp, read_pass_stamp, format_pass_stamp)
-
     # A page outside --pages counts only if its layout request ran and failed
-    unread = [{"task": f"page {p}", "why": f"no layout answer: {why}"} for p, why in sorted(no_layout.items())
-              if p in only or why != "never ran"]
-    outside = [{"task": f"page {p}", "why": f"text outside any Region at {box}"}
+    unread = [warning("no_layout", page_key(p), f"page {p} has no layout answer: {why}", p)
+              for p, why in sorted(no_layout.items()) if p in only or why != "never ran"]
+    outside = [warning("outside", f"{page_key(p)}-" + "-".join(map(str, box)),
+                       f"printed text outside any Region at {box}", p, box)
                for p, layout in sorted(layouts.items()) for box in layout.outside]
-    write_jsonl(os.path.join(run_dir, "dropped.jsonl"), unread + dropped + gaps + unformatted + unpaired + outside)
+    warnings = unique_ids(sorted(unread + left_out + gaps + mismatched + unformatted + unpaired + outside,
+                                 key=lambda w: w["page"]))
+    # Every page a Warning concerns is shown, even one outside --pages whose layout request failed
+    shown = sorted(set(only) | set(layouts) | {w["page"] for w in warnings})
+    write_viewer(run_dir, doc, issue_title(issue), shown, layouts, reads, requests, items, blocks, warnings, cuts)
 
     layout_statuses = [request_status(layout_dir, page_key(p), {**layout_stamp, **page_stamp(p)}) for p in shown]
     for name, statuses in (("Layout", layout_statuses), ("Read", read_statuses), ("Format", format_statuses)):
         print(f"[Nữ Giới Chung] {name} requests: {({s: statuses.count(s) for s in sorted(set(statuses))})}")
     n_regions = sum(len(layout.regions) for layout in layouts.values())
     n_strips = sum(len(r.strips) for layout in layouts.values() for r in layout.regions)
+    n_matched = sum(read is not None and read["printed"] is not None for read, _ in reads.values())
     print(f"[Nữ Giới Chung] {len(layouts)} page(s) laid out, {n_regions} Region(s), {n_strips} Strip(s), "
-          f"{len(items)} Item(s), {sum(i['kind'] == ARTICLE for i in items)} Article(s)")
-    print(f"[Nữ Giới Chung] To look at (see dropped.jsonl): {len(unread)} page(s) with no layout, {len(dropped)} "
-          f"Region(s) left out, {len(gaps)} request(s) with no transcription, {len(unformatted)} left unformatted, "
-          f"{len(unpaired)} unpaired Footnote(s) "
-          f"or call(s), {len(outside)} patch(es) of text outside any Region")
-    print(f"[Nữ Giới Chung] Open {run_dir}/inspect.html to check the run, and read {run_dir}/issue.md")
+          f"{len(items)} Item(s), {sum(i['kind'] == ARTICLE for i in items)} Article(s); printed lines matched in "
+          f"{n_matched} of {sum(read is not None for read, _ in reads.values())} Region(s) and Strip(s) read")
+    print(f"[Nữ Giới Chung] {len(warnings)} Warning(s): {len(unread)} page(s) with no layout, {len(left_out)} "
+          f"Region(s) left out, {len(gaps)} request(s) with no transcription, {len(mismatched)} with printed lines "
+          f"not matched, {len(unformatted)} format answer(s) not used, {len(unpaired)} unpaired Footnote(s) or "
+          f"call(s), {len(outside)} patch(es) of text outside any Region")
+    print(f"[Nữ Giới Chung] To review the run: cd {run_dir} && python3 serve.py   (the Issue is in issue.md)")
     subprocess.run([sys.executable, os.path.join(_PROJECT_ROOT, "scripts", "checks", "token_stats.py"),
                     "--file", usage_file])
 

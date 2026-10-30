@@ -147,8 +147,17 @@ def read_user_text(region, cut):
     return f"{_where(region, cut)} Copy its printed lines."
 
 
-def format_user_text(region, cut, lines):
-    return f"{_where(region, cut)} Its printed lines:\n\n" + "\n".join(lines) + "\n\nWrite them as Markdown."
+def format_user_text(region, cut, read):
+    """The format request's text: the read lines joined by code into paragraphs (`read["paragraphs"]`), or if the
+    printed lines found on the scan didn't match them, the read lines as they are."""
+    if read["paragraphs"] is None:
+        return (f"{_where(region, cut)} Its printed lines:\n\n" + "\n".join(read["lines"])
+                + "\n\nWrite them as Markdown.")
+    return (f"{_where(region, cut)} Its printed lines, joined into paragraphs by code from where each line starts and "
+            f"stops on the scan (a new paragraph at an indented line, after a line that stops short, and at a centred "
+            f"line), one paragraph per line with a blank line between:\n\n" + "\n\n".join(read["paragraphs"])
+            + "\n\nWrite them as Markdown. Where the scan shows the paragraphs break otherwise, break them as the "
+              "scan shows.")
 
 
 def read_schema():
