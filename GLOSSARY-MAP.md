@@ -9,3 +9,4 @@
 ## Relationships
 
 - **Nữ Giới Chung ↔ Resume Scanning**: none in the domain. Nữ Giới Chung only shares the infrastructure that serves and calls the model.
+- **Kho tàng tục ngữ người Việt ↔ Nữ Giới Chung, Resume Scanning**: none in the domain. Its pipeline (`src/khotangtucngu`) only shares the infrastructure that serves and calls the model.

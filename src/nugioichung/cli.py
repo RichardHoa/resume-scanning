@@ -41,9 +41,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 import argparse
-import hashlib
 import re
-import subprocess
 from datetime import datetime
 
 import fitz
@@ -66,7 +64,10 @@ from src.nugioichung.transcribe import (
 )
 from src.providers import vlm_requests
 from src.nugioichung.viewer import request_entry, write_viewer
-from src.providers.vlm_requests import Model, Phase, current_answer, is_current, read_result, sha1
+from src.providers.vlm_requests import (
+    Model, Phase, current_answer, file_sha1, is_current, page_set, print_token_stats, read_result, sha1,
+    unique_ids
+)
 
 RUNS_DIR = os.path.join(_PROJECT_ROOT, "vsc-project", "NuGioiChung", "runs")
 PASSES = {
@@ -107,17 +108,6 @@ def parse_issue(stem):
             "published": f"{day:02d}/{month:02d}/{m.group(4)}"}
 
 
-def page_set(spec, n_pages):
-    """'1-4,13' -> [1, 2, 3, 4, 13]; None -> every page."""
-    if not spec:
-        return list(range(1, n_pages + 1))
-    pages = set()
-    for part in spec.split(","):
-        a, _, b = part.strip().partition("-")
-        pages.update(range(int(a), int(b or a) + 1))
-    return sorted(p for p in pages if 1 <= p <= n_pages)
-
-
 def request_status(results_dir, key, stamp):
     """A request's status for the summary: its saved status, "made from other input" or "never ran"."""
     r = read_result(results_dir, key)
@@ -126,24 +116,6 @@ def request_status(results_dir, key, stamp):
     if r.get("status") == "ok" and not is_current(r, stamp):
         return "made from other input"
     return r.get("status")
-
-
-def unique_ids(warnings):
-    """`warnings` with a repeated id made unique by its count, "#2" on, in order."""
-    seen = {}
-    for w in warnings:
-        seen[w["id"]] = seen.get(w["id"], 0) + 1
-        if seen[w["id"]] > 1:
-            w["id"] += f"#{seen[w['id']]}"
-    return warnings
-
-
-def file_sha1(path):
-    h = hashlib.sha1()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def main():
@@ -296,8 +268,7 @@ def main():
           f"not matched, {len(unformatted)} format answer(s) not used, {len(unpaired)} unpaired Footnote(s) or "
           f"call(s), {len(outside)} patch(es) of text outside any Region")
     print(f"[Nữ Giới Chung] To review the run: cd {run_dir} && python3 serve.py   (the Issue is in issue.md)")
-    subprocess.run([sys.executable, os.path.join(_PROJECT_ROOT, "scripts", "checks", "token_stats.py"),
-                    "--file", usage_file])
+    print_token_stats(usage_file)
 
 if __name__ == "__main__":
     main()

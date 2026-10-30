@@ -8,20 +8,20 @@ lines of a Region or Strip and where each starts and stops, and finding printed 
 Boxes are [left, top, right, bottom] in thousandths of the page, as the layout pass gives them.
 """
 import math
-import threading
 from typing import List, NamedTuple
 
 import fitz
 import numpy as np
 from scipy import ndimage
 
+from src.providers.page_images import RENDER_LOCK, whole_page
 from src.nugioichung.settings import (
     CENTRED_LINES, CENTRED_SKEW, CROP_DPI, INDENT_LINES, LAYOUT_LONG_SIDE, LINE_GAP_SHARE, PAGE_IMAGE_LONG_SIDE,
     PICTURE_INK, PICTURE_LINES, SHORT_LINE_SHARE, SNAP_REACH, STRIP_HEIGHT, TONE_BAND_SHARE, VALLEY_SHARE
 )
 
-# PyMuPDF documents are not thread-safe, and requests build their images in the phase's worker threads
-_render_lock = threading.Lock()
+# Shared with every other render of a scanned page, as PyMuPDF documents are not thread-safe
+_render_lock = RENDER_LOCK
 
 # A pixel of the scan darker than this is ink
 INK_LEVEL = 128
@@ -70,10 +70,7 @@ SOLID_SHARE = 0.35
 def layout_image(doc, page):
     """PDF page `page` (1-based) whole, about LAYOUT_LONG_SIDE px on its long side. Rendering it from the 300 dpi
     scan antialiases the bilevel print into gray."""
-    with _render_lock:
-        p = doc[page - 1]
-        zoom = LAYOUT_LONG_SIDE / max(p.rect.width, p.rect.height)
-        return p.get_pixmap(matrix=fitz.Matrix(zoom, zoom), colorspace=fitz.csGRAY).tobytes("png")
+    return whole_page(doc, page, LAYOUT_LONG_SIDE)
 
 
 def crop_image(doc, page, box):
@@ -91,10 +88,7 @@ def crop_image(doc, page, box):
 
 def page_image(doc, page):
     """PDF page `page` (1-based) whole, about PAGE_IMAGE_LONG_SIDE px on its long side, for the review viewer."""
-    with _render_lock:
-        p = doc[page - 1]
-        zoom = PAGE_IMAGE_LONG_SIDE / max(p.rect.width, p.rect.height)
-        return p.get_pixmap(matrix=fitz.Matrix(zoom, zoom), colorspace=fitz.csGRAY).tobytes("png")
+    return whole_page(doc, page, PAGE_IMAGE_LONG_SIDE)
 
 
 def page_ink(doc, page):

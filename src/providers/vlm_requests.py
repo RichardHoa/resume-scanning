@@ -1,6 +1,6 @@
 """
-Phases of image-plus-text requests to the vLLM vision model, shared by the book proofreader (src/cli/proofread.py)
-and Nữ Giới Chung (src/nugioichung).
+Phases of image-plus-text requests to the vLLM vision model, shared by the book proofreader (src/cli/proofread.py),
+Nữ Giới Chung (src/nugioichung) and Kho tàng tục ngữ (src/khotangtucngu).
 
 A phase is many independent tasks, each one request with retries, run concurrently. Each task's result is saved as
 <results-dir>/<key>.json, stamped with the input it was made from; a re-run skips tasks whose saved result is ok and
@@ -12,6 +12,8 @@ import glob
 import hashlib
 import json
 import os
+import subprocess
+import sys
 import threading
 import time
 from datetime import datetime
@@ -66,6 +68,42 @@ def read_json(path):
 
 def sha1(text):
     return hashlib.sha1(text.encode("utf-8")).hexdigest()
+
+
+def file_sha1(path):
+    """The SHA-1 of a file's bytes, read a megabyte at a time."""
+    h = hashlib.sha1()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def page_set(spec, n_pages):
+    """'1-4,13' -> [1, 2, 3, 4, 13]; None -> every page."""
+    if not spec:
+        return list(range(1, n_pages + 1))
+    pages = set()
+    for part in spec.split(","):
+        a, _, b = part.strip().partition("-")
+        pages.update(range(int(a), int(b or a) + 1))
+    return sorted(p for p in pages if 1 <= p <= n_pages)
+
+
+def unique_ids(warnings):
+    """`warnings` (dicts with an "id") with a repeated id made unique by its count, "#2" on, in order."""
+    seen = {}
+    for w in warnings:
+        seen[w["id"]] = seen.get(w["id"], 0) + 1
+        if seen[w["id"]] > 1:
+            w["id"] += f"#{seen[w['id']]}"
+    return warnings
+
+
+def print_token_stats(usage_file):
+    """Prints the per-step token stats of `usage_file` (scripts/checks/token_stats.py)."""
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    subprocess.run([sys.executable, os.path.join(root, "scripts", "checks", "token_stats.py"), "--file", usage_file])
 
 
 # -- messages
