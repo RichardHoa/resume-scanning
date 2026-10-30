@@ -31,7 +31,7 @@ def parse_args():
     parser.add_argument("--output", type=str, help="Path to save evaluation JSON result (file path or output directory for batch mode)")
     parser.add_argument("--arr", type=str, help="Comma-separated list of resume numbers to process (e.g., --arr=6,7,8)")
     parser.add_argument("--workers", type=int, default=VLLM_MAX_CONCURRENT_REQUESTS, help="Max candidates evaluated at once (default: the vLLM request limit, which does the throttling)")
-    parser.add_argument("--num-evaluations", "--runs", type=int, default=DEFAULT_NUM_EVALUATIONS, help=f"Number of evaluation iterations per category to calculate median (default: {DEFAULT_NUM_EVALUATIONS})")
+    parser.add_argument("--num-evaluations", "--runs", type=int, default=DEFAULT_NUM_EVALUATIONS, help=f"Number of evaluation iterations per category whose Verdicts are voted (default: {DEFAULT_NUM_EVALUATIONS})")
     parser.add_argument("--no-feedback", action="store_true", help="Skip the Review Panel's Candidate Feedback (scores only)")
     parser.add_argument("--language", type=str, default="vietnamese", choices=["vietnamese", "english"], help="Output language for evaluation reasoning, strengths, and gaps ('vietnamese' or 'english')")
     parser.add_argument("--reference-date", type=str, default="", help="Date (YYYY-MM-DD) the prompts treat as today, for old resume sets (default: the real date)")

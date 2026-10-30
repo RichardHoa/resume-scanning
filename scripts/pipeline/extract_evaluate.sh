@@ -17,9 +17,9 @@
 #
 # Wipes the run folder (runs/batch-cnb with --cnb, runs/batch-tech with --tech), spins up a vLLM server instance,
 # runs batch extraction (Step 1), and then runs batch evaluation (Step 2) using the active vLLM server: each
-# category is run several times and its median kept (DEFAULT_NUM_EVALUATIONS in src/core/config.py), then the Review
-# Panel writes each report's Candidate Feedback. Token usage per step is printed at the end. Every
-# output of the job goes into the run folder: its logs, prompt logs, extraction markdown and JSON, evaluation JSON
+# category is run several times and each Verdict voted across the runs (DEFAULT_NUM_EVALUATIONS in
+# src/core/config.py), then the Review Panel writes each report's Candidate Feedback. Token usage per step is
+# printed at the end. Every output of the job goes into the run folder: its logs, prompt logs, extraction markdown and JSON, evaluation JSON
 # and resume PDFs (docs/adr/0004-run-folders.md). SLURM's own .out/.err files stay in logging/.
 #
 # Evaluation uses the HR RAG as HR set it on the website's RAG page, and never builds,

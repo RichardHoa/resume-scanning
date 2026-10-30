@@ -151,7 +151,7 @@ def compare_resume(name: str, results: list[dict]) -> dict:
                 continue
             cat_name = dim.get("category_name", key)
             category_scores.setdefault(cat_name, {})[n] = dim.get("score")
-            # The median run's Verdicts: the ones HR is shown
+            # The Verdicts voted across the Category's runs: the ones HR is shown
             for crit in dim.get("criteria_evaluations") or []:
                 verdicts.setdefault((cat_name, crit.get("criterion", "")), {})[n] = crit
 
@@ -188,6 +188,8 @@ def compare_resume(name: str, results: list[dict]) -> dict:
         } if scores else None,
         "category_score_differences": category_differences,
         "verdict_differences": verdict_differences,
+        # Every Criterion judged, so the change rate counts the stable ones too; one scored evaluation compares nothing
+        "criteria_compared": [{"category": cat, "criterion": crit} for cat, crit in verdicts] if len(reports) > 1 else [],
     }
 
 
@@ -217,9 +219,13 @@ def build_report(set_name: str, mode: str, reference_date: str, standard_req: st
         not (_rejection_changed(c) or c["failed_evaluations"]),
         -_spread(c), -len(c["verdict_differences"]), c["resume"],
     ))
-    unstable = Counter()
+    unstable, judged = Counter(), Counter()
     for c in resumes:
         unstable.update({(d["category"], d["criterion"]) for d in c["verdict_differences"]})
+        judged.update({(j["category"], j["criterion"]) for j in c["criteria_compared"]})
+    # The share of (resume, Criterion) pairs whose Verdict differed: unlike "any Verdict changed", it does not grow
+    # just because the HR RAG is split into more Criteria
+    flipped, compared = sum(unstable.values()), sum(judged.values())
     # A resume with one scored evaluation has no spread to measure
     scored = [c for c in resumes if len(c["ok_evaluations"]) > 1]
     widest = max(scored, key=_spread, default=None)
@@ -245,7 +251,12 @@ def build_report(set_name: str, mode: str, reference_date: str, standard_req: st
             "largest": _spread(widest) if widest else None,
             "largest_resume": widest["resume"] if widest else None,
         },
-        "unstable_criteria": [{"category": cat, "criterion": crit, "resumes": n}
+        "verdict_change_rate": {
+            "changed": flipped, "compared": compared,
+            "percent": round(flipped / compared * 100, 1) if compared else None,
+        },
+        "unstable_criteria": [{"category": cat, "criterion": crit, "resumes": n, "judged": judged[(cat, crit)],
+                               "percent": round(n / judged[(cat, crit)] * 100, 1) if judged[(cat, crit)] else None}
                               for (cat, crit), n in unstable.most_common()],
         "scanned_resumes": scanned,
         "extraction_failures": extraction_failures,
@@ -287,6 +298,10 @@ def render_markdown(report: dict) -> str:
         f"- Stable across all evaluations: {counts['stable']}",
         f"- Match Recommendation changed: {counts['recommendation_changed']}",
         f"- Any Verdict changed: {counts['verdict_changed']}",
+        f"- Verdict change rate: {report['verdict_change_rate']['changed']} of "
+        f"{report['verdict_change_rate']['compared']} Criterion Verdicts compared"
+        + (f" ({report['verdict_change_rate']['percent']}%)" if report["verdict_change_rate"]["percent"] is not None
+           else ""),
         f"- With a Failed Evaluation: {counts['with_failed_evaluation']}",
         f"- Scanned Resumes skipped: {counts['scanned_skipped']}"
         + (f" ({', '.join(report['scanned_resumes'])})" if report["scanned_resumes"] else ""),
@@ -299,9 +314,11 @@ def render_markdown(report: dict) -> str:
                      f"({spread['largest_resume']})")
     lines.append("")
     if report["unstable_criteria"]:
-        lines += ["### Most unstable Criteria", "", "| Category | Criterion | Resumes where its Verdict differs |",
-                  "|---|---|---|"]
-        lines += [f"| {u['category']} | {u['criterion']} | {u['resumes']} |" for u in report["unstable_criteria"]]
+        lines += ["### Most unstable Criteria", "",
+                  "| Category | Criterion | Resumes where its Verdict differs | Resumes compared | Change rate |",
+                  "|---|---|---|---|---|"]
+        lines += [f"| {u['category']} | {u['criterion']} | {u['resumes']} | {u['judged']} | {u['percent']}% |"
+                  for u in report["unstable_criteria"]]
         lines.append("")
 
     lines += ["## Resumes", ""]

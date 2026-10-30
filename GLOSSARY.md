@@ -53,7 +53,7 @@ How much of its Category's 100 points one Criterion is worth, and how much a can
 _Avoid_: criterion score, weight (alone)
 
 **Category Score**:
-A candidate's 0–100 result in one Category. In each run, the Must-have and Standard Verdicts (Strong 1, Partial ½, No Evidence 0), weighted by Importance, make up the 100, and met Nice-to-haves add on top, capped at 100. The Category Score is the lower median of the runs' scores, and HR is shown that median run's Verdicts and Criterion Points. A Not Applicable Category has none.
+A candidate's 0–100 result in one Category. In each run, the Must-have and Standard Verdicts (Strong 1, Partial ½, No Evidence 0), weighted by Importance, make up the 100, and met Nice-to-haves add on top, capped at 100. Each Criterion's Verdict is voted across the runs: the Verdict more than half of them gave, or Partial Evidence when none has a majority. The Category Score and the Criterion Points HR is shown are computed from those voted Verdicts. A Not Applicable Category has none.
 _Avoid_: dimension score, criterion score
 
 **Overall Score**:

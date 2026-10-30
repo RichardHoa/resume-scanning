@@ -6,7 +6,7 @@ A rejected candidate is still scored in every Category, so HR can judge whether 
 
 The risk that "resumes omit things" sits with HR: a Must-have exists only because HR chose it (ADR 0007).
 
-**Across evaluation runs.** Each Category is judged in several runs (ADR 0009). The Category shows the median-scoring run, but a Must-have rejects only when more than half of the runs gave it No Evidence, counted across every run by its exact Criterion text. So no single run decides a rejection.
+**Across evaluation runs.** Each Category is judged in several runs (ADR 0009). A Must-have rejects only when more than half of the runs gave it No Evidence, counted across every run by its exact Criterion text. So no single run decides a rejection, and the voted Verdict HR is shown (ADR 0009) is No Evidence exactly when it rejects.
 
 **Only a fully scored evaluation is gated.** A Failed Evaluation stays a Failed Evaluation that needs a rerun, even when another Category already shows a Must-have with No Evidence, because a rerun is also a second chance at that Verdict.
 

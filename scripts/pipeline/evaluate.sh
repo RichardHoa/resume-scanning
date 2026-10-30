@@ -20,10 +20,10 @@
 # (docs/adr/0004-run-folders.md). With no extractions yet, the dataset's PDFs are extracted first, with Combined
 # Extraction, so the model must then be a profile that can see images (VLLM_VISION=1).
 #
-# Each category is run several times and its median kept (DEFAULT_NUM_EVALUATIONS in src/core/config.py), then the
-# Review Panel writes each report's Candidate Feedback. Evaluation uses the HR RAG as HR set it on the website's RAG
-# page and never builds or changes it: set the resume set's HR RAG before submitting, or the job stops before it
-# starts the server. --tech also sets the Reference Date (the date the prompts treat as today) to December 2015.
+# Each category is run several times and each Verdict voted across the runs (DEFAULT_NUM_EVALUATIONS in
+# src/core/config.py), then the Review Panel writes each report's Candidate Feedback. Evaluation uses the HR RAG as
+# HR set it on the website's RAG page and never builds or changes it: set the resume set's HR RAG before submitting,
+# or the job stops before it starts the server. --tech also sets the Reference Date (the date the prompts treat as today) to December 2015.
 # -----------------------------------------------------------------------------
 
 DATASET=""

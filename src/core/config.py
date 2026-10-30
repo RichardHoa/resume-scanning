@@ -148,10 +148,10 @@ CATEGORY_EVAL_MAX_TOKENS = 8192
 # Retrying an identical prompt at temperature 0 reproduces the same failure, so retries after the first
 # attempt sample instead
 CATEGORY_EVAL_RETRY_TEMPERATURE = 0.5
-# Evaluation runs per Category: the Category score is their median, and a Must-have rejects only on a majority of
-# No Evidence. Run 1 is greedy; later runs sample at CATEGORY_EVAL_SAMPLE_TEMPERATURE so they are independent
-# judgements instead of copies of run 1 (ADR 0009)
-DEFAULT_NUM_EVALUATIONS = 3
+# Evaluation runs per Category: each Criterion's Verdict is the one most runs gave (Partial Evidence without a
+# majority), and a Must-have rejects only on a majority of No Evidence. Run 1 is greedy; later runs sample at
+# CATEGORY_EVAL_SAMPLE_TEMPERATURE so they are independent judgements instead of copies of run 1 (ADR 0009)
+DEFAULT_NUM_EVALUATIONS = 5
 CATEGORY_EVAL_SAMPLE_TEMPERATURE = 0.5
 DSPY_MAX_TOKENS = 4096    # DSPy prompt optimization output token limit
 REQUIREMENTS_DECOMPOSITION_MAX_TOKENS = 4096

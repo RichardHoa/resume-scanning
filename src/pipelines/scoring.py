@@ -48,6 +48,27 @@ def _not_one_verdict_per_criterion(importance_map: Dict[str, str], echoed_criter
     return Counter(echoed_criteria) != Counter(importance_map.keys())
 
 
+VERDICT_SCORES = {"STRONG_EVIDENCE": 1.0, "PARTIAL_EVIDENCE": 0.5, "NO_EVIDENCE": 0.0}
+
+
+def _score_criteria(criteria: List[Dict[str, Any]]) -> tuple[Optional[int], bool]:
+    """
+    The Category score of judged Criteria (each with "importance" and its Verdict's "score"), and whether the met
+    Nice-to-haves hit the cap. Sets each Criterion's Criterion Points (max_points, earned_points). The score is None
+    when every Criterion is Nice-to-have, since then there is no 100 to score against.
+    """
+    category_base_weight = base_weight(c["importance"] for c in criteria)
+    if category_base_weight <= 0:
+        return None, False
+    raw_score = sum(IMPORTANCE_WEIGHTS[c["importance"]] * c["score"] for c in criteria) / category_base_weight * 100.0
+    for c in criteria:
+        max_points = criterion_max_points(c["importance"], category_base_weight)
+        c["max_points"] = round(max_points, 1)
+        c["earned_points"] = round(max_points * c["score"], 1)
+    # The Nice-to-haves met push past the Category's 100, so the Criterion rows add up to more than the gauge
+    return int(round(min(100.0, raw_score))), raw_score > 100.0
+
+
 def score_run(parsed: Any, importance_map: Optional[Dict[str, str]] = None) -> Optional[Dict[str, Any]]:
     """
     One run's Category score from its parsed reply, or None when the reply is invalid.
@@ -70,7 +91,6 @@ def score_run(parsed: Any, importance_map: Optional[Dict[str, str]] = None) -> O
     raw_criteria = parsed.get("criteria_evaluations")
     bonus_capped = False
     if isinstance(raw_criteria, list) and len(raw_criteria) > 0:
-        total_score_acc = 0.0
         for item in raw_criteria:
             if isinstance(item, dict):
                 crit_text = str(item.get("criterion", "")).strip()
@@ -89,19 +109,13 @@ def score_run(parsed: Any, importance_map: Optional[Dict[str, str]] = None) -> O
                 quote_str: Optional[str] = " | ".join(item_quotes) or None
 
                 # Strict discrete verdict scoring mapping based on prompt specification
-                if verdict == "STRONG_EVIDENCE":
-                    s = 1.0
-                elif verdict == "PARTIAL_EVIDENCE":
-                    s = 0.5
-                else:
-                    s = 0.0
+                s = VERDICT_SCORES.get(verdict, 0.0)
 
                 importance = normalize_importance(importance_map.get(crit_text)) if importance_map else DEFAULT_IMPORTANCE
-                total_score_acc += IMPORTANCE_WEIGHTS[importance] * s
                 cleaned_criteria.append({
                     "criterion": crit_text,
                     "importance": importance,
-                    "verdict": verdict if verdict in ("STRONG_EVIDENCE", "PARTIAL_EVIDENCE", "NO_EVIDENCE") else ("STRONG_EVIDENCE" if s >= 0.9 else "PARTIAL_EVIDENCE" if s >= 0.4 else "NO_EVIDENCE"),
+                    "verdict": verdict if verdict in VERDICT_SCORES else "NO_EVIDENCE",
                     "score": round(s, 2),
                     "evidence_quote": quote_str,
                     "evidence_quotes": item_quotes,
@@ -113,16 +127,7 @@ def score_run(parsed: Any, importance_map: Optional[Dict[str, str]] = None) -> O
             print(f"[Eval Validation] Not every Criterion got exactly one Verdict: {[c['criterion'] for c in cleaned_criteria]}", file=sys.stderr)
             return None
 
-        category_base_weight = base_weight(c["importance"] for c in cleaned_criteria)
-        if category_base_weight > 0:
-            raw_score = total_score_acc / category_base_weight * 100.0
-            # The Nice-to-haves met push past the Category's 100, so the Criterion rows add up to more than the gauge
-            bonus_capped = raw_score > 100.0
-            deterministic_score = int(round(min(100.0, raw_score)))
-            for c in cleaned_criteria:
-                max_points = criterion_max_points(c["importance"], category_base_weight)
-                c["max_points"] = round(max_points, 1)
-                c["earned_points"] = round(max_points * c["score"], 1)
+        deterministic_score, bonus_capped = _score_criteria(cleaned_criteria)
 
     # 2. Determine final score (deterministic calculation preferred, fallback to explicit score)
     score: Optional[int] = None
@@ -188,7 +193,7 @@ def _collect_must_have_rejection(dimension_results: Dict[str, Any]) -> List[Dict
     """
     Every must-have Criterion that got NO_EVIDENCE in a majority of its Category's runs (more than half; with one
     run, that run), as [{"category", "criterion"}]. Reads each Category's must_have_no_evidence_counts and
-    evaluation_runs_count, not the reported median run, so rejection never hangs on which run sorts into the middle.
+    evaluation_runs_count, so it agrees with the voted Verdict HR is shown (No Evidence exactly on that majority).
     Any one makes a Must-have Rejection: the candidate is out (PARTIAL never counts).
     """
     missing: List[Dict[str, str]] = []
@@ -203,7 +208,11 @@ def _collect_must_have_rejection(dimension_results: Dict[str, Any]) -> List[Dict
 
 
 def _combine_category(outcome: CategoryOutcome, num_evaluations: int, language: str) -> Dict[str, Any]:
-    """One Category's result: the crashed-Category entry, the Not Applicable entry, or the lower median of its runs."""
+    """
+    One Category's result: the crashed-Category entry, the Not Applicable entry, or its runs' Verdicts voted per
+    Criterion (_vote_criteria). median_score is the lower median of the runs' own scores, which the voted score may
+    differ from.
+    """
     is_en = is_english(language)
 
     if outcome.error is not None:
@@ -236,21 +245,78 @@ def _combine_category(outcome: CategoryOutcome, num_evaluations: int, language: 
     eval_runs = outcome.runs
     has_category_failure = any(r.get("failed", False) for r in eval_runs)
     scores = [r.get("score", FALLBACK_ERROR_SCORE) for r in eval_runs]
-    sorted_runs = sorted(eval_runs, key=lambda r: r.get("score", FALLBACK_ERROR_SCORE))
-    # The lower median, so with an even run count the score is the shown run's own, matching its Criterion
-    # Points and cap note
-    med_score = int(statistics.median_low(scores))
-    median_idx = (len(sorted_runs) - 1) // 2
 
-    cat_res = dict(sorted_runs[median_idx])
-    # The Must-have gate counts NO_EVIDENCE across every run, not just the median one shown to HR
+    voted = None if has_category_failure else _vote_criteria(eval_runs, is_en)
+    if voted is not None:
+        cat_res = voted
+    else:
+        # No Verdicts to vote on (mock replies) or a failed run, which fails the Category anyway: the median run
+        sorted_runs = sorted(eval_runs, key=lambda r: r.get("score", FALLBACK_ERROR_SCORE))
+        cat_res = dict(sorted_runs[(len(sorted_runs) - 1) // 2])
+        # The lower median, so with an even run count the score is the shown run's own
+        cat_res["score"] = int(statistics.median_low(scores))
+    # The Must-have gate counts NO_EVIDENCE across every run; the voted Verdict is No Evidence exactly when it rejects
     cat_res["must_have_no_evidence_counts"] = _count_must_have_no_evidence(eval_runs)
-    cat_res["score"] = med_score
-    cat_res["median_score"] = float(med_score)
+    cat_res["median_score"] = float(statistics.median_low(scores))
     cat_res["all_scores"] = scores
     if has_category_failure:
         cat_res["failed"] = True
     return cat_res
+
+
+def _vote_verdict(verdicts: List[str], runs: int) -> str:
+    """The Verdict more than half of all runs gave; Partial Evidence when none has a majority."""
+    verdict, count = Counter(verdicts).most_common(1)[0]
+    return verdict if count * 2 > runs else "PARTIAL_EVIDENCE"
+
+
+def _no_majority_reasoning(verdicts: List[str], is_en: bool) -> str:
+    """The reasoning shown for a Partial Evidence voted only because the runs split, e.g. 2 Strong, 2 No Evidence."""
+    labels = {"STRONG_EVIDENCE": ("Strong", "Mạnh"), "PARTIAL_EVIDENCE": ("Partial", "Một phần"),
+              "NO_EVIDENCE": ("No Evidence", "Không có bằng chứng")}
+    split = ", ".join(f"{n} {labels[v][0 if is_en else 1]}" for v, n in Counter(verdicts).most_common())
+    if is_en:
+        return f"The evaluation runs disagreed ({split}) with no majority, so this counts as Partial Evidence."
+    return f"Các lần đánh giá không thống nhất ({split}), không có đa số, nên tính là Một phần."
+
+
+def _vote_criteria(eval_runs: List[Dict[str, Any]], is_en: bool) -> Optional[Dict[str, Any]]:
+    """
+    One result from a Category's runs by voting each Criterion's Verdict across them (_vote_verdict), so no single
+    sampled run decides what HR sees. The Category score and Criterion Points are recomputed from the voted Verdicts.
+    Each Criterion's reasoning and quotes come from a run that gave the voted Verdict, and the free text (strengths,
+    gaps, summary) from the run that agrees with the most voted Verdicts, so it can still mention a Verdict the vote
+    overturned. None when a run judged no Criteria.
+    """
+    per_run = [{c["criterion"]: c for c in r.get("criteria_evaluations") or []} for r in eval_runs]
+    if not per_run or not all(per_run):
+        return None
+
+    # A run that skipped a Criterion (possible only without an Importance map) counts as no vote for any Verdict
+    texts = list(dict.fromkeys(text for run in per_run for text in run))
+    run_verdicts = {text: [run[text]["verdict"] for run in per_run if text in run] for text in texts}
+    voted_verdicts = {text: _vote_verdict(run_verdicts[text], len(per_run)) for text in texts}
+
+    def agreement(i: int) -> int:
+        return sum(1 for text, v in voted_verdicts.items() if per_run[i].get(text, {}).get("verdict") == v)
+
+    # The first run (greedy) wins ties
+    representative = max(range(len(eval_runs)), key=lambda i: (agreement(i), -i))
+    criteria = []
+    for text, verdict in voted_verdicts.items():
+        source = next((run[text] for run in per_run if run.get(text, {}).get("verdict") == verdict), None)
+        if source is None:
+            # A Partial Evidence no run gave (the runs split with no majority): say so instead of showing one side's
+            # reasoning, and keep the quotes of a run that found evidence
+            found = next((run[text] for run in per_run if run.get(text, {}).get("verdict") == "STRONG_EVIDENCE"), None)
+            source = {**(found or next(run[text] for run in per_run if text in run)),
+                      "reasoning": _no_majority_reasoning(run_verdicts[text], is_en)}
+        criteria.append({**source, "verdict": verdict, "score": VERDICT_SCORES[verdict]})
+
+    score, bonus_capped = _score_criteria(criteria)
+    if score is None:
+        return None
+    return {**eval_runs[representative], "criteria_evaluations": criteria, "score": score, "bonus_capped": bonus_capped}
 
 
 def score_candidate(outcomes: Dict[str, CategoryOutcome], num_evaluations: int, language: str) -> CandidateScore:
@@ -339,9 +405,9 @@ def score_candidate(outcomes: Dict[str, CategoryOutcome], num_evaluations: int, 
             "gaps": cat_res.get("gaps", []),
             "evidence_quotes": cat_res.get("evidence_quotes", []),
             "reasoning_summary": cat_res.get("reasoning_summary", ""),
-            # Per-criterion verdicts with the resume quotes given for each, from the median run
+            # Per-criterion verdicts voted across the runs, with the resume quotes given for each
             "criteria_evaluations": cat_res.get("criteria_evaluations", []),
-            # The Nice-to-haves met pushed that run past the Category's 100, so the gauge is capped below its rows
+            # The Nice-to-haves met push the voted Verdicts past the Category's 100, so the gauge is capped below its rows
             "bonus_capped": cat_res.get("bonus_capped", False),
             # How many runs gave each must-have Criterion NO_EVIDENCE; a majority makes a Must-have Rejection
             "must_have_no_evidence_counts": cat_res.get("must_have_no_evidence_counts", []),
