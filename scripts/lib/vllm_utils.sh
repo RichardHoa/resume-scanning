@@ -85,6 +85,7 @@ stop_vllm_server() {
 # Usage: start_vllm_server <MODEL_NAME> <PORT> [LOG_FILE]
 #   (defaults: the default profile's model, port 8100, logs/vllm_server.log)
 # Optional: VLLM_EXTRA_ARGS bash array of extra `vllm serve` flags (see model_profiles.sh)
+# Optional: VLLM_KEEP_RUNNING=1 skips the pre-flight cleanup, for a second server beside one already running
 # Optional: VLLM_ENFORCE_EAGER=0 serves with CUDA graphs: a faster decode (eager mode launches every kernel from
 #   Python, so the engine's one CPU thread bounds it), for a slower start and a few GB more VRAM. Default 1, eager
 # Waits up to 3600s for /v1/models, and traps EXIT/INT/TERM so the server dies with the calling shell
@@ -96,7 +97,7 @@ start_vllm_server() {
 
   # Pre-flight: Clean up any lingering zombie vLLM / EngineCore processes to free VRAM
   local lingering_pids=$(pgrep -f "(vllm\.entrypoints|vllm serve|EngineCore)" 2>/dev/null | tr '\n' ' ')
-  if [ -n "$lingering_pids" ]; then
+  if [ -n "$lingering_pids" ] && [ "${VLLM_KEEP_RUNNING:-0}" != "1" ]; then
     echo "[vLLM Pre-Flight] Found residual vLLM processes ($lingering_pids). Cleaning up to free GPU VRAM..."
     pkill -9 -f "vllm.entrypoints" 2>/dev/null || true
     pkill -9 -f "EngineCore" 2>/dev/null || true

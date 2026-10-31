@@ -2,7 +2,7 @@
 The prompts and output schemas of a page's two kinds of request (vocabulary: vsc-project/khoTangTucNguoiNguoiViet/
 GLOSSARY.md): the layout request sees the whole page with its Line Numbers and answers the printed book page number and
 the Line Number each Proverb Entry and letter heading starts on; each Entry Span request sees one Entry Span cut from
-the page and answers its Blocks in reading order.
+the page, with the OCR Readings of its lines, and answers its Blocks in reading order.
 """
 import json
 
@@ -73,6 +73,13 @@ You copy exactly what the scan prints. You are a copyist, not an editor:
 - A Block printed over several lines is one Block: join its lines with a space, so a sentence or a list reads whole.
 - A subscript is written as a Unicode subscript, as printed: VNP₁₁, VNP₂ I.
 - A Source Abbreviation is copied with its spaces as printed: "TNPD I 13", "VC I 9", "NASL II 4b".
+
+With the Entry Span come its OCR Readings: an OCR model's reading of each of its printed lines, each line read on its
+own, by its Line Number. The OCR model reads letters and diacritics well, so spell each word with the letters and
+diacritics its OCR Reading has, a tone mark beside or above a circumflex and the tilde most of all, unless the scan
+clearly prints otherwise. Read each repeat of a word on its own line's OCR Reading, never from how you
+copied it before. The OCR model knows nothing of Blocks or italics and may miss a space or a punctuation mark: which
+Block a line belongs to, the asterisks and the spaces of a Source Abbreviation come from the scan.
 """
 
 
@@ -80,14 +87,15 @@ def layout_user_text(page):
     return f"Say on which Line Number each Proverb Entry and letter heading of PDF page {page} starts."
 
 
-def span_user_text(page, leading):
-    """The user text of an Entry Span of PDF page `page`; a `leading` one is the top of the page, before its first
-    start."""
+def span_user_text(page, leading, readings):
+    """The user text of an Entry Span of PDF page `page`, with `readings`, the OCR Readings of its lines as
+    [(Line Number, text)]; a `leading` one is the top of the page, before its first start."""
+    lines = "\n".join(f"L{n}: {text}" for n, text in readings)
+    ask = f"Copy the Blocks of this Entry Span of PDF page {page}, in reading order."
     if leading:
-        return (f"Copy the Blocks of this Entry Span of PDF page {page}, in reading order. It is the top of the page, "
-                f"finishing the last Proverb Entry of the page before, so it should hold no proverb of its own; if it "
-                f"does print a numbered proverb, copy it as a `proverb` Block.")
-    return f"Copy the Blocks of this Entry Span of PDF page {page}, in reading order."
+        ask += (" It is the top of the page, finishing the last Proverb Entry of the page before, so it should hold no "
+                "proverb of its own; if it does print a numbered proverb, copy it as a `proverb` Block.")
+    return f"OCR Readings of its lines:\n{lines}\n\n{ask}"
 
 
 def layout_schema():

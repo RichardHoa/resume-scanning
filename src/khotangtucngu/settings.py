@@ -50,6 +50,19 @@ LAYOUT_MAX_TOKENS = 512
 # An Entry Span's answer is the Blocks of one Proverb Entry, about 100-300 tokens in Vietnamese; the cap leaves room
 # for a long note and stops a runaway answer
 SPAN_MAX_TOKENS = 2048
+# The OCR model, served beside the default model (scripts/khotangtucngu/submit.sh), reads each printed line of an
+# Entry Span on its own before the Entry Span request, which gets its OCR Readings with the crop
+# (docs/adr/0002-ocr-readings-of-each-line.md beside the GLOSSARY). It is asked only "OCR:", its model card's prompt
+# for text, at no repetition penalty: a line repeats its words as printed
+OCR_MODEL = "PaddlePaddle/PaddleOCR-VL-1.6"
+OCR_PROMPT = "OCR:"
+OCR_REPETITION_PENALTY = 1.0
+# A line crop: as tall as the gaps to the lines above and below allow (as an Entry Span's, SPAN_EDGE_GAP_PX short of
+# their ink), as wide as the page's Entry Spans. About 2000 x 60 px, under the model's own pixel budget
+# (1280 x 28 x 28), so it is read at the scan's 300 dpi
+OCR_IMAGE = f"grayscale png, one line, {SPAN_EDGE_GAP_PX} px from its neighbours"
+# A printed line is about 15-30 tokens; the cap stops a runaway answer
+OCR_MAX_TOKENS = 256
 # Seconds to wait for one request's answer before it fails and is retried
 REQUEST_TIMEOUT = 180
 # Every first attempt is at temperature 0 (vlm_requests); retries sample, as an identical prompt at temperature 0

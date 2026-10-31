@@ -7,14 +7,15 @@ Pages are walked in PDF order. A run of consecutive PDF pages with answers is re
 Leading Block joins the last Proverb Entry of the page before, and entry numbers run on. Across a page with no answer
 nothing carries over: the next stretch starts afresh.
 
-Standard library only, importing only citations.py, relatively: cli.py copies this file, citations.py and review.py
-into the store, where serve.py rebuilds the entries with the developer's Fixes.
+Standard library only, importing only citations.py and diacritics.py, relatively: cli.py copies them, this file and
+review.py into the store, where serve.py rebuilds the entries with the developer's Fixes.
 """
 import hashlib
 import json
 import unicodedata
 
 from .citations import see_also_names
+from .diacritics import disagreements
 
 # The kinds of Block a page answer holds (prompts.py tells the model what each is)
 LETTER, PROVERB, CITATIONS, VARIANT, NOTE, CORRECTION, SEE_ALSO = (
@@ -29,6 +30,7 @@ _TONES = {"̀", "́", "̃", "̉", "̣"}
 
 NUMBER_GAP, NUMBER_DUPLICATE, LETTER_ORDER = "number_gap", "number_duplicate", "letter_order"
 PAGE_NUMBER, PAGE_MISSING, NO_OWNER = "page_number", "page_missing", "no_owner"
+DIACRITIC = "diacritic_disagreement"
 # Raised by cli.py, not here: ink on a page outside every printed line found, which no Entry Span holds
 INK_OUTSIDE = "ink_outside"
 
@@ -96,10 +98,27 @@ def _unique_ids(warnings):
     return warnings
 
 
-def assemble(answers, abbreviations, book_page_offset):
+def _diacritic_warnings(page, blocks, reading, owners):
+    """A Diacritic Disagreement Warning for each syllable of a page's `blocks` that its OCR Readings (`reading`,
+    joined) mark otherwise, one per Proverb Entry (`owners`, by Block) and pair of readings, with how often it came."""
+    counts = {}
+    for b, ours, theirs in disagreements(blocks, reading):
+        key = (owners[b], ours, theirs)
+        counts[key] = counts.get(key, 0) + 1
+    warnings = []
+    for (owner, ours, theirs), n in counts.items():
+        where = f"{owner}: " if owner else f"PDF page {page}: "
+        times = f" ({n} times)" if n > 1 else ""
+        warnings.append(warning(DIACRITIC, f"p{page}-{owner}" if owner else f"p{page}", f'{where}"{ours}" where the '
+                                f'OCR Reading has "{theirs}"{times}', page))
+    return warnings
+
+
+def assemble(answers, abbreviations, book_page_offset, readings=None):
     """
     `answers`: {PDF page: its current page answer}; `abbreviations`: citations.Abbreviations; `book_page_offset`: the
-    Part's book page minus PDF page. Returns the verbatim
+    Part's book page minus PDF page; `readings`: {PDF page: its OCR Readings joined}, which a page's Blocks are checked
+    against for Diacritic Disagreements (none for a page without). Returns the verbatim
     Proverb Entries in book order, the Warnings they raise (all but failed or missing pages), and each page's
     {"pdf", "book_page", "printed_page", "answer_sha1", "entries"}, the names of the entries it holds. An entry's
     "blocks" is {PDF page (a string): [first, last + 1]}, the indexes of its Blocks in that page's answer.
@@ -131,7 +150,9 @@ def assemble(answers, abbreviations, book_page_offset):
         last_page = page
         book_page = str(page + book_page_offset)
         names, unowned_kinds = [], []
-        for b, block in enumerate(answers[page].get("blocks") or []):
+        blocks = answers[page].get("blocks") or []
+        owners = [None] * len(blocks)    # the name of the Proverb Entry each Block joins
+        for b, block in enumerate(blocks):
             kind, text = block.get("kind"), unicodedata.normalize("NFC", block.get("text") or "").strip()
             if kind == LETTER:
                 heading = text.upper()
@@ -170,12 +191,14 @@ def assemble(answers, abbreviations, book_page_offset):
                 seen.setdefault(name, entry)
                 entries.append(entry)
                 names.append(name)
+                owners[b] = name
                 current, previous, headed = entry, entry, False
                 continue
             if current is None:
                 unowned_kinds.append(kind)
                 continue
             _on_page(current, page, book_page, b)
+            owners[b] = current["name"]
             if current["name"] not in names:
                 names.append(current["name"])
             if kind == CITATIONS:
@@ -191,6 +214,8 @@ def assemble(answers, abbreviations, book_page_offset):
                 report(problems, page, current["name"])
             elif kind == SEE_ALSO:
                 current["see_also"] += see_also_names(text)
+        if readings and page in readings:
+            warnings += _diacritic_warnings(page, blocks, readings[page], owners)
         if unowned_kinds:
             warnings.append(warning(NO_OWNER, f"p{page}", f"PDF page {page} has {len(unowned_kinds)} Block(s) "
                                     f"({', '.join(unowned_kinds)}) with no Proverb Entry to join: {unowned}", page))

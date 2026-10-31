@@ -190,10 +190,13 @@ def chat(
     step: str = "unlabeled",
     enable_thinking: Optional[bool] = None,
     resume_name: Optional[str] = None,
-    usage_file: Optional[str] = None
+    usage_file: Optional[str] = None,
+    text_output: bool = False,
+    repetition_penalty: float = 1.05
 ) -> ChatResult:
     """
-    Sends a chat completion constrained to JSON output: to `json_schema` when given, else any JSON object.
+    Sends a chat completion constrained to JSON output: to `json_schema` when given, else any JSON object, or with
+    `text_output` not at all (an OCR model answers plain text).
     Reasoning in the result is empty unless the model profile lets the model think. `step` and `resume_name`
     label the request's token usage record, written to `usage_file` (default TOKEN_USAGE_FILE). `enable_thinking`
     overrides the model profile's thinking setting for this request. A message's content may be a list of OpenAI
@@ -204,18 +207,18 @@ def chat(
         "messages": _with_reasoning_strength(messages),
         "temperature": temperature,
         "top_p": top_p,
-        "repetition_penalty": 1.05,
+        "repetition_penalty": repetition_penalty,
         "max_tokens": max_tokens,
         # Thinking is off unless the model profile opts in (VLLM_ENABLE_THINKING=1); e.g. GLM-4.7 thinks by default
         "chat_template_kwargs": {
             "enable_thinking": VLLM_ENABLE_THINKING if enable_thinking is None else enable_thinking
         }
     }
-    if json_schema is None:
-        payload["response_format"] = {"type": "json_object"}
-    else:
+    if json_schema is not None:
         # Legacy `guided_json` is silently ignored by current vLLM; `structured_outputs` enforces the schema
         payload["structured_outputs"] = {"json": json_schema}
+    elif not text_output:
+        payload["response_format"] = {"type": "json_object"}
 
     started = time.monotonic()
     try:

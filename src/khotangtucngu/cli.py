@@ -6,40 +6,46 @@ CLI Entrypoint for transcribing the Proverb Entries of one Kho tàng tục ngữ
 The Part is a key of settings.PARTS, which gives its PDF in vsc-project/khoTangTucNguoiNguoiViet/, its proverb pages
 and its book page offset. With no --pages, every proverb page of the Part (36-865 for Part 1, past the Front Matter).
 
-Each page is read in two steps (docs/adr/0001-entry-spans-from-numbered-lines.md beside the GLOSSARY). Code finds its
+Each page is read in three steps (docs/adr/0001-entry-spans-from-numbered-lines.md beside the GLOSSARY). Code finds its
 printed lines on the scan, and a layout request sees the page with each line's Line Number written beside it and
 answers the printed book page number, the first line under the Running Head and the Line Number each Proverb Entry and
-letter heading starts on. Code cuts the page at those lines into Entry Spans, and each is copied as Blocks in its own
-request. A page's answer is its Entry Spans' Blocks in order, with the layout's printed page number; a page any of whose
+letter heading starts on. Code cuts the page at those lines into Entry Spans. The OCR model (settings.OCR_MODEL, served
+beside the default model by scripts/khotangtucngu/submit.sh) reads each of their lines on its own, and each Entry Span
+is copied as Blocks in its own request, with the OCR Readings of its lines (docs/adr/0002-ocr-readings-of-each-line.md).
+A page's answer is its Entry Spans' Blocks in order, with the layout's printed page number; a page any of whose
 requests failed has none. Writes to the Part's store, vsc-project/khoTangTucNguoiNguoiViet/store/<part>/:
 
   lines/pNNN.json         each page's printed lines found on the scan, and ink outside them
   layout/pNNN.json        one layout answer per PDF page
   layout/pNNN.png         the page with its Line Numbers as the layout request saw it, smaller, for the review server
+  ocr/pNNN-LMM.json       one OCR Reading per printed line of an Entry Span, named by its page and Line Number
   spans/pNNN-LMM.json     one answer per Entry Span, named by its page and the Line Number it starts on
   answers.json            every current page answer, by PDF page, for the review server to rebuild with Fixes
+  readings.json           the OCR Readings of each page with an answer joined, by PDF page, which the page's Blocks
+                          (and a Fix's) are checked against for Diacritic Disagreements
   entries.json            the verbatim Proverb Entries built from every page answer, each page's book page, answer
                           hash, entries and Entry Spans (their crops as shares of the page, for the review server), and
                           the Part's book page offset
   warnings.json           every Warning, with its kind, reason and PDF page: number gaps and duplicates, letter
                           headings out of order, unknown Source Abbreviations, Citations with no pages or that cannot
-                          be split, page numbers out of step, failed or missing pages, Leading Blocks with no owner,
-                          and ink outside every printed line found
+                          be split, Diacritic Disagreements, page numbers out of step, failed or missing pages,
+                          Leading Blocks with no owner, and ink outside every printed line found
   sources.json            the 63 Sources by Source Abbreviation (as export.py writes them), for the review server
   pages/pNNN.png          each page, for the review server
   serve.py, web/,         the review server, its page, and the code that rebuilds the Proverb Entries with Fixes
-  khotangtucngu/          (assembly.py, citations.py, review.py), copied from this package: `python3 serve.py` in the
-                          store (on any machine, nothing to install)
+  khotangtucngu/          (assembly.py, citations.py, diacritics.py, review.py), copied from this package:
+                          `python3 serve.py` in the store (on any machine, nothing to install)
   review.jsonl            the review log of Fixes, which serve.py appends to (see review.py). No run writes or
                           deletes it
-  token_usage.jsonl       one line per request sent to this store, summarized at the end by step (layout, span)
+  token_usage.jsonl       one line per request sent to this store, summarized at the end by step (layout, ocr, span)
 
 Saved answers are stamped with the PDF's hash, the image settings and a hash of the prompts (a layout answer also with
-the page's lines, an Entry Span answer with its lines and crop), so a run only redoes requests whose answer is missing,
-failed or stamped differently, and runs over different pages add up in the store. The outputs are always rebuilt from
+the page's lines, an OCR Reading with the OCR model and its line's crop, an Entry Span answer with its lines, crop and
+OCR Readings), so a run only redoes requests whose answer is missing, failed or stamped differently, and runs over
+different pages add up in the store. The outputs are always rebuilt from
 every saved answer, not only this run's. --dry-run sends nothing: it counts each layout request's prompt tokens with
 the model's own processor (images included) to check they fit the context window; Entry Span requests need layout
-answers, so they are not counted.
+answers, so they are not counted, and OCR requests neither.
 """
 import os
 import sys
@@ -61,16 +67,17 @@ from src.khotangtucngu.assembly import INK_OUTSIDE, LETTER, PAGE_MISSING, assemb
 from src.khotangtucngu.citations import Abbreviations, load_abbreviations
 from src.khotangtucngu.export import dated_sources, sources
 from src.khotangtucngu.pages import (
-    entry_spans, find_lines, layout_image, layout_problem, page_key, review_image, review_layout_image, span_image,
-    span_key
+    entry_spans, find_lines, layout_image, layout_problem, line_box, line_key, page_key, review_image,
+    review_layout_image, span_image, span_key
 )
 from src.khotangtucngu.prompts import (
     LAYOUT_SYSTEM_PROMPT, SPAN_SYSTEM_PROMPT, layout_prompt_sha1, layout_schema, layout_user_text, span_prompt_sha1,
     span_schema, span_user_text
 )
 from src.khotangtucngu.settings import (
-    BOOK_DIR, FRONT_MATTER, LABEL_STRIP_PX, LAYOUT_IMAGE, LAYOUT_MAX_TOKENS, PAGE_DPI, PAGE_IMAGE, PARTS,
-    REQUEST_TIMEOUT, RETRY_TEMPERATURE, SPAN_MAX_TOKENS, STORE_DIR
+    BOOK_DIR, FRONT_MATTER, LABEL_STRIP_PX, LAYOUT_IMAGE, LAYOUT_MAX_TOKENS, OCR_IMAGE, OCR_MAX_TOKENS, OCR_MODEL,
+    OCR_PROMPT, OCR_REPETITION_PENALTY, PAGE_DPI, PAGE_IMAGE, PARTS, REQUEST_TIMEOUT, RETRY_TEMPERATURE,
+    SPAN_MAX_TOKENS, STORE_DIR
 )
 from src.providers import vlm_requests
 from src.providers.vlm_requests import (
@@ -80,9 +87,12 @@ from src.providers.vlm_requests import (
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The modules serve.py rebuilds the Proverb Entries with, copied into <store>/khotangtucngu/
-REVIEW_CODE = ("assembly.py", "citations.py", "review.py")
+REVIEW_CODE = ("assembly.py", "citations.py", "diacritics.py", "review.py")
 LAYOUT = Phase("layout", step="khotangtucngu_layout", max_tokens=LAYOUT_MAX_TOKENS, thinking=False,
                retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT)
+OCR = Phase("ocr", step="khotangtucngu_ocr", max_tokens=OCR_MAX_TOKENS, thinking=False,
+            retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT, text=True,
+            repetition_penalty=OCR_REPETITION_PENALTY)
 SPAN = Phase("span", step="khotangtucngu_span", max_tokens=SPAN_MAX_TOKENS, thinking=False,
              retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT)
 
@@ -96,6 +106,8 @@ def parse_args():
     parser.add_argument("--pages", help="Only these PDF pages, e.g. 36-45,420-421 (default: the Part's proverb pages)")
     parser.add_argument("--model-name", default=DEFAULT_LLM_MODEL)
     parser.add_argument("--vllm-url", default=DEFAULT_VLLM_URL)
+    parser.add_argument("--ocr-model-name", default=OCR_MODEL)
+    parser.add_argument("--ocr-vllm-url", help="The OCR model's server (needed unless --dry-run)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Send nothing; count every request's prompt tokens and check they fit the context window")
     return parser.parse_args()
@@ -117,9 +129,49 @@ def layout_stamp(page, found):
 
 
 def span_stamp(page, span):
-    """What an Entry Span's answer depends on beyond the phase's stamp: its user text, its lines and its crop."""
-    return {"user_sha1": sha1(span_user_text(page, span["leading"])), "lines": [span["first"], span["last"]],
-            "box": span["box"]}
+    """What an Entry Span's answer depends on beyond the phase's stamp: its user text (its OCR Readings with it), its
+    lines and its crop."""
+    return {"user_sha1": sha1(span_user_text(page, span["leading"], span["readings"])),
+            "lines": [span["first"], span["last"]], "box": span["box"]}
+
+
+def ocr_stamp(found, n):
+    """What a line's OCR Reading depends on beyond the phase's stamp: its crop."""
+    return {"box": line_box(found, n)}
+
+
+def ocr_messages(image_url):
+    """An OCR request as its model card makes it: no system prompt, the image, then the task's prompt."""
+    return [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": image_url}},
+                                         {"type": "text", "text": OCR_PROMPT}]}]
+
+
+def ocr_requests(doc, page_spans, found):
+    for page, spans in page_spans.items():
+        for span in spans:
+            for n in range(span["first"], span["last"] + 1):
+                stamp = ocr_stamp(found[page], n)
+                yield Request(line_key(page, n), (
+                    lambda page=page, box=stamp["box"]: ocr_messages(data_url(span_image(doc, page, box), "image/png"))
+                ), None, stamp)
+
+
+def with_readings(page, spans, found, ocr_dir, ocr_base):
+    """Gives each of a page's `spans` whose lines all have a current OCR Reading its "readings", [(Line Number,
+    text)]. Returns why the first other has none, or None."""
+    first_why = None
+    for span in spans:
+        readings = []
+        for n in range(span["first"], span["last"] + 1):
+            key = line_key(page, n)
+            text, why = current_answer(ocr_dir, key, {**ocr_base, **ocr_stamp(found, n)})
+            if text is None:
+                first_why = first_why or f"OCR Reading {key} {why}"
+                break
+            readings.append((n, text))
+        else:
+            span["readings"] = readings
+    return first_why
 
 
 def layout_requests(doc, pages, found):
@@ -138,22 +190,26 @@ def layout_requests(doc, pages, found):
 
 
 def span_requests(doc, page_spans):
+    """The Entry Span requests of `page_spans`' Entry Spans that have their OCR Readings (see `with_readings`)."""
     schema = span_schema()
     for page, spans in page_spans.items():
         for span in spans:
+            if "readings" not in span:
+                continue
             yield Request(span_key(page, span["first"]), (
                 lambda page=page, span=span: image_messages(
                     SPAN_SYSTEM_PROMPT,
                     [(f"Entry Span of PDF page {page}:", data_url(span_image(doc, page, span["box"]), "image/png"))],
-                    span_user_text(page, span["leading"]))
+                    span_user_text(page, span["leading"], span["readings"]))
             ), schema, span_stamp(page, span))
 
 
-def page_answer(page, found, layout_dir, layout_base, spans_dir, span_base):
+def page_answer(page, found, layout_dir, layout_base, ocr_dir, ocr_base, spans_dir, span_base):
     """
-    (answer, Entry Spans, None) for a page whose layout answer and every Entry Span answer are current: its answer
-    is the Entry Spans' Blocks in order with the layout's printed page number, and each Entry Span gets "blocks",
-    [first, last + 1], the indexes of its Blocks in the answer. Else (None, None, why it has none).
+    (answer, Entry Spans, None) for a page whose layout answer, every OCR Reading of its Entry Spans' lines and every
+    Entry Span answer are current: its answer is the Entry Spans' Blocks in order with the layout's printed page
+    number, and each Entry Span gets "readings" (see `with_readings`) and "blocks", [first, last + 1], the indexes of
+    its Blocks in the answer. Else (None, None, why it has none).
     """
     if found is None:
         return None, None, "never ran"
@@ -163,6 +219,9 @@ def page_answer(page, found, layout_dir, layout_base, spans_dir, span_base):
     if layout is None:
         return None, None, why if why == "never ran" else f"layout request {why}"
     spans, blocks = entry_spans(found, layout), []
+    why = with_readings(page, spans, found, ocr_dir, ocr_base)
+    if why:
+        return None, None, why
     for span in spans:
         key = span_key(page, span["first"])
         answer, why = current_answer(spans_dir, key, {**span_base, **span_stamp(page, span)})
@@ -206,7 +265,7 @@ def main():
     only = page_set(args.pages, n_pages) if args.pages else list(range(first, min(last, n_pages) + 1))
 
     store = os.path.join(STORE_DIR, args.part)
-    lines_dir, layout_dir, spans_dir = (os.path.join(store, d) for d in ("lines", "layout", "spans"))
+    lines_dir, layout_dir, ocr_dir, spans_dir = (os.path.join(store, d) for d in ("lines", "layout", "ocr", "spans"))
     usage_file = os.path.join(store, "token_usage.jsonl")
     os.makedirs(lines_dir, exist_ok=True)
     print(f"[Kho tàng tục ngữ] {args.part} ({part.pdf}): {n_pages} PDF pages, running {len(only)} "
@@ -221,6 +280,8 @@ def main():
     pdf_sha1 = file_sha1(pdf)
     layout_base = {"pdf_sha1": pdf_sha1, "page_dpi": PAGE_DPI, "layout_image": LAYOUT_IMAGE,
                    "prompt_sha1": layout_prompt_sha1()}
+    ocr_base = {"pdf_sha1": pdf_sha1, "page_dpi": PAGE_DPI, "ocr_image": OCR_IMAGE, "ocr_model": args.ocr_model_name,
+                "prompt_sha1": sha1(OCR_PROMPT)}
     span_base = {"pdf_sha1": pdf_sha1, "page_dpi": PAGE_DPI, "page_image": PAGE_IMAGE,
                  "prompt_sha1": span_prompt_sha1()}
 
@@ -244,7 +305,9 @@ def main():
         print(f"[Dry Run] Per-request counts in {store}/dry_run_tokens.jsonl")
         return
 
-    model = Model(args.model_name, args.vllm_url)
+    if not args.ocr_vllm_url:
+        sys.exit("[Kho tàng tục ngữ] No --ocr-vllm-url: the OCR model's server is needed for the OCR Readings")
+    model, ocr_model = Model(args.model_name, args.vllm_url), Model(args.ocr_model_name, args.ocr_vllm_url)
     vlm_requests.run_phase(layout_requests(doc, only, found), layout_dir, layout_base,
                            label="[Kho tàng tục ngữ] Layout requests", phase=LAYOUT, model=model, usage_file=usage_file)
     page_spans = {}
@@ -253,16 +316,22 @@ def main():
             layout, _ = current_answer(layout_dir, page_key(page), {**layout_base, **layout_stamp(page, found[page])})
             if layout is not None:
                 page_spans[page] = entry_spans(found[page], layout)
+    vlm_requests.run_phase(ocr_requests(doc, page_spans, found), ocr_dir, ocr_base,
+                           label="[Kho tàng tục ngữ] OCR requests", phase=OCR, model=ocr_model, usage_file=usage_file)
+    for page, spans in page_spans.items():
+        with_readings(page, spans, found[page], ocr_dir, ocr_base)
     vlm_requests.run_phase(span_requests(doc, page_spans), spans_dir, span_base,
                            label="[Kho tàng tục ngữ] Entry Span requests", phase=SPAN, model=model,
                            usage_file=usage_file)
 
     # -- outputs, rebuilt from every saved answer
-    answers, spans, missing = {}, {}, []
+    answers, spans, readings, missing = {}, {}, {}, []
     for page in range(1, n_pages + 1):
-        answer, page_spans_now, why = page_answer(page, found.get(page), layout_dir, layout_base, spans_dir, span_base)
+        answer, page_spans_now, why = page_answer(page, found.get(page), layout_dir, layout_base, ocr_dir, ocr_base,
+                                                  spans_dir, span_base)
         if answer is not None:
             answers[page], spans[page] = answer, page_spans_now
+            readings[page] = "\n".join(text for span in page_spans_now for _, text in span["readings"])
         # A page outside this run counts only if its requests ran and one failed, or were made from other input
         elif page in only or why != "never ran":
             missing.append(warning(PAGE_MISSING, page_key(page), f"PDF page {page} has no answer: {why}", page))
@@ -272,7 +341,7 @@ def main():
             missing.append(warning(INK_OUTSIDE, page_key(page), f"PDF page {page} has {len(patches)} patch(es) of "
                                    f"ink outside every printed line found ({top}-{bottom} px down the 300 dpi scan), "
                                    f"in no Entry Span", page))
-    entries, warnings, pages = assemble(answers, abbreviations, part.book_page_offset)
+    entries, warnings, pages = assemble(answers, abbreviations, part.book_page_offset, readings)
     # assemble's Warning ids are unique, and a missing page's and a page's missed ink are their own
     warnings = sorted(missing + warnings, key=lambda w: w["page"])
 
@@ -295,6 +364,7 @@ def main():
         p["layout_page_share"] = round(w / (w + LABEL_STRIP_PX), 4)
         p["spans"] = review_spans(page, spans[page], found[page]["size"], answers[page], entries)
     write_json(os.path.join(store, "answers.json"), {str(p): answers[p] for p in sorted(answers)})
+    write_json(os.path.join(store, "readings.json"), {str(p): readings[p] for p in sorted(readings)})
     write_json(os.path.join(store, "entries.json"), {"part": args.part, "book_page_offset": part.book_page_offset,
                                                      "pages": pages, "entries": entries})
     write_json(os.path.join(store, "warnings.json"), warnings)

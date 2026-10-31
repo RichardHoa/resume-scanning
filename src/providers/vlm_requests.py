@@ -33,6 +33,8 @@ class Phase(NamedTuple):
     thinking: bool
     retry_temperature: float    # for the attempts after the first, which is at temperature 0
     timeout: int = VLLM_REQUEST_TIMEOUT     # seconds to wait for one attempt's answer
+    text: bool = False      # the answer is the model's plain text, not JSON (its requests have no schema)
+    repetition_penalty: float = 1.05
 
 
 class Model(NamedTuple):
@@ -212,7 +214,8 @@ def run_one(req, out_path, stamp, *, phase, model, request_dir=None, usage_file=
                 model.vllm_url, model.name, messages,
                 temperature=0.0 if attempt == 1 else phase.retry_temperature,
                 json_schema=req.schema, max_tokens=phase.max_tokens, step=phase.step,
-                enable_thinking=phase.thinking, timeout=phase.timeout, usage_file=usage_file
+                enable_thinking=phase.thinking, timeout=phase.timeout, usage_file=usage_file,
+                text_output=phase.text, repetition_penalty=phase.repetition_penalty
             )
         except RuntimeError as e:
             too_long = "context length" in str(e) or "max_model_len" in str(e)
@@ -221,12 +224,15 @@ def run_one(req, out_path, stamp, *, phase, model, request_dir=None, usage_file=
             result.update(reasoning=reply.reasoning, finish_reason=reply.finish_reason,
                           completion_tokens=reply.completion_tokens, content=reply.content)
             try:
-                result.update(status="ok", error=None, answer=json.loads(reply.content))
+                answer = reply.content.strip() if phase.text else json.loads(reply.content)
+                result.update(status="ok", error=None, answer=answer)
             except json.JSONDecodeError as e:
                 result.update(status="failed",
                               error=f"answer is not JSON ({e}); finish_reason={reply.finish_reason}")
             else:
-                why = req.check(result["answer"]) if req.check else None
+                # A JSON answer cut short doesn't parse; a text one would pass as whole
+                why = "cut short at max_tokens" if phase.text and reply.finish_reason == "length" else None
+                why = why or (req.check(result["answer"]) if req.check else None)
                 if why:
                     result.update(status="failed", error=f"answer rejected: {why}")
         finally:

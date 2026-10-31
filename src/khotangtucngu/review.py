@@ -14,7 +14,8 @@ Each line also has its "time". Lines of any other type, such as the "check" mark
 A Fix is stale once the model's answer of its page no longer has the hash it was made against: a rerun changed it, so
 the Fix is not applied until it is saved again or dropped.
 
-Standard library only, like assembly.py and citations.py: cli.py copies the three into the store for serve.py.
+Standard library only, like assembly.py, citations.py and diacritics.py: cli.py copies the four into the store for
+serve.py.
 """
 import json
 import os
@@ -80,12 +81,12 @@ def with_fixes(answers, fixes):
     return fixed, applied, stale
 
 
-def rebuild(answers, fixes, abbreviations, book_page_offset):
-    """The Proverb Entries, Warnings and pages of assembly.assemble, built from `answers` with the Fixes that apply,
-    and the pages whose Fix is applied and stale. An entry is "fixed" when a page it is printed on has an applied
+def rebuild(answers, fixes, abbreviations, book_page_offset, readings=None):
+    """The Proverb Entries, Warnings and pages of assembly.assemble, built from `answers` with the Fixes that apply
+    (their Blocks checked against `readings`, the pages' OCR Readings), and the pages whose Fix is applied and stale. An entry is "fixed" when a page it is printed on has an applied
     Fix."""
     fixed, applied, stale = with_fixes(answers, fixes)
-    entries, warnings, pages = assemble(fixed, abbreviations, book_page_offset)
+    entries, warnings, pages = assemble(fixed, abbreviations, book_page_offset, readings)
     for entry in entries:
         entry["fixed"] = any(p in applied for p in entry["pdf_pages"])
     return entries, warnings, pages, applied, stale

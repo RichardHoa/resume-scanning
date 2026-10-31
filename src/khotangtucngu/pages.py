@@ -1,7 +1,7 @@
 """
 Page images of a PDF Part and the printed lines on them: each page's lines found on the 300 dpi scan, the page with
-their Line Numbers for the layout request, each Entry Span cut from the scan for its own request, and the page smaller
-for the review server. Places on the page are in px of the 300 dpi scan: a line is [top, bottom, left, right] and a
+their Line Numbers for the layout request, each Entry Span and each of its lines cut from the scan for their own
+requests, and the page smaller for the review server. Places on the page are in px of the 300 dpi scan: a line is [top, bottom, left, right] and a
 crop [left, top, right, bottom], bottom and right exclusive.
 """
 from io import BytesIO
@@ -28,6 +28,11 @@ def page_key(page):
 def span_key(page, first):
     """An Entry Span's name in the store: its page and the Line Number it starts on."""
     return f"{page_key(page)}-L{first:02d}"
+
+
+def line_key(page, n):
+    """A printed line's name in the store (its OCR Reading): its page and its Line Number."""
+    return f"{page_key(page)}-L{n:02d}"
 
 
 def _sides(lines, width):
@@ -144,6 +149,19 @@ def entry_spans(found, answer):
         spans.append({"first": first, "last": last, "leading": first not in starts,
                       "box": [left, max(0, top), right, min(h, bottom)]})
     return spans
+
+
+def line_box(found, n):
+    """The crop of Line Number `n` of a page (`found`, from `find_lines`) for its OCR request: as wide as the page's
+    Entry Spans, and from SPAN_EDGE_GAP_PX short of the ink of the lines above and below it, at most half a margin
+    beyond its own, so no tone mark or dot under a letter is clipped and no Running Head rule comes in."""
+    lines, (w, h) = found["lines"], found["size"]
+    top, bottom = lines[n - 1][0], lines[n - 1][1]
+    above = lines[n - 2][1] + SPAN_EDGE_GAP_PX if n > 1 else 0
+    below = lines[n][0] - SPAN_EDGE_GAP_PX if n < len(lines) else h
+    left, right = _sides(lines, w)
+    return [left, max(0, min(top, max(above, top - SPAN_MARGIN_PX // 2))),
+            right, min(h, max(bottom, min(below, bottom + SPAN_MARGIN_PX // 2)))]
 
 
 def span_image(doc, page, box):
