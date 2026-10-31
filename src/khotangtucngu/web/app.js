@@ -5,7 +5,7 @@ const KIND_NAMES = {
   number_gap: "Number gap", number_duplicate: "Duplicate number", letter_order: "Letter out of order",
   page_number: "Page number", page_missing: "Missing page", no_owner: "Leading Block with no owner",
   unknown_abbreviation: "Unknown Source Abbreviation", citation_no_pages: "Citation with no pages",
-  citation_unsplit: "Citation not split",
+  citation_unsplit: "Citation not split", ink_outside: "Ink outside the lines",
 };
 const BLOCK_NAMES = {
   letter: "Letter heading", proverb: "Proverb", citations: "Citations", variant: "Variant (BK)", note: "Note",
@@ -21,6 +21,7 @@ let VIEW = null;                    // /assembled: the entries rebuilt with the 
 const PAGES = {};                   // PDF page -> its page of entries.json (the model's answer hash)
 let PAGE_LIST = [];                 // every PDF page with an answer, a Warning or a Fix, in order
 let current = null, zoom = 0, showingEdits = false;
+let showSpans = true, showNumbered = false;  // the Entry Spans drawn on the scan; the layout image in place of the scan
 
 const $ = sel => document.querySelector(sel);
 
@@ -374,8 +375,9 @@ function blockRow(block, rows, changed) {
   const row = h("div", {class: "brow"});
   const sync = () => {
     number.hidden = kind.value !== "proverb";
-    // Only a Variant has Citations of its own; any the model put on another Block are shown, to keep or clear
-    cites.hidden = kind.value !== "variant" && !cites.value;
+    // A Variant has Citations of its own, and a proverb's are its entry's; any the model put on another Block are
+    // shown, to keep or clear
+    cites.hidden = kind.value !== "variant" && kind.value !== "proverb" && !cites.value;
     text.placeholder = kind.value === "citations" ? "As printed: HT 63 NL 7 TNLG II 7, 25" :
                        kind.value === "correction" ? "Wrong wording SOURCE = right *wording*" : "As printed, italics between *asterisks*";
     text.style.height = "auto";
@@ -439,7 +441,8 @@ function openEditor(container, p, range, title, from) {
     }
   };
   const changed = () => {
-    list.replaceChildren(...rows);
+    // Only when a row is added, moved or deleted: re-adding the rows on every keystroke drops the typing's focus
+    if (rows.length !== list.children.length || rows.some((r, i) => list.children[i] !== r)) list.replaceChildren(...rows);
     clearTimeout(timer);
     timer = setTimeout(refresh, 250);
   };
@@ -502,14 +505,28 @@ function renderProgress() {
   $("#edits").textContent = `Edits (${pages})`;
 }
 
+// Each Entry Span as cropped for its request, labelled with its first Line Number and what the model made of it
+function spanLayer(page, share) {
+  const pct = x => (x * 100).toFixed(2) + "%";
+  return h("div", {class: "spans", style: `width: ${pct(share)}`}, page.spans.map(s => {
+    const [left, top, right, bottom] = s.box;
+    return h("div", {class: `span span-${s.kind}`, title: `L${s.start}: ${s.label}`,
+                     style: `left: ${pct(left)}; top: ${pct(top)}; width: ${pct(right - left)}; height: ${pct(bottom - top)}`},
+             h("span", {class: "tag"}, `L${s.start} · ${s.label}`));
+  }));
+}
+
 function renderSheet() {
   const sheet = $("#sheet");
-  const img = h("img", {src: PAGES[current] ? PAGES[current].image : `pages/p${String(current).padStart(3, "0")}.png`,
-                        alt: `Scan of PDF page ${current}`});
-  img.addEventListener("error", () => img.replaceWith(h("p", {class: "muted noscan"}, "No scan of this page in the store")));
-  sheet.replaceChildren(img);
+  const page = PAGES[current];
+  const numbered = showNumbered && page && page.layout_image;
+  const img = h("img", {src: numbered ? page.layout_image : page ? page.image : `pages/p${String(current).padStart(3, "0")}.png`,
+                        alt: numbered ? `PDF page ${current} with its Line Numbers` : `Scan of PDF page ${current}`});
+  img.addEventListener("error", () => sheet.replaceChildren(h("p", {class: "muted noscan"}, "No scan of this page in the store")));
+  sheet.replaceChildren(img, ...(showSpans && page && page.spans ? [spanLayer(page, numbered ? page.layout_page_share : 1)] : []));
   sheet.style.width = ZOOMS[zoom] * 100 + "%";
-  $("#left").scrollTop = 0;
+  $("#spans").setAttribute("aria-pressed", String(showSpans));
+  $("#numbered").setAttribute("aria-pressed", String(showNumbered));
 }
 
 function render() {
@@ -524,6 +541,7 @@ function showPage(p) {
   showingEdits = false;
   history.replaceState(null, "", "#p" + p);
   renderSheet();
+  $("#left").scrollTop = 0;
   render();
   $("#right").scrollTop = 0;
 }
@@ -558,6 +576,8 @@ function wire() {
   $("#edits").addEventListener("click", () => toggleEdits(!showingEdits));
   $("#smaller").addEventListener("click", () => setZoom(zoom - 1));
   $("#larger").addEventListener("click", () => setZoom(zoom + 1));
+  $("#spans").addEventListener("click", () => { showSpans = !showSpans; renderSheet(); });
+  $("#numbered").addEventListener("click", () => { showNumbered = !showNumbered; renderSheet(); });
   document.addEventListener("keydown", e => {
     // Not while editing: changing page would drop the unsaved edit
     if (e.target.closest("textarea, input, select") || $(".editor") || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -565,6 +585,8 @@ function wire() {
     else if (e.key === "ArrowRight") step(1);
     else if (e.key === "w") $("#next-warn").click();
     else if (e.key === "e") $("#next-edit").click();
+    else if (e.key === "s") $("#spans").click();
+    else if (e.key === "n") $("#numbered").click();
   });
 }
 

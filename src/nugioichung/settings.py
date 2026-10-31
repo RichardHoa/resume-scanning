@@ -19,16 +19,8 @@ RETRY_TEMPERATURE = 0.3
 SNAP_REACH = 60
 # A Region taller than this, in thousandths of the page (about a third), is cut into Strips no taller than about this
 STRIP_HEIGHT = 333
-# Printed lines of a Region or Strip (docs/adr/0002-paragraphs-from-line-geometry.md), tuned on Số 1. Its lines touch
-# where accents and descenders meet, so a row of pixels is between lines when it holds at most this share of the ink
-# of a busy row of the Cut (its 90th percentile)
-LINE_GAP_SHARE = 0.08
-# A band about two or more lines tall is lines that touch, cut where a row holds at most this share of the band's
-# median row ink
-VALLEY_SHARE = 0.35
-# A band of ink thinner than this share of the Cut's median line (a row of tone marks, a dot under a letter, a speck)
-# is merged into the line next to it
-TONE_BAND_SHARE = 0.5
+# Printed lines of a Region or Strip (docs/adr/0002-paragraphs-from-line-geometry.md) are found by the shared line
+# finder, src/providers/page_images.py, whose shares were tuned on Số 1.
 # A band of ink this many times as tall as the median line, and at least this share ink, is a printed picture; a
 # taller band with less ink is a line of large type
 PICTURE_LINES = 3

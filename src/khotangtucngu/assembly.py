@@ -29,6 +29,8 @@ _TONES = {"̀", "́", "̃", "̉", "̣"}
 
 NUMBER_GAP, NUMBER_DUPLICATE, LETTER_ORDER = "number_gap", "number_duplicate", "letter_order"
 PAGE_NUMBER, PAGE_MISSING, NO_OWNER = "page_number", "page_missing", "no_owner"
+# Raised by cli.py, not here: ink on a page outside every printed line found, which no Entry Span holds
+INK_OUTSIDE = "ink_outside"
 
 
 def warning(kind, place, reason, page):
@@ -154,6 +156,8 @@ def assemble(answers, abbreviations, book_page_offset):
                 entry = _new_entry(letter, number, text, page, book_page)
                 _on_page(entry, page, book_page, b)
                 name = entry["name"]
+                # The model often puts the Citation lines on the proverb's own Block, not a Citations Block after it
+                entry["citations"] += cite(block.get("citations") or "", page, name)
                 if name in seen:
                     warnings.append(warning(NUMBER_DUPLICATE, f"p{page}-{name}", f"{name} appears again, first on "
                                             f"PDF page {seen[name]['pdf_pages'][0]}", page))

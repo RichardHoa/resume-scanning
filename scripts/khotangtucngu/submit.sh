@@ -13,8 +13,9 @@
 # -----------------------------------------------------------------------------
 # Kho tàng tục ngữ người Việt: transcribe the Proverb Entries of one PDF Part (src/khotangtucngu/cli.py)
 #
-# One request per PDF page reads its Blocks from the 300 dpi scan; the code groups the Blocks of every page saved in
-# the Part's store into verbatim Proverb Entries and Warnings.
+# A layout request per PDF page sees its 300 dpi scan with each printed line's Line Number and answers where each
+# Proverb Entry starts; one request per Entry Span then reads its Blocks from its crop of the scan. The code groups the
+# Blocks of every page saved in the Part's store into verbatim Proverb Entries and Warnings.
 #
 # Usage:
 #   sbatch scripts/khotangtucngu/submit.sh --part-<n> [--model <key>] [cli.py flags]    # Parts: src/khotangtucngu/settings.py
@@ -26,7 +27,7 @@
 # -----------------------------------------------------------------------------
 
 KHOTANGTUCNGU_CONCURRENCY=40    # the default profile's
-MAX_IMAGES_PER_PROMPT=1    # a page request sends its page
+MAX_IMAGES_PER_PROMPT=1    # a layout request sends its page, an Entry Span request its crop
 
 # -----------------------------------------------------------------------------
 # Location of the shared helpers (scripts/lib). SLURM runs a copy of this script, so under sbatch they are found

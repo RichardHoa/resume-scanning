@@ -22,8 +22,17 @@ button.primary { background: var(--accent); color: #fff; border-color: var(--acc
 button.link { border: none; background: none; color: var(--accent); padding: 0 4px; }
 main { flex: 1 1 auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 0; }
 #left { overflow: auto; padding: 12px; border-right: 1px solid var(--line); }
-#sheet { margin: 0 auto; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+#sheet { position: relative; margin: 0 auto; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
 #sheet img { display: block; width: 100%; }
+button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* Entry Spans over the scan, as cropped: the layer is the page's share of the image (less the Line Number strip) */
+.spans { position: absolute; top: 0; left: 0; height: 100%; pointer-events: none; }
+.span { position: absolute; border: 2px solid var(--span); background: color-mix(in srgb, var(--span) 6%, transparent); }
+.span-entry { --span: #1d5fbf; }
+.span-leading { --span: #a15c00; }
+.span-letter { --span: #8a2be2; }
+.span .tag { position: absolute; top: 0; left: 0; font-size: 11px; line-height: 1.3; padding: 0 4px; color: #fff;
+             background: var(--span); white-space: nowrap; }
 .noscan { padding: 40px; text-align: center; }
 #right { overflow: auto; padding: 8px 20px 40vh; background: var(--panel); }
 #pageinfo { font-size: 13px; color: var(--muted); padding: 4px 0 8px; border-bottom: 1px solid var(--line); }

@@ -46,6 +46,8 @@ class Request(NamedTuple):
     schema: Dict[str, Any]
     # Input this one task depends on beyond the phase's stamp (e.g. its crop box), saved and checked with it
     stamp: Optional[Dict[str, Any]] = None
+    # Why a parsed answer can't be used, or None: an answer it rejects is a failed attempt, retried like bad JSON
+    check: Optional[Callable[[Any], Optional[str]]] = None
 
 
 def write_jsonl(path, rows):
@@ -223,6 +225,10 @@ def run_one(req, out_path, stamp, *, phase, model, request_dir=None, usage_file=
             except json.JSONDecodeError as e:
                 result.update(status="failed",
                               error=f"answer is not JSON ({e}); finish_reason={reply.finish_reason}")
+            else:
+                why = req.check(result["answer"]) if req.check else None
+                if why:
+                    result.update(status="failed", error=f"answer rejected: {why}")
         finally:
             if in_flight:
                 in_flight.end(req.key)

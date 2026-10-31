@@ -6,7 +6,8 @@ can be reviewed:
 
     python3 serve.py [--port 8000]
 
-serves the store on http://127.0.0.1:<port>/ and opens it in a browser: each page's scan (pages/) on the left, its
+serves the store on http://127.0.0.1:<port>/ and opens it in a browser: each page's scan (pages/) on the left with the
+model's Entry Spans drawn on it, or the page as the layout request saw it with its Line Numbers (layout/), and its
 Proverb Entries on the right with their Warnings and their Citations matched to the 63 Sources (sources.json). The
 developer edits whatever they see is wrong; nobody checks every entry. Each edit saves a Fix of the page, the corrected
 Blocks of its answer, appended to review.jsonl here with its time (see review.py for its lines). No run rebuilds or
@@ -31,7 +32,7 @@ from datetime import datetime
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-from khotangtucngu.assembly import PAGE_MISSING, answer_sha1
+from khotangtucngu.assembly import INK_OUTSIDE, PAGE_MISSING, answer_sha1
 from khotangtucngu.citations import Abbreviations
 from khotangtucngu.review import REVIEW_LOG, fix_problem, read_fixes, rebuild
 
@@ -76,8 +77,9 @@ def assembled(page=None, printed_page=None, blocks=None):
         fixes.pop(page, None)
     offset = _read("entries.json", lambda f: json.load(f)["book_page_offset"])
     entries, warnings, pages, applied, stale = rebuild(answers, fixes, abbreviations, offset)
-    # A failed or missing page has no answer, so no Fix can change its Warning
-    missing = [w for w in _read("warnings.json") if w["kind"] == PAGE_MISSING]
+    # A failed or missing page has no answer, and ink outside the found lines is no Block's, so no Fix can change
+    # their Warnings
+    missing = [w for w in _read("warnings.json") if w["kind"] in (PAGE_MISSING, INK_OUTSIDE)]
     warnings = sorted(missing + warnings, key=lambda w: w["page"])
     return {"entries": entries, "warnings": warnings, "pages": pages, "applied": applied, "stale": stale,
             "fixes": {str(p): f for p, f in fixes.items()}}

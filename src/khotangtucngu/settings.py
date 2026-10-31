@@ -21,15 +21,39 @@ PARTS = {
     "part-1": Part("kho tàng tục ngữ người việt tập 1 - p1.pdf", (36, 865), -1),
 }
 
-# Each page is sent whole at the scan's 300 dpi, in grayscale PNG, so every diacritic and every subscript is readable
+# Pages are read at the scan's 300 dpi, in grayscale PNG, so every diacritic and every subscript is readable
+# (docs/adr/0001-entry-spans-from-numbered-lines.md beside the GLOSSARY): the layout request sees the whole page with
+# its Line Numbers, and each Entry Span is cut from it
 PAGE_DPI = 300
 PAGE_IMAGE = "grayscale png"
-# A page's answer is its Blocks: about a dozen entries at most, in Vietnamese, which tokenises long. The cap also stops
-# a runaway answer
-PAGE_MAX_TOKENS = 6144
+# The layout image: the page with a white strip this many px wide added on its right, where each printed line's Line
+# Number is written ("L12") in red, LABEL_PX tall, with a tick from the line's right end to it. Body lines at 300 dpi are
+# about 50 px apart
+LABEL_STRIP_PX = 200
+LABEL_PX = 36
+LABEL_COLOUR = (220, 0, 0)
+LAYOUT_IMAGE = f"colour png, Line Numbers in a {LABEL_STRIP_PX} px strip, {LABEL_PX} px, rgb{LABEL_COLOUR}"
+# An Entry Span's crop reaches across the gap above and below it to this many px short of the next line's ink, so
+# no tone mark or dot under a letter is clipped and no letter of a neighbour comes in...
+SPAN_EDGE_GAP_PX = 2
+# ...and this many px (5 mm) beyond the furthest ink of the page's lines on the left and right, and above or below
+# where no line is next to it
+SPAN_MARGIN_PX = 60
+# Ink outside the page's text block (its found lines, with the Entry Spans' margins), which no Entry Span holds, is
+# text the line finder missed when a patch of it, its pixels joined across MISSED_JOIN_PX, holds at least this many ink
+# pixels (a short word is about 300); ink within EDGE_PX of the page's edges is the scan's border
+MISSED_INK = 300
+MISSED_JOIN_PX = 9
+EDGE_PX = 40
+# The layout answer is a page number and a dozen Line Numbers
+LAYOUT_MAX_TOKENS = 512
+# An Entry Span's answer is the Blocks of one Proverb Entry, about 100-300 tokens in Vietnamese; the cap leaves room
+# for a long note and stops a runaway answer
+SPAN_MAX_TOKENS = 2048
 # Seconds to wait for one request's answer before it fails and is retried
 REQUEST_TIMEOUT = 180
-# Retries after the first attempt sample, as an identical prompt at temperature 0 fails the same way
+# Every first attempt is at temperature 0 (vlm_requests); retries sample, as an identical prompt at temperature 0
+# fails the same way
 RETRY_TEMPERATURE = 0.3
 # The review server shows each page about this many px on its long side
 PAGE_IMAGE_LONG_SIDE = 2000
