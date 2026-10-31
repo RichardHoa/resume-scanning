@@ -23,11 +23,18 @@
 #   bash scripts/khotangtucngu/submit.sh --part-1 --dry-run                 # on the login node: token counts, no GPU
 #
 # The model profile is served with vision on for this job only (profiles serve text only), and with at most
-# KHOTANGTUCNGU_CONCURRENCY requests in flight (scripts/lib/vision_job.sh).
+# KHOTANGTUCNGU_CONCURRENCY requests in flight (scripts/lib/vision_job.sh). The OCR model, which reads each line of an
+# Entry Span before its request, is served beside it on the same GPU, so the two split its memory.
 # -----------------------------------------------------------------------------
 
 KHOTANGTUCNGU_CONCURRENCY=40    # the default profile's
 MAX_IMAGES_PER_PROMPT=1    # a layout request sends its page, an Entry Span request its crop
+# The same as OCR_MODEL in src/khotangtucngu/settings.py, the CLI's default. A 0.9B model: its weights are about 2 GB,
+# and the rest of its share is its KV cache and CUDA graphs. The profile's 27B model keeps about 75 GB, for its 54 GB
+# of weights and the KV cache of its 40 requests
+VISION_OCR_MODEL="PaddlePaddle/PaddleOCR-VL-1.6"
+VISION_OCR_GPU_SHARE=0.10
+VLLM_GPU_MEMORY_UTILIZATION=0.78
 
 # -----------------------------------------------------------------------------
 # Location of the shared helpers (scripts/lib). SLURM runs a copy of this script, so under sbatch they are found

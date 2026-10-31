@@ -1,7 +1,7 @@
 """
 Review server for one Kho tàng tục ngữ người Việt PDF Part's store. src/khotangtucngu/cli.py copies this file, web/
-(the page: index.html, style.css, app.js) and khotangtucngu/ (assembly.py, citations.py, review.py), their single
-master copies, into the store on every run. It uses the Python standard library only, so a store copied to any machine
+(the page: index.html, style.css, app.js) and khotangtucngu/ (assembly.py, citations.py, diacritics.py, review.py),
+their single master copies, into the store on every run. It uses the Python standard library only, so a store copied to any machine
 can be reviewed:
 
     python3 serve.py [--port 8000]
@@ -17,7 +17,8 @@ and says so.
 Besides the store's files:
 
   GET  /assembled     the Proverb Entries, Warnings and pages rebuilt from answers.json with the Fixes that are not
-                      stale, the Fixes by PDF page, and the pages whose Fix is applied and stale
+                      stale (their Blocks checked against the OCR Readings in readings.json), the Fixes by PDF
+                      page, and the pages whose Fix is applied and stale
   POST /preview       {"page", "printed_page", "blocks"}: the entries and Warnings of that page were it so
   POST /review        a Fix line, appended to review.jsonl with its time and the hash of its page's current answer
 
@@ -67,6 +68,12 @@ def _answers():
     return {int(page): answer for page, answer in _read("answers.json").items()}
 
 
+def _readings():
+    """Each page's OCR Readings joined, by PDF page, which its Blocks are checked against for Diacritic
+    Disagreements."""
+    return {int(page): reading for page, reading in _read("readings.json").items()}
+
+
 def assembled(page=None, printed_page=None, blocks=None):
     """The store rebuilt with its Fixes; with `page`, as if that page's printed number and Blocks were `printed_page`
     and `blocks`."""
@@ -76,7 +83,7 @@ def assembled(page=None, printed_page=None, blocks=None):
         answers[page] = {**answers.get(page, {}), "printed_page": printed_page, "blocks": blocks}
         fixes.pop(page, None)
     offset = _read("entries.json", lambda f: json.load(f)["book_page_offset"])
-    entries, warnings, pages, applied, stale = rebuild(answers, fixes, abbreviations, offset)
+    entries, warnings, pages, applied, stale = rebuild(answers, fixes, abbreviations, offset, _readings())
     # A failed or missing page has no answer, and ink outside the found lines is no Block's, so no Fix can change
     # their Warnings
     missing = [w for w in _read("warnings.json") if w["kind"] in (PAGE_MISSING, INK_OUTSIDE)]

@@ -11,6 +11,10 @@
 # Otherwise the profile is served with vision on for this job only (profiles serve text only), with at most
 # <concurrency> requests in flight, and the module runs against it. The server log is logs/vllm_<name>.log, and its
 # state is sampled into logs/vllm_<name>_metrics_<job>.log.
+#
+# With VISION_OCR_MODEL set (a HuggingFace model ID), an OCR model is served beside it on the same GPU, with
+# VISION_OCR_GPU_SHARE of its memory (the profile's server takes VLLM_GPU_MEMORY_UTILIZATION, which must leave room),
+# and the module also gets --ocr-model-name and --ocr-vllm-url. Its log is logs/vllm_<name>_ocr.log.
 # -----------------------------------------------------------------------------
 
 WATCH_SERVER_EVERY=30    # seconds between samples of the server's state in the metrics log
@@ -37,6 +41,26 @@ watch_server() {
     } >> "$log"
     sleep "$WATCH_SERVER_EVERY"
   done
+}
+
+# Serves VISION_OCR_MODEL beside the server already running, on a free port, and sets OCR_URL to its API. Its flags
+# are its vLLM recipe's (an OCR request shares no prefix worth caching, and no image is sent twice), with one image
+# per prompt. The first server keeps VLLM_PID, so watch_server samples it; stop_vllm_server stops both.
+# Usage: start_ocr_server <name>
+start_ocr_server() {
+  local name="$1" ocr_port main_pid="$VLLM_PID"
+  local main_args=("${VLLM_EXTRA_ARGS[@]}")
+  ocr_port=$(find_free_port)
+  echo "[$(date +'%H:%M:%S')] OCR Model: $VISION_OCR_MODEL (${VISION_OCR_GPU_SHARE} of the GPU) on port $ocr_port"
+  VLLM_EXTRA_ARGS=(--max-num-batched-tokens 16384 --no-enable-prefix-caching --mm-processor-cache-gb 0
+                   --limit-mm-per-prompt.image 1 --limit-mm-per-prompt.video 0)
+  VLLM_KEEP_RUNNING=1 VLLM_GPU_MEMORY_UTILIZATION="$VISION_OCR_GPU_SHARE" \
+    start_vllm_server "$VISION_OCR_MODEL" "$ocr_port" "$PROJECT_ROOT/logs/vllm_${name}_ocr.log"
+  local status=$?
+  VLLM_EXTRA_ARGS=("${main_args[@]}")
+  VLLM_PID="$main_pid"
+  OCR_URL="http://127.0.0.1:$ocr_port/v1"
+  return $status
 }
 
 # Usage: run_vision_job <name> <title> <python module> <concurrency> <max images per prompt> [args...]
@@ -124,6 +148,11 @@ run_vision_job() {
   echo "[$(date +'%H:%M:%S')] Allocated Server Port: $port"
 
   start_vllm_server "$MODEL" "$port" "$PROJECT_ROOT/logs/vllm_$name.log" || return 1
+  local ocr_args=()
+  if [ -n "$VISION_OCR_MODEL" ]; then
+    start_ocr_server "$name" || return 1
+    ocr_args=(--ocr-model-name "$VISION_OCR_MODEL" --ocr-vllm-url "$OCR_URL")
+  fi
   local metrics_log="$PROJECT_ROOT/logs/vllm_${name}_metrics_${SLURM_JOB_ID:-$(date +%Y%m%d-%H%M%S)}.log"
   watch_server "$port" "$metrics_log" &
   local watch_pid=$!
@@ -133,6 +162,7 @@ run_vision_job() {
   python3 -u -m "$module" \
     --model-name "$MODEL" \
     --vllm-url "http://127.0.0.1:$port/v1" \
+    "${ocr_args[@]}" \
     "${job_args[@]}"
   local status=$?
 
