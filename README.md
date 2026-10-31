@@ -234,11 +234,13 @@ A run writes into the store:
 | File | What it holds |
 | --- | --- |
 | `requests/pNNN.json` | each PDF page's answer: its printed page number and its Blocks |
+| `answers.json` | every current page answer, for the review server to rebuild the entries with Fixes |
 | `entries.json` | the verbatim Proverb Entries, plus each page's book page, answer hash and entries |
 | `warnings.json` | every Warning, with its kind, reason and PDF page |
+| `sources.json` | the 63 Sources, for the review server to write Citations out |
 | `pages/pNNN.png` | each page's scan, for the review server |
-| `serve.py`, `web/` | the review server and its page |
-| `review.jsonl` | the review log of checks and Fixes; written only by `serve.py`, never by a run |
+| `serve.py`, `web/`, `khotangtucngu/` | the review server, its page, and the code that rebuilds the entries with Fixes |
+| `review.jsonl` | the review log of Fixes; written only by `serve.py`, never by a run |
 | `token_usage.jsonl` | one line per request sent |
 
 Warnings flag:
@@ -259,14 +261,19 @@ rsync -a --exclude review.jsonl <user>@<login node>:<repo>/vsc-project/khoTangTu
 cd vsc-project/khoTangTucNguoiNguoiViet/store/part-1 && python3 serve.py   # http://127.0.0.1:8000/, --port to change
 ```
 
-- **The page:** each page's scan is on the left, and its Proverb Entries on the right as transcribed, with italics
-  shown. The page's Warnings sit above its entries.
-- **Moving around:** ◀ ▶ (or ← →) step through the pages. "Next with Warnings" (`w`) and "Next unchecked" (`u`) jump
-  ahead.
-- **Checks and Fixes:** mark each entry checked, or save a Fix, which is the whole entry edited as JSON. Both are
-  appended to `review.jsonl`.
+- **The page:** each page's scan is on the left, and its Proverb Entries on the right laid out as printed, with
+  italics shown. Each Warning sits on the entry it concerns; the page's own (page number, missing page, Blocks with
+  no owner) sit above. Under each entry, its Citations are written out with the Source each matches among the 63, or
+  in red if it matches none.
+- **Moving around:** ◀ ▶ (or ← →) step through the pages. "Next with Warnings" (`w`) and "Next edited" (`e`) jump
+  ahead. "Edits" lists every page with a Fix.
+- **Editing:** nobody checks every entry. Where you see the model got something wrong, "✎ Edit" (on hover) opens the
+  entry's Blocks as printed text, one row each: change, add, delete or reorder them, and a live preview shows the
+  entry and its Warnings. "✎ Edit the page" also edits the printed page number and Blocks outside any entry. Saving
+  appends a Fix of the page to `review.jsonl`, and the entries and Warnings are rebuilt with it. An edited entry is
+  marked, with its changes against the transcription.
 - **Stale Fixes:** if a rerun changes the answer a Fix was made against, the Fix is shown as stale and isn't applied
-  until you save it again or drop it.
+  until you edit the page again from it or drop it.
 - **Keep your review log:** `review.jsonl` is written where you review. When you pull a rerun's store again, keep
   `--exclude review.jsonl` so the copy on the cluster never overwrites your review.
 - **Fixing the model's reading:** to redo pages, rerun them on the cluster with `--pages` and pull the store again.
@@ -277,8 +284,8 @@ cd vsc-project/khoTangTucNguoiNguoiViet/store/part-1 && python3 serve.py   # htt
 python3 -m src.khotangtucngu.export
 ```
 
-- **Which Parts:** it exports every Part whose store has an `entries.json`, so a See-also resolves across Parts.
-- **Fixes:** Fixes that aren't stale replace the model's entries.
+- **Which Parts:** it exports every Part whose store has an `answers.json`, so a See-also resolves across Parts.
+- **Fixes:** the entries are rebuilt with the Fixes that aren't stale in place of the model's Blocks of their pages.
 - **Output:** it empties and rewrites each `store/<part>/export/` and writes nothing outside it:
   - `letters/<letter>.json`, one record per Proverb Entry;
   - `sources.json`, the 63 Sources with their Source Notes;

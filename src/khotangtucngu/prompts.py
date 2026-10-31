@@ -4,11 +4,8 @@ page's Blocks in reading order (vocabulary: vsc-project/khoTangTucNguoiNguoiViet
 """
 import json
 
+from src.khotangtucngu.assembly import BLOCK_KINDS
 from src.providers.vlm_requests import sha1
-
-LETTER, PROVERB, CITATIONS, VARIANT, NOTE, CORRECTION, SEE_ALSO = (
-    "letter", "proverb", "citations", "variant", "note", "correction", "see_also")
-BLOCK_KINDS = [LETTER, PROVERB, CITATIONS, VARIANT, NOTE, CORRECTION, SEE_ALSO]
 
 SYSTEM_PROMPT = """\
 The pages are scans of Kho tàng tục ngữ người Việt (2002), a collection of Vietnamese proverbs ordered by the letter of

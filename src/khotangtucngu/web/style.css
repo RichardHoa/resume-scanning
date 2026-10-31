@@ -3,6 +3,7 @@
   --warn: #c40000; --warn-bg: #fdeeee; --ok: #18794e; --ok-bg: #e5f3ec; --stale: #a15c00; --stale-bg: #fff4e0;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
        display: flex; flex-direction: column; }
@@ -28,19 +29,28 @@ main { flex: 1 1 auto; display: grid; grid-template-columns: minmax(0, 1fr) minm
 #pageinfo { font-size: 13px; color: var(--muted); padding: 4px 0 8px; border-bottom: 1px solid var(--line); }
 #pageinfo b { color: var(--ink); }
 #pageinfo a { color: var(--accent); }
-.warning { border-left: 4px solid var(--warn); background: var(--warn-bg); padding: 4px 10px; margin: 6px 0;
-           border-radius: 4px; font-size: 13px; }
+.warning { border-left: 3px solid var(--warn); background: var(--warn-bg); padding: 2px 8px; margin: 4px 0;
+           border-radius: 3px; font-size: 13px; }
 .warning .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--warn); font-weight: 700; }
-.entry { position: relative; margin: 10px -8px; padding: 6px 8px 6px 12px; border-radius: 4px;
-         border-left: 3px solid var(--line); }
-.entry.done { border-left-color: var(--ok); }
-.entry.stale { border-left-color: var(--stale); }
+#warnings:not(:empty) { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.fixline { margin-top: 4px; color: var(--ok); }
+.small-btn { font-size: 12px; padding: 0 6px; }
+.small { font-size: 12px; }
+.entry { position: relative; margin: 4px -8px; padding: 8px 8px 8px 12px; border-radius: 4px;
+         border-left: 3px solid transparent; border-bottom: 1px solid var(--line); }
+.entry:hover { background: #faf9f6; }
+.entry.edited { border-left-color: var(--ok); }
 .entry .letter { display: inline-block; font-size: 22px; font-weight: 700; background: #e7e5e0; padding: 0 14px;
                  margin: 4px 0 8px; }
 .meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .meta .name { font-weight: 600; }
+/* The edit button shows on the entry under the pointer or with focus, and always on touch screens */
+.meta .edit { margin-left: auto; font-size: 12px; padding: 0 8px; opacity: 0; }
+.entry:hover .edit, .entry:focus-within .edit { opacity: 1; }
+@media (hover: none) { .meta .edit { opacity: 1; } }
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 3px; }
 .tag.ok { background: var(--ok-bg); color: var(--ok); }
+.tag.stale { background: var(--stale-bg); color: var(--stale); margin-left: 6px; }
 /* Laid out as the book prints an entry: number and bold proverb, then one line each for its Citations, Variants,
    italic notes, Correction and See-also */
 .body .proverb { font-size: 16px; }
@@ -49,19 +59,43 @@ main { flex: 1 1 auto; display: grid; grid-template-columns: minmax(0, 1fr) minm
 .body .note { font-style: italic; }
 .body .bk, .body .label { font-weight: 600; }
 .body em { font-style: italic; background: #fff1b8; }
-.cite { white-space: nowrap; border-bottom: 1px dotted var(--muted); }
-.ab { letter-spacing: .02em; color: #3a3a7a; }
+.cite { white-space: nowrap; }
+.cite.unknown, li.unknown { color: var(--warn); }
+.ab { letter-spacing: .02em; color: #3a3a7a; font-weight: 600; }
+.unknown .ab { color: var(--warn); }
+/* The Citations written out, each matched to its Source among the 63 */
+.sources { margin: 4px 0 0 1.6em; font-size: 13px; }
+.sources summary { color: var(--muted); font-size: 12px; cursor: pointer; }
+.sources ul { margin: 2px 0; padding-left: 1.2em; }
+.sources li { margin: 1px 0; }
 details { margin-top: 4px; font-size: 14px; }
-details .body { opacity: .75; }
-.stalebox { background: var(--stale-bg); color: var(--stale); padding: 4px 10px; border-radius: 4px; margin-top: 6px;
+.changes { margin-left: 1.6em; }
+.dl { font-size: 13px; padding: 1px 0; }
+.dl.same { color: var(--muted); }
+.kindname { display: inline-block; min-width: 7em; font-size: 11px; color: var(--muted); text-transform: uppercase; }
+ins { background: var(--ok-bg); color: var(--ok); text-decoration: none; }
+del { background: var(--warn-bg); color: var(--warn); }
+.stalebox { background: var(--stale-bg); color: var(--stale); padding: 6px 10px; border-radius: 4px; margin: 6px 0;
             font-size: 13px; }
-.stalebox details .body { color: var(--ink); }
+.stalebox .dl { color: var(--ink); }
 .tools { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
-.editor { display: flex; flex-direction: column; gap: 6px; }
-.editor textarea { width: 100%; font: 13px/1.45 ui-monospace, Menlo, monospace; padding: 6px; }
+.edits { padding-left: 1.2em; }
+.edits li { margin: 4px 0; font-size: 14px; }
+/* The editor: one row per Block, its kind, its number (proverbs), its printed text and a Variant's Citations */
+.editor { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; }
+.rows { display: flex; flex-direction: column; gap: 4px; }
+.brow { display: grid; grid-template-columns: 9.5em 4.5em minmax(0, 1fr) auto; gap: 4px; align-items: start; }
+.brow .number[hidden] + .fields { grid-column: 2 / 4; }
+.brow .fields { display: flex; flex-direction: column; gap: 2px; }
+.brow textarea, .brow input, .printed { font: inherit; font-size: 14px; padding: 3px 6px; border: 1px solid var(--line);
+                                       border-radius: 4px; width: 100%; }
+.brow textarea { resize: vertical; overflow: hidden; }
+.printed { width: 6em; }
+.rowtools { display: flex; gap: 2px; }
+.rowtools button { padding: 0 6px; }
 .editor .problem { color: var(--warn); font-size: 13px; }
+.editor .problem:empty { display: none; }
 .editor .preview { border: 1px dashed var(--line); padding: 4px 8px; border-radius: 4px; }
-.editor .preview:empty { display: none; }
 .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .muted { color: var(--muted); }
 #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #222; color: #fff;

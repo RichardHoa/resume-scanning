@@ -6,13 +6,20 @@ the italic words of Variants and Corrections between asterisks.
 Pages are walked in PDF order. A run of consecutive PDF pages with answers is read as one stretch of the book: a
 Leading Block joins the last Proverb Entry of the page before, and entry numbers run on. Across a page with no answer
 nothing carries over: the next stretch starts afresh.
+
+Standard library only, importing only citations.py, relatively: cli.py copies this file, citations.py and review.py
+into the store, where serve.py rebuilds the entries with the developer's Fixes.
 """
+import hashlib
 import json
 import unicodedata
 
-from src.khotangtucngu.citations import see_also_names
-from src.khotangtucngu.prompts import CITATIONS, CORRECTION, LETTER, NOTE, PROVERB, SEE_ALSO, VARIANT
-from src.providers.vlm_requests import sha1
+from .citations import see_also_names
+
+# The kinds of Block a page answer holds (prompts.py tells the model what each is)
+LETTER, PROVERB, CITATIONS, VARIANT, NOTE, CORRECTION, SEE_ALSO = (
+    "letter", "proverb", "citations", "variant", "note", "correction", "see_also")
+BLOCK_KINDS = [LETTER, PROVERB, CITATIONS, VARIANT, NOTE, CORRECTION, SEE_ALSO]
 
 # Phàm lệ II.1
 ALPHABET = "A Ă Â B C D Đ E Ê G H I K L M N O Ô Ơ P Q R S T U Ư V X Y".split()
@@ -32,7 +39,7 @@ def warning(kind, place, reason, page):
 
 def answer_sha1(answer):
     """The hash of a page answer, which a Fix made against it records."""
-    return sha1(json.dumps(answer, ensure_ascii=False, sort_keys=True))
+    return hashlib.sha1(json.dumps(answer, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
 
 def first_letter(text):
@@ -64,14 +71,27 @@ def _page_number_warnings(answers, book_page_offset):
 def _new_entry(letter, number, text, page, book_page):
     return {"name": f"{letter} {number}", "letter": letter, "number": number, "proverb": text.strip(),
             "citations": [], "variants": [], "notes": [], "corrections": [], "see_also": [],
-            "book_pages": [book_page], "pdf_pages": [page]}
+            "book_pages": [book_page], "pdf_pages": [page], "blocks": {}}
 
 
-def _on_page(entry, page, book_page):
+def _on_page(entry, page, book_page, b):
+    """`entry` holds Block `b` of PDF page `page`: its Blocks there run from the first such `b` to this one."""
     if page not in entry["pdf_pages"]:
         entry["pdf_pages"].append(page)
     if book_page not in entry["book_pages"]:
         entry["book_pages"].append(book_page)
+    entry["blocks"].setdefault(str(page), [b, b])[1] = b + 1
+
+
+def _unique_ids(warnings):
+    """`warnings` with a repeated id made unique by its count, "#2" on, in order: vlm_requests.unique_ids, which this
+    file can't import, as it must stay standard library only."""
+    seen = {}
+    for w in warnings:
+        seen[w["id"]] = seen.get(w["id"], 0) + 1
+        if seen[w["id"]] > 1:
+            w["id"] += f"#{seen[w['id']]}"
+    return warnings
 
 
 def assemble(answers, abbreviations, book_page_offset):
@@ -79,7 +99,8 @@ def assemble(answers, abbreviations, book_page_offset):
     `answers`: {PDF page: its current page answer}; `abbreviations`: citations.Abbreviations; `book_page_offset`: the
     Part's book page minus PDF page. Returns the verbatim
     Proverb Entries in book order, the Warnings they raise (all but failed or missing pages), and each page's
-    {"pdf", "book_page", "printed_page", "answer_sha1", "entries"}, the names of the entries it holds.
+    {"pdf", "book_page", "printed_page", "answer_sha1", "entries"}, the names of the entries it holds. An entry's
+    "blocks" is {PDF page (a string): [first, last + 1]}, the indexes of its Blocks in that page's answer.
     """
     entries, warnings, pages = [], _page_number_warnings(answers, book_page_offset), []
     seen = {}               # entry name -> its entry, for duplicates
@@ -108,7 +129,7 @@ def assemble(answers, abbreviations, book_page_offset):
         last_page = page
         book_page = str(page + book_page_offset)
         names, unowned_kinds = [], []
-        for block in answers[page].get("blocks") or []:
+        for b, block in enumerate(answers[page].get("blocks") or []):
             kind, text = block.get("kind"), unicodedata.normalize("NFC", block.get("text") or "").strip()
             if kind == LETTER:
                 heading = text.upper()
@@ -131,6 +152,7 @@ def assemble(answers, abbreviations, book_page_offset):
                     letter = first_letter(text)
                 number = int(block.get("number") or 0)
                 entry = _new_entry(letter, number, text, page, book_page)
+                _on_page(entry, page, book_page, b)
                 name = entry["name"]
                 if name in seen:
                     warnings.append(warning(NUMBER_DUPLICATE, f"p{page}-{name}", f"{name} appears again, first on "
@@ -149,7 +171,7 @@ def assemble(answers, abbreviations, book_page_offset):
             if current is None:
                 unowned_kinds.append(kind)
                 continue
-            _on_page(current, page, book_page)
+            _on_page(current, page, book_page, b)
             if current["name"] not in names:
                 names.append(current["name"])
             if kind == CITATIONS:
@@ -170,5 +192,5 @@ def assemble(answers, abbreviations, book_page_offset):
                                     f"({', '.join(unowned_kinds)}) with no Proverb Entry to join: {unowned}", page))
         pages.append({"pdf": page, "book_page": book_page, "printed_page": answers[page].get("printed_page", ""),
                       "answer_sha1": answer_sha1(answers[page]), "entries": names})
-    return entries, warnings, pages
+    return entries, _unique_ids(warnings), pages
 

@@ -1,7 +1,7 @@
 """
 The 63 Source Abbreviations, read from the transcribed Front Matter's Bảng chữ tắt I, and the splitting of the
-printed text that cites them: Citation lines into {abbreviation, pages}, a Correction into {wrong, sources, right}, and
-a See-also into the names of Proverb Entries.
+printed text that cites them: Citation lines into {abbreviation, pages} ("variant" too for a Variant Citation), a
+Correction into {wrong, sources, right}, and a See-also into the names of Proverb Entries.
 
 Each split returns its result and its problems, as (Warning kind, reason) pairs.
 """
@@ -19,6 +19,8 @@ _LIKE_ABBREVIATION = re.compile(r"[A-ZĐ][A-ZĐ₀-₉]+(?: [IVX]+)?(?![^\W\d_])
 _ENDING_ABBREVIATION = re.compile(r"(?:^|(?<=\s))[A-ZĐ][A-ZĐ₀-₉]+(?: [IVX]+)?$")
 # Where the next abbreviation starts, ending the pages before it: two capitals at the start of a word
 _NEXT_ABBREVIATION = re.compile(r"(?:^|(?<=[\s,;]))[A-ZĐ][A-ZĐ]")
+# The "bk" (bản khác) that makes the Citation after it a Variant Citation, which also ends the pages before it
+_VARIANT_MARK = re.compile(r"(?:^|(?<=[\s,;]))bk(?![^\W\d_])")
 # A See-also name: a letter (Ă and Â are letters of their own) and a number, written "C 534"
 _NAME = re.compile(r"([A-ZĂÂĐÊÔƠƯ])\s*(\d+)")
 
@@ -67,20 +69,23 @@ class Abbreviations:
 
     def split(self, raw):
         """Printed Citations "HT 63 NL 7 TNLG II 7, 25" -> [{"abbreviation": "HT", "pages": "63"}, ...], the pages
-        as printed: what follows an abbreviation up to the next one."""
+        as printed: what follows an abbreviation up to the next one (or a "bk"). A Citation after "bk" is a Variant
+        Citation, {"abbreviation": "VD", "pages": "", "variant": True}, and may have no pages: "VC I 11 bk VD"."""
         text = clean_citation_text(raw)
-        citations, problems, i = [], [], 0
+        citations, problems, i, variant = [], [], 0, False
         while True:
             while i < len(text) and text[i] in " ,;.":
                 i += 1
             if i == len(text):
                 break
+            if _VARIANT_MARK.match(text, i):
+                i, variant = i + 2, True
+                continue
             abbreviation = self.at(text, i)
             if abbreviation is None:
                 m = _LIKE_ABBREVIATION.match(text, i)
                 if m is None:
-                    m = _NEXT_ABBREVIATION.search(text, i + 1)
-                    stop = m.start() if m else len(text)
+                    stop = self._next(text, i + 1)
                     problems.append((CITATION_UNSPLIT, f'cannot split "{text[i:stop].strip()}" of the Citations '
                                                        f'"{text}"'))
                     i = stop
@@ -88,14 +93,24 @@ class Abbreviations:
                 abbreviation = m.group()
                 problems.append(self.unknown(abbreviation, text))
             end = i + len(abbreviation)
-            m = _NEXT_ABBREVIATION.search(text, end)
-            stop = m.start() if m else len(text)
+            stop = self._next(text, end)
             pages = text[end:stop].strip(" ,;.")
-            if not pages:
+            citation = {"abbreviation": abbreviation, "pages": pages}
+            if variant:
+                citation["variant"], variant = True, False
+            elif not pages:
                 problems.append((CITATION_NO_PAGES, f'"{abbreviation}" has no pages in "{text}"'))
-            citations.append({"abbreviation": abbreviation, "pages": pages})
+            citations.append(citation)
             i = stop
+        if variant:
+            problems.append((CITATION_UNSPLIT, f'"bk" names no Source in "{text}"'))
         return citations, problems
+
+    @staticmethod
+    def _next(text, i):
+        """Where the next Citation of `text` starts at or after `i`: its abbreviation or its "bk"; or the end."""
+        found = [m.start() for m in (_NEXT_ABBREVIATION.search(text, i), _VARIANT_MARK.search(text, i)) if m]
+        return min(found, default=len(text))
 
     def split_correction(self, raw):
         """A Correction "Nằm giữa mất... CCM = Nằm giữa *không* mất..." -> {"wrong": "Nằm giữa mất...", "sources":

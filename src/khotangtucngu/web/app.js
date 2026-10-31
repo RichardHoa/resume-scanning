@@ -1,5 +1,5 @@
 "use strict";
-// The review page of one PDF Part's store: serve.py's docstring gives the review records this page appends
+// The review page of one PDF Part's store: serve.py's docstring gives what it serves, review.py the Fixes it saves
 const WRITABLE = document.documentElement.dataset.writable === "true";
 const KIND_NAMES = {
   number_gap: "Number gap", number_duplicate: "Duplicate number", letter_order: "Letter out of order",
@@ -7,15 +7,20 @@ const KIND_NAMES = {
   unknown_abbreviation: "Unknown Source Abbreviation", citation_no_pages: "Citation with no pages",
   citation_unsplit: "Citation not split",
 };
+const BLOCK_NAMES = {
+  letter: "Letter heading", proverb: "Proverb", citations: "Citations", variant: "Variant (BK)", note: "Note",
+  correction: "Sửa lại", see_also: "Xem thêm",
+};
 const ZOOMS = [1, 1.5, 2, 3];
 const ITALIC = /\*([^*]+)\*/g;
 
-let E = null, W = [];               // entries.json, warnings.json
-const PAGES = {};                   // PDF page -> its page of entries.json
-let PAGE_LIST = [];                 // every PDF page with an answer or a Warning, in order
-const ENTRIES = {};                 // name -> its verbatim Proverb Entry
-let checks = {}, fixes = {};        // name -> its latest "check" record / its Fix
-let current = null, zoom = 0;
+let MODEL = null;                   // entries.json: the model's Proverb Entries and pages
+let ANSWERS = {};                   // answers.json: PDF page -> the model's answer
+let SOURCES = {};                   // sources.json: Source Abbreviation -> its Source
+let VIEW = null;                    // /assembled: the entries rebuilt with the Fixes, and the Fixes
+const PAGES = {};                   // PDF page -> its page of entries.json (the model's answer hash)
+let PAGE_LIST = [];                 // every PDF page with an answer, a Warning or a Fix, in order
+let current = null, zoom = 0, showingEdits = false;
 
 const $ = sel => document.querySelector(sel);
 
@@ -27,7 +32,7 @@ function h(tag, attrs, ...kids) {
     else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
     else el.setAttribute(k, v === true ? "" : v);
   }
-  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid);
+  for (const kid of kids.flat(Infinity)) if (kid != null && kid !== false) el.append(kid);
   return el;
 }
 
@@ -39,62 +44,94 @@ function toast(message) {
   toast.timer = setTimeout(() => { t.hidden = true; }, 3500);
 }
 
-async function getText(url) {
-  try {
-    const r = await fetch(url, {cache: "no-store"});
-    return r.ok ? await r.text() : null;
-  } catch (e) {
-    return null;
-  }
+async function getJSON(url) {
+  const r = await fetch(url, {cache: "no-store"});
+  if (!r.ok) throw new Error(`${url}: ${r.status} ${r.statusText}`);
+  return r.json();
 }
 
-// -- the review log, keyed by the name of the model's entry (as export.py reads it)
-function applyReview(text) {
-  for (const line of text.split("\n")) {
-    if (!line.trim()) continue;
-    let rec;
-    try { rec = JSON.parse(line); } catch (e) { continue; }
-    if (rec.type === "check") checks[rec.name] = rec;
-    else if (rec.type === "fix" && rec.entry) fixes[rec.name] = rec;
-    else if (rec.type === "fix") delete fixes[rec.name];
-  }
-}
-
-async function record(rec) {
-  const r = await fetch("review", {method: "POST", headers: {"Content-Type": "application/json"},
-                                   body: JSON.stringify(rec)});
+async function post(url, body) {
+  const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"},
+                              body: JSON.stringify(body)});
   if (!r.ok) throw new Error(await r.text() || r.statusText);
   return r.json();
 }
 
-// The answer hash of every page the entry is printed on: what a check or a Fix is made against
-function answersOf(entry) {
-  const out = {};
-  for (const p of entry.pdf_pages) out[p] = PAGES[p] ? PAGES[p].answer_sha1 : null;
+// -- the Fixes: a page's corrected Blocks, applied unless stale
+function fixOf(p) { return VIEW.fixes[p] || null; }
+function isStale(p) { return VIEW.stale.includes(p); }
+function isApplied(p) { return VIEW.applied.includes(p); }
+
+// The page's printed number and Blocks as the entries are now built from them: its applied Fix, or the model's
+function pageNow(p) {
+  const fix = isApplied(p) ? fixOf(p) : null;
+  const answer = ANSWERS[p] || {};
+  return {printed_page: fix ? fix.printed_page : String(answer.printed_page ?? ""),
+          blocks: (fix ? fix.blocks : answer.blocks) || []};
+}
+
+function blockKey(b) { return JSON.stringify([b.kind, b.number || 0, b.text || "", b.citations || ""]); }
+
+// The edit from Blocks `a` to Blocks `b`: [{op: "same" | "add" | "del" | "chg", a, b}], a and b their indexes. A run
+// of deleted Blocks followed by added ones is paired into changed Blocks
+function blockDiff(a, b) {
+  const ka = a.map(blockKey), kb = b.map(blockKey);
+  const n = a.length, m = b.length;
+  const L = Array.from({length: n + 1}, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) L[i][j] = ka[i] === kb[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  }
+  const raw = [];
+  let i = 0, j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && ka[i] === kb[j]) raw.push({op: "same", a: i++, b: j++});
+    else if (j < m && (i === n || L[i][j + 1] >= L[i + 1][j])) raw.push({op: "add", b: j++});
+    else raw.push({op: "del", a: i++});
+  }
+  const ops = [];
+  for (let k = 0; k < raw.length;) {
+    if (raw[k].op !== "del") { ops.push(raw[k++]); continue; }
+    const dels = [], adds = [];
+    while (k < raw.length && raw[k].op === "del") dels.push(raw[k++]);
+    while (k < raw.length && raw[k].op === "add") adds.push(raw[k++]);
+    for (let x = 0; x < Math.max(dels.length, adds.length); x++) {
+      if (x < dels.length && x < adds.length) ops.push({op: "chg", a: dels[x].a, b: adds[x].b});
+      else ops.push(x < dels.length ? dels[x] : adds[x]);
+    }
+  }
+  return ops;
+}
+
+// The model's Blocks of page `p` against its Fix, worked out once per fetch of the store
+const DIFFS = new Map();
+function pageDiff(p) {
+  if (!DIFFS.has(p)) DIFFS.set(p, blockDiff((ANSWERS[p] || {}).blocks || [], fixOf(p).blocks));
+  return DIFFS.get(p);
+}
+
+// The changes on page `p` that fall in its Blocks [from, to): a deleted Block belongs with the Block before it
+function changesIn(p, from, to) {
+  if (!isApplied(p) || !ANSWERS[p]) return [];
+  let last = -1;
+  return pageDiff(p).filter(o => {
+    const at = o.b ?? last;
+    if (o.b != null) last = o.b;
+    return at >= from && at < to;
+  });
+}
+
+// An entry's changes against the model's transcription, over every page it is printed on, by page
+function entryChanges(entry) {
+  const out = [];
+  for (const p of entry.pdf_pages) {
+    const [from, to] = entry.blocks[p] || [0, 0];
+    const ops = changesIn(p, from, to);
+    if (ops.some(o => o.op !== "same")) out.push({p, ops});
+  }
   return out;
 }
 
-// Whether every page a check or a Fix was made against still has the answer it saw
-function fresh(rec) {
-  const then = Object.entries(rec.answer_sha1 || {});
-  return then.length > 0 && then.every(([p, sha]) => PAGES[p] && PAGES[p].answer_sha1 === sha);
-}
-
-function fixOf(entry) {
-  const rec = fixes[entry.name];
-  return rec ? {rec, stale: !fresh(rec)} : null;
-}
-
-function checkedNow(entry) {
-  const rec = checks[entry.name];
-  return !!rec && rec.checked && fresh(rec);
-}
-
-// Reviewed: checked, or given a Fix that is not stale (making a Fix is checking the entry)
-function done(entry) {
-  const fix = fixOf(entry);
-  return checkedNow(entry) || (!!fix && !fix.stale);
-}
+function edited(entry) { return entryChanges(entry).length > 0; }
 
 // -- the Proverb Entries, as printed
 function rich(text) {
@@ -109,11 +146,34 @@ function rich(text) {
   return out;
 }
 
+// Citations as the book prints them: "HT 63 NL 7 bk VD"
 function citeLine(citations) {
   return h("span", {class: "cites"}, (citations || []).map((c, i) => [
-    i ? " " : null, h("span", {class: "cite", title: `${c.abbreviation} · pages "${c.pages}"`},
-                      h("span", {class: "ab"}, c.abbreviation), c.pages ? " " + c.pages : ""),
+    i ? " " : null, c.variant ? "bk " : null,
+    h("span", {class: "cite" + (SOURCES[c.abbreviation] ? "" : " unknown")},
+      h("span", {class: "ab"}, c.abbreviation), c.pages ? " " + c.pages : ""),
   ]));
+}
+
+// One Citation written out: "VD · 12 — title, author (year)", or why it matches none of the 63 Sources
+function citeExpanded(c) {
+  const s = SOURCES[c.abbreviation];
+  const where = c.variant ? ` · bản khác${c.pages ? " · " + c.pages : " (no page)"}` : c.pages ? ` · ${c.pages}` : "";
+  return h("li", {class: s ? "" : "unknown"}, h("span", {class: "ab"}, c.abbreviation), where, " — ",
+    s ? [h("i", {}, s.title), s.author ? `, ${s.author}` : "", s.year ? ` (${s.year})` : ""]
+      : "not among the 63 Sources");
+}
+
+function sourcesList(entry) {
+  const groups = [];
+  if (entry.citations.length) groups.push(["", entry.citations]);
+  entry.variants.forEach((v, i) => {
+    if (v.citations.length) groups.push([entry.variants.length > 1 ? `BK ${i + 1}` : "BK", v.citations]);
+  });
+  if (!groups.length) return null;
+  return h("details", {class: "sources", open: true}, h("summary", {}, "Sources"),
+    groups.map(([label, citations]) => [label ? h("div", {class: "muted small"}, label) : null,
+                                        h("ul", {}, citations.map(citeExpanded))]));
 }
 
 function entryBody(entry) {
@@ -141,9 +201,53 @@ function entryBody(entry) {
   return body;
 }
 
+// -- the changes, word by word
+function wordDiff(a, b) {
+  const x = a.split(/(\s+)/), y = b.split(/(\s+)/);
+  const L = Array.from({length: x.length + 1}, () => new Array(y.length + 1).fill(0));
+  for (let i = x.length - 1; i >= 0; i--) {
+    for (let j = y.length - 1; j >= 0; j--) L[i][j] = x[i] === y[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  }
+  const out = [];
+  let i = 0, j = 0;
+  while (i < x.length || j < y.length) {
+    if (i < x.length && j < y.length && x[i] === y[j]) out.push(x[i++]), j++;
+    else if (j < y.length && (i === x.length || L[i][j + 1] >= L[i + 1][j])) out.push(h("ins", {}, y[j++]));
+    else out.push(h("del", {}, x[i++]));
+  }
+  return out;
+}
+
+function blockText(b) {
+  if (!b) return "";
+  if (b.kind === "proverb") return `${b.number}. ${b.text}`;
+  return b.kind === "variant" && b.citations ? `${b.text} ${b.citations}` : b.text;
+}
+
+function diffLines(p, ops) {
+  const before = (ANSWERS[p] || {}).blocks || [], after = fixOf(p).blocks;
+  return ops.map(o => {
+    const a = before[o.a], b = after[o.b];
+    const kind = h("span", {class: "kindname"}, BLOCK_NAMES[(b || a).kind] || (b || a).kind);
+    if (o.op === "same") return h("div", {class: "dl same"}, kind, blockText(b));
+    if (o.op === "add") return h("div", {class: "dl"}, kind, h("ins", {}, blockText(b)));
+    if (o.op === "del") return h("div", {class: "dl"}, kind, h("del", {}, blockText(a)));
+    const kinds = a.kind === b.kind ? kind : h("span", {class: "kindname"}, h("del", {}, BLOCK_NAMES[a.kind]), " ",
+                                                h("ins", {}, BLOCK_NAMES[b.kind]));
+    return h("div", {class: "dl"}, kinds, wordDiff(blockText(a), blockText(b)));
+  });
+}
+
+function changesBox(changes) {
+  return h("details", {class: "changes"}, h("summary", {class: "muted"}, "changes against the transcription"),
+    changes.map(({p, ops}) => [changes.length > 1 ? h("div", {class: "muted small"}, `PDF page ${p}`) : null,
+                               diffLines(p, ops)]));
+}
+
+// -- the right side
 // A Warning about one entry is placed "p<page>-<its name>" (see assembly.py), "#2" on if its id repeats
-function entryWarnings(entry) {
-  return W.filter(w => entry.pdf_pages.includes(w.page) && w.id.replace(/#\d+$/, "").endsWith("-" + entry.name));
+function warningOf(w, entry) {
+  return entry.pdf_pages.includes(w.page) && w.id.replace(/#\d+$/, "").endsWith("-" + entry.name);
 }
 
 function warningLine(w) {
@@ -154,12 +258,9 @@ function pageLink(p, text) {
   return h("button", {class: "link", onclick: () => showPage(p)}, text);
 }
 
-function entryCard(entry) {
-  const fix = fixOf(entry);
-  const applied = fix && !fix.stale;
-  const shown = applied ? fix.rec.entry : entry;
-  const card = h("article", {class: "entry" + (done(entry) ? " done" : "") + (applied ? " fixed" : "") +
-                                   (fix && fix.stale ? " stale" : "")});
+function entryCard(entry, warnings) {
+  const changes = entryChanges(entry);
+  const card = h("article", {class: "entry" + (changes.length ? " edited" : "")});
   const pages = entry.pdf_pages;
   const at = pages.indexOf(current);
   // The book prints a letter heading above the letter's first entry
@@ -167,117 +268,218 @@ function entryCard(entry) {
   const meta = h("div", {class: "meta"}, h("span", {class: "name"}, entry.name),
     at > 0 ? pageLink(pages[at - 1], `◀ begins on p${pages[at - 1]}`) : null,
     at >= 0 && at < pages.length - 1 ? pageLink(pages[at + 1], `continues on p${pages[at + 1]} ▶`) : null,
-    applied ? h("span", {class: "tag ok"}, "Fixed") : null,
-    checkedNow(entry) ? h("span", {class: "tag ok"}, "✓ checked") : null);
-  card.append(meta, entryBody(shown));
-  if (applied) {
-    card.append(h("details", {}, h("summary", {class: "muted"}, "as transcribed"), entryBody(entry)));
+    changes.length ? h("span", {class: "tag ok"}, "Edited") : null);
+  if (WRITABLE && ANSWERS[current] && entry.blocks[current]) {
+    meta.append(h("button", {class: "edit", title: `Edit ${entry.name} on this page`,
+                             onclick: () => openEditor(card, current, entry.blocks[current], entry.name)}, "✎ Edit"));
   }
-  if (fix && fix.stale) {
-    card.append(h("div", {class: "stalebox"},
-      h("div", {}, h("b", {}, "Stale Fix: "), `made ${fix.rec.time || ""} against an earlier answer of this entry's ` +
-                   "page(s), so it is not applied. Save it again or drop it."),
-      h("details", {}, h("summary", {class: "muted"}, "the stale Fix"), entryBody(fix.rec.entry))));
-  }
-  for (const w of entryWarnings(entry)) card.append(warningLine(w));
-  if (WRITABLE) card.append(entryTools(card, entry, fix));
+  card.append(meta, entryBody(entry));
+  for (const w of warnings) card.append(warningLine(w));
+  const sources = sourcesList(entry);
+  if (sources) card.append(sources);
+  if (changes.length) card.append(changesBox(changes));
   return card;
 }
 
-function entryTools(card, entry, fix) {
-  const checked = checkedNow(entry);
-  const tools = h("div", {class: "tools"},
-    h("button", {class: checked ? "" : "primary", onclick: () => setChecked(entry, !checked)},
-      checked ? "Uncheck" : "✓ Mark checked"),
-    h("button", {onclick: () => openEditor(card, entry, fix)}, fix && fix.stale ? "✎ Save the Fix again" : "✎ Fix"));
-  if (fix) tools.append(h("button", {onclick: () => dropFix(entry)}, "Drop the Fix"));
-  return tools;
-}
-
-async function setChecked(entry, checked) {
-  try {
-    checks[entry.name] = await record({type: "check", name: entry.name, checked, answer_sha1: answersOf(entry)});
-  } catch (e) {
-    toast("Not saved: " + e.message);
+function pageInfo(p) {
+  const page = PAGES[p], now = pageNow(p), fix = fixOf(p);
+  const info = h("div", {}, h("b", {}, `PDF page ${p}`),
+    page ? ` · book page ${page.book_page} · printed “${now.printed_page}” · ` : " · no answer for this page",
+    page ? h("a", {href: `requests/p${String(p).padStart(3, "0")}.json`, target: "_blank"}, "saved answer") : null);
+  if (WRITABLE && ANSWERS[p]) {
+    info.append(" ", h("button", {class: "small-btn", title: "Edit every Block of this page and its printed number",
+                                  onclick: () => openEditor($("#entries"), p, null, `PDF page ${p}`)}, "✎ Edit the page"));
   }
-  render();
-}
-
-// `named`: the entry, or the Fix of an entry no longer transcribed
-async function dropFix(named) {
-  try {
-    await record({type: "fix", name: named.name, entry: null});
-    delete fixes[named.name];
-  } catch (e) {
-    toast("Not saved: " + e.message);
+  if (fix && isApplied(p)) {
+    info.append(h("div", {class: "fixline"}, `This page has a Fix, saved ${fix.time || ""}. `,
+      WRITABLE ? h("button", {class: "small-btn", onclick: () => dropFix(p)}, "Drop the Fix") : null));
   }
+  return info;
+}
+
+function staleBox(p) {
+  const fix = fixOf(p);
+  const ops = ANSWERS[p] ? pageDiff(p).filter(o => o.op !== "same") : [];
+  const before = (ANSWERS[p] || {}).blocks || [];
+  const lines = ops.map(o => {
+    const a = before[o.a], b = fix.blocks[o.b];
+    if (o.op === "add") return h("div", {class: "dl"}, h("ins", {}, blockText(b)));
+    if (o.op === "del") return h("div", {class: "dl"}, h("del", {}, blockText(a)));
+    return h("div", {class: "dl"}, wordDiff(blockText(a), blockText(b)));
+  });
+  return h("div", {class: "stalebox"},
+    h("div", {}, h("b", {}, "Stale Fix: "), `saved ${fix.time || ""} against an earlier answer of this page, which a ` +
+                 "rerun has changed, so it is not applied. Edit the page again from it, or drop it."),
+    h("details", {}, h("summary", {class: "muted"}, "the stale Fix against the current answer"), lines),
+    WRITABLE ? h("div", {class: "tools"},
+      ANSWERS[p] ? h("button", {onclick: () => openEditor($("#entries"), p, null, `PDF page ${p}`, fix)},
+                     "✎ Edit the page from the stale Fix") : null,
+      h("button", {onclick: () => dropFix(p)}, "Drop the Fix")) : null);
+}
+
+function renderRight() {
+  const right = $("#entries");
+  if (showingEdits) {
+    $("#pageinfo").replaceChildren(h("b", {}, "Edits"), " · every page with a Fix · ",
+                                   h("button", {class: "small-btn", onclick: () => toggleEdits(false)}, "Back to the page"));
+    $("#warnings").replaceChildren();
+    right.replaceChildren(editsList());
+    return;
+  }
+  $("#pageinfo").replaceChildren(pageInfo(current));
+  const entries = VIEW.entries.filter(e => e.pdf_pages.includes(current));
+  const warnings = VIEW.warnings.filter(w => w.page === current);
+  const owned = new Set();
+  const cards = entries.map(entry => {
+    const own = warnings.filter(w => warningOf(w, entry));
+    own.forEach(w => owned.add(w));
+    return entryCard(entry, own);
+  });
+  // The page's own Warnings, about no entry of it: its number, a missing answer, Blocks with no owner
+  $("#warnings").replaceChildren(...warnings.filter(w => !owned.has(w)).map(warningLine));
+  right.replaceChildren(...(fixOf(current) && isStale(current) ? [staleBox(current)] : []), ...cards);
+  if (PAGES[current] && !entries.length) right.append(h("p", {class: "muted"}, "No Proverb Entries on this page."));
+}
+
+function editsList() {
+  const pages = Object.keys(VIEW.fixes).map(Number).sort((a, b) => a - b);
+  if (!pages.length) return h("p", {class: "muted"}, "No Fixes yet: edit an entry where you see the model got it wrong.");
+  return h("ul", {class: "edits"}, pages.map(p => {
+    const fix = fixOf(p);
+    const names = VIEW.entries.filter(e => e.pdf_pages.includes(p) && entryChanges(e).some(c => c.p === p))
+                              .map(e => e.name);
+    const changed = isApplied(p) ? pageDiff(p).filter(o => o.op !== "same").length : 0;
+    return h("li", {}, h("button", {class: "link", onclick: () => { toggleEdits(false); showPage(p); }}, pageLabel(p)),
+      isStale(p) ? h("span", {class: "tag stale"}, "stale") : ` · ${changed} Block(s) changed`,
+      names.length ? ` · ${names.join(", ")}` : "", h("span", {class: "muted"}, ` · saved ${fix.time || ""}`));
+  }));
+}
+
+function toggleEdits(on) {
+  showingEdits = on;
   render();
+  $("#right").scrollTop = 0;
 }
 
-// -- a Fix: a full replacement Proverb Entry, edited as JSON in the shape of entries.json
-function isCitations(x) {
-  return Array.isArray(x) && x.every(c => c && typeof c.abbreviation === "string" && typeof c.pages === "string");
+// -- editing: the Blocks [from, to) of page `p` (or all of them, with its printed number), as rows of printed text
+function blockRow(block, rows, changed) {
+  const kind = h("select", {class: "kind"}, Object.entries(BLOCK_NAMES).map(([k, name]) =>
+    h("option", {value: k, selected: k === block.kind}, name)));
+  const number = h("input", {class: "number", type: "number", min: "1", value: block.number || "",
+                             title: "The proverb's printed number"});
+  const text = h("textarea", {class: "text", rows: "1", spellcheck: "false"});
+  text.value = block.text || "";
+  const cites = h("input", {class: "cites-in", placeholder: "Citations, as printed: NNCC 27", spellcheck: "false",
+                            value: block.citations || ""});
+  const row = h("div", {class: "brow"});
+  const sync = () => {
+    number.hidden = kind.value !== "proverb";
+    // Only a Variant has Citations of its own; any the model put on another Block are shown, to keep or clear
+    cites.hidden = kind.value !== "variant" && !cites.value;
+    text.placeholder = kind.value === "citations" ? "As printed: HT 63 NL 7 TNLG II 7, 25" :
+                       kind.value === "correction" ? "Wrong wording SOURCE = right *wording*" : "As printed, italics between *asterisks*";
+    text.style.height = "auto";
+    text.style.height = text.scrollHeight + "px";
+  };
+  const move = d => {
+    const i = rows.indexOf(row), j = i + d;
+    if (j < 0 || j >= rows.length) return;
+    [rows[i], rows[j]] = [rows[j], rows[i]];
+    changed();
+  };
+  row.read = () => ({kind: kind.value, number: kind.value === "proverb" ? Number(number.value) || 0 : 0,
+                     text: text.value.trim(), citations: cites.value.trim()});
+  for (const el of [kind, number, text, cites]) el.addEventListener("input", () => { sync(); changed(); });
+  row.append(kind, number, h("div", {class: "fields"}, text, cites),
+    h("div", {class: "rowtools"},
+      h("button", {title: "Up", onclick: () => move(-1)}, "↑"),
+      h("button", {title: "Down", onclick: () => move(1)}, "↓"),
+      h("button", {title: "Add a Block below", onclick: () => {
+        rows.splice(rows.indexOf(row) + 1, 0, blockRow({kind: "note", number: 0, text: "", citations: ""}, rows, changed));
+        changed();
+      }}, "+"),
+      h("button", {title: "Delete this Block", onclick: () => { rows.splice(rows.indexOf(row), 1); changed(); }}, "✕")));
+  requestAnimationFrame(sync);
+  return row;
 }
 
-function isStrings(x) { return Array.isArray(x) && x.every(s => typeof s === "string"); }
-
-function entryProblem(x) {
-  if (!x || typeof x !== "object" || Array.isArray(x)) return "a Fix is one Proverb Entry, a JSON object";
-  if (typeof x.name !== "string" || typeof x.letter !== "string" || typeof x.proverb !== "string")
-    return "name, letter and proverb are strings";
-  if (!Number.isInteger(x.number)) return "number is a whole number";
-  if (!isCitations(x.citations)) return 'citations are [{"abbreviation", "pages"}], both strings';
-  if (!Array.isArray(x.variants) || !x.variants.every(v => v && typeof v.text === "string" && isCitations(v.citations)))
-    return 'variants are [{"text", "citations"}]';
-  if (!isStrings(x.notes) || !isStrings(x.see_also) || !isStrings(x.book_pages))
-    return "notes, see_also and book_pages are lists of strings";
-  if (!Array.isArray(x.corrections) || !x.corrections.every(c => c && typeof c.wrong === "string" &&
-                                                            isStrings(c.sources) && typeof c.right === "string"))
-    return 'corrections are [{"wrong", "sources", "right"}]';
-  if (!Array.isArray(x.pdf_pages) || !x.pdf_pages.every(Number.isInteger)) return "pdf_pages is a list of whole numbers";
-  return null;
-}
-
-function openEditor(card, entry, fix) {
-  const area = h("textarea", {rows: 18, spellcheck: "false"});
-  area.value = JSON.stringify(fix ? fix.rec.entry : entry, null, 2);
+// `range`: [from, to) of the page's current Blocks, or null for the whole page; `from`: a stale Fix to start from
+function openEditor(container, p, range, title, from) {
+  const now = from ? {printed_page: from.printed_page, blocks: from.blocks} : pageNow(p);
+  const [start, end] = range || [0, now.blocks.length];
+  const rows = [];
+  const list = h("div", {class: "rows"});
+  const printed = h("input", {class: "printed", value: now.printed_page, title: "The page number printed on the page"});
   const problem = h("div", {class: "problem"});
   const preview = h("div", {class: "preview"});
   const save = h("button", {class: "primary"}, "Save the Fix");
-  const update = () => {
-    let parsed = null, why;
-    try { parsed = JSON.parse(area.value); why = entryProblem(parsed); } catch (e) { why = "not JSON: " + e.message; }
-    problem.textContent = why || "";
-    save.disabled = !!why;
-    preview.replaceChildren(why ? "" : entryBody(parsed));
-    return why ? null : parsed;
+  let timer = null, seq = 0;
+  const blocks = () => now.blocks.slice(0, start).concat(rows.map(r => r.read()), now.blocks.slice(end));
+  const request = () => ({page: p, printed_page: range ? now.printed_page : printed.value.trim(), blocks: blocks()});
+  const refresh = async () => {
+    const mine = ++seq;
+    try {
+      const view = await post("preview", request());
+      if (mine !== seq) return;
+      const to = start + rows.length;
+      const shown = range ? view.entries.filter(e => {
+        const [a, b] = e.blocks[p] || [0, 0];
+        return a < to && b > start;
+      }) : view.entries;
+      problem.textContent = "";
+      save.disabled = false;
+      preview.replaceChildren(...shown.map(e => [entryBody(e), ...view.warnings.filter(w => warningOf(w, e)).map(warningLine),
+                                                 sourcesList(e)]).flat().filter(Boolean),
+                              ...view.warnings.filter(w => !view.entries.some(e => warningOf(w, e))).map(warningLine));
+      if (!shown.length) preview.append(h("p", {class: "muted"}, "No Proverb Entry: saving removes it from the page."));
+    } catch (e) {
+      if (mine !== seq) return;
+      problem.textContent = e.message;
+      save.disabled = true;
+    }
   };
-  area.addEventListener("input", update);
+  const changed = () => {
+    list.replaceChildren(...rows);
+    clearTimeout(timer);
+    timer = setTimeout(refresh, 250);
+  };
+  for (const b of now.blocks.slice(start, end)) rows.push(blockRow(b, rows, changed));
   save.addEventListener("click", async () => {
-    const fixed = update();
-    if (!fixed) return;
     save.disabled = true;
     try {
-      fixes[entry.name] = await record({type: "fix", name: entry.name, answer_sha1: answersOf(entry), entry: fixed});
-      render();
+      const {printed_page, blocks} = request();
+      await post("review", {type: "fix", page: p, printed_page, blocks});
+      await reload();
     } catch (e) {
       toast("Not saved: " + e.message);
       save.disabled = false;
     }
   });
-  card.replaceChildren(h("div", {class: "editor"},
-    h("div", {class: "muted"}, `Fix ${entry.name}: the whole Proverb Entry, italic words between *asterisks*`),
-    area, problem, preview,
+  container.replaceChildren(h("div", {class: "editor"},
+    h("div", {class: "muted"}, `Edit ${title}: each Block as printed, italic words between *asterisks*`),
+    range ? null : h("label", {class: "row"}, "Printed page number ", printed),
+    list,
+    h("div", {class: "row"}, h("button", {onclick: () => {
+      rows.push(blockRow({kind: "note", number: 0, text: "", citations: ""}, rows, changed));
+      changed();
+    }}, "+ Add a Block")),
+    problem, h("div", {class: "muted small"}, "Preview"), preview,
     h("div", {class: "row"}, save, h("button", {onclick: () => render()}, "Cancel"))));
-  update();
-  area.focus();
+  if (!range) printed.addEventListener("input", changed);
+  list.replaceChildren(...rows);
+  refresh();
+}
+
+async function dropFix(p) {
+  try {
+    await post("review", {type: "fix", page: p, blocks: null});
+    await reload();
+  } catch (e) {
+    toast("Not saved: " + e.message);
+  }
 }
 
 // -- the pages
-function pageEntries(p) { return E.entries.filter(e => e.pdf_pages.includes(p)); }
-function pageWarnings(p) { return W.filter(w => w.page === p); }
-function openOn(p) { return pageEntries(p).filter(e => !done(e)).length; }
-
 function pageLabel(p) {
   const page = PAGES[p];
   return `p${p}` + (page ? ` (${page.book_page})` : " (no answer)");
@@ -286,23 +488,18 @@ function pageLabel(p) {
 function renderPicker() {
   const pick = $("#pick");
   pick.replaceChildren(...PAGE_LIST.map(p => {
-    const n = pageWarnings(p).length, open = openOn(p);
-    return h("option", {value: p, selected: p === current},
-             pageLabel(p) + (n ? ` ⚠${n}` : "") + (open ? ` · ${open} unchecked` : PAGES[p] ? " · ✓" : ""));
+    const n = VIEW.warnings.filter(w => w.page === p).length;
+    const fix = fixOf(p) ? (isStale(p) ? " · stale Fix" : " · edited") : "";
+    return h("option", {value: p, selected: p === current}, pageLabel(p) + (n ? ` ⚠${n}` : "") + fix);
   }));
 }
 
 function renderProgress() {
-  const n = E.entries.length, reviewed = E.entries.filter(done).length;
-  let applied = 0, stale = 0;
-  for (const e of E.entries) {
-    const fix = fixOf(e);
-    if (fix && fix.stale) stale++;
-    else if (fix) applied++;
-  }
-  const lost = Object.keys(fixes).filter(k => !ENTRIES[k]).length;
-  $("#progress").textContent = `${reviewed} of ${n} entries checked · ${applied} Fix(es) applied` +
-    (stale ? ` · ${stale} stale` : "") + (lost ? ` · ${lost} Fix(es) on entries no longer transcribed` : "");
+  const n = VIEW.entries.filter(edited).length;
+  const pages = Object.keys(VIEW.fixes).length;
+  $("#progress").textContent = `${VIEW.entries.length} entries · ${n} edited on ${pages - VIEW.stale.length} page(s)` +
+    (VIEW.stale.length ? ` · ${VIEW.stale.length} stale Fix(es)` : "");
+  $("#edits").textContent = `Edits (${pages})`;
 }
 
 function renderSheet() {
@@ -315,50 +512,6 @@ function renderSheet() {
   $("#left").scrollTop = 0;
 }
 
-function renderRight() {
-  const page = PAGES[current];
-  const info = $("#pageinfo");
-  const entries = pageEntries(current);
-  info.replaceChildren(h("b", {}, `PDF page ${current}`),
-    page ? ` · book page ${page.book_page} · printed “${page.printed_page}” · ` : " · no answer for this page",
-    page ? h("a", {href: `requests/p${String(current).padStart(3, "0")}.json`, target: "_blank"}, "saved answer") : null);
-  if (WRITABLE && entries.some(e => !done(e))) {
-    info.append(" ", h("button", {onclick: () => checkAll(entries)}, "✓ Mark every entry on this page checked"));
-  }
-  const warnings = pageWarnings(current);
-  $("#warnings").replaceChildren(...warnings.map(warningLine));
-  const box = $("#entries");
-  box.replaceChildren(...entries.map(entryCard));
-  for (const [name, rec] of Object.entries(fixes)) {
-    if (!ENTRIES[name] && firstPage(rec) === current) box.append(lostFixCard(rec));
-  }
-  if (page && !entries.length) box.append(h("p", {class: "muted"}, "No Proverb Entries on this page."));
-}
-
-// A Fix whose entry no rerun has transcribed again: shown on the page it began on, to be dropped
-function firstPage(rec) { return Math.min(...Object.keys(rec.answer_sha1).map(Number)); }
-
-function lostFixCard(rec) {
-  return h("article", {class: "entry stale"},
-    h("div", {class: "stalebox"}, h("b", {}, `Fix of ${rec.name}: `),
-      `this page no longer holds ${rec.name}, so the Fix applies to nothing.`),
-    h("details", {}, h("summary", {class: "muted"}, "the Fix"), entryBody(rec.entry)),
-    WRITABLE ? h("div", {class: "tools"}, h("button", {onclick: () => dropFix(rec)}, "Drop the Fix")) : null);
-}
-
-async function checkAll(entries) {
-  for (const entry of entries.filter(e => !done(e))) {
-    try {
-      checks[entry.name] = await record({type: "check", name: entry.name, checked: true,
-                                         answer_sha1: answersOf(entry)});
-    } catch (e) {
-      toast("Not saved: " + e.message);
-      break;
-    }
-  }
-  render();
-}
-
 function render() {
   renderPicker();
   renderProgress();
@@ -368,6 +521,7 @@ function render() {
 function showPage(p) {
   if (p == null || !PAGE_LIST.includes(p)) return;
   current = p;
+  showingEdits = false;
   history.replaceState(null, "", "#p" + p);
   renderSheet();
   render();
@@ -398,37 +552,53 @@ function wire() {
   $("#prev").addEventListener("click", () => step(-1));
   $("#next").addEventListener("click", () => step(1));
   $("#pick").addEventListener("change", e => showPage(Number(e.target.value)));
-  $("#next-warn").addEventListener("click", () => nextWhere(p => pageWarnings(p).length > 0,
+  $("#next-warn").addEventListener("click", () => nextWhere(p => VIEW.warnings.some(w => w.page === p),
                                                             "No other page has Warnings"));
-  $("#next-open").addEventListener("click", () => nextWhere(p => openOn(p) > 0, "Every other page is checked"));
+  $("#next-edit").addEventListener("click", () => nextWhere(p => !!fixOf(p), "No other page has a Fix"));
+  $("#edits").addEventListener("click", () => toggleEdits(!showingEdits));
   $("#smaller").addEventListener("click", () => setZoom(zoom - 1));
   $("#larger").addEventListener("click", () => setZoom(zoom + 1));
   document.addEventListener("keydown", e => {
-    if (e.target.closest("textarea, input, select") || e.metaKey || e.ctrlKey || e.altKey) return;
+    // Not while editing: changing page would drop the unsaved edit
+    if (e.target.closest("textarea, input, select") || $(".editor") || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "ArrowLeft") step(-1);
     else if (e.key === "ArrowRight") step(1);
     else if (e.key === "w") $("#next-warn").click();
-    else if (e.key === "u") $("#next-open").click();
+    else if (e.key === "e") $("#next-edit").click();
   });
+}
+
+function pageList() {
+  return [...new Set(MODEL.pages.map(p => p.pdf).concat(VIEW.warnings.map(w => w.page),
+                                                        Object.keys(VIEW.fixes).map(Number)))].sort((a, b) => a - b);
+}
+
+// The store read afresh, as a rerun may have rewritten it since the page loaded, and its entries rebuilt with the Fixes
+async function fetchStore() {
+  [MODEL, ANSWERS, SOURCES, VIEW] = await Promise.all([getJSON("entries.json"), getJSON("answers.json"),
+                                                       getJSON("sources.json"), getJSON("assembled")]);
+  for (const k of Object.keys(PAGES)) delete PAGES[k];
+  for (const page of MODEL.pages) PAGES[page.pdf] = page;
+  DIFFS.clear();
+  PAGE_LIST = pageList();
+}
+
+// After a save or a drop
+async function reload() {
+  await fetchStore();
+  render();
 }
 
 async function load() {
   wire();
   if (!WRITABLE) $("#readonly").hidden = false;
   try {
-    const [entries, warnings] = await Promise.all([getText("entries.json"), getText("warnings.json")]);
-    if (entries == null) throw new Error("entries.json is missing");
-    E = JSON.parse(entries);
-    W = warnings ? JSON.parse(warnings) : [];
+    await fetchStore();
   } catch (e) {
     $("#title").textContent = "Couldn't load the store: " + e.message;
     return;
   }
-  applyReview((await getText("review.jsonl")) || "");
-  for (const page of E.pages) PAGES[page.pdf] = page;
-  for (const entry of E.entries) ENTRIES[entry.name] = entry;
-  PAGE_LIST = [...new Set(E.pages.map(p => p.pdf).concat(W.map(w => w.page)))].sort((a, b) => a - b);
-  const title = `Kho tàng tục ngữ người Việt · ${E.part} review`;
+  const title = `Kho tàng tục ngữ người Việt · ${MODEL.part} review`;
   document.title = title;
   $("#title").textContent = title;
   if (!PAGE_LIST.length) {

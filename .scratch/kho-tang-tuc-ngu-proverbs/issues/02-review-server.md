@@ -25,3 +25,5 @@
 ## Comments
 
 - From 03 (export): `review_fixes` in `src/khotangtucngu/export.py` reads the Fixes of `<store>/review.jsonl` in the shape `serve.py`'s docstring defines (`{"type": "fix", "name", "answer_sha1": {PDF page: hash}, "entry"}`, `"entry": null` to drop; a later record on the same name replaces an earlier one). It ignores checks. Note: `web/app.js` currently writes a different shape (`entry`/`fixed`/`answers` and `type: "drop"`), which `serve.py`'s validator would reject; it needs to match the docstring.
+
+- 2026-10-31: superseded in part by `.scratch/kho-tang-tuc-ngu-review-editing/spec.md`: no checks; a Fix is a page's corrected Blocks, edited as printed text and rebuilt by `review.py`.

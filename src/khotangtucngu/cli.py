@@ -8,15 +8,19 @@ and its book page offset. With no --pages, every proverb page of the Part (36-86
 Writes to the Part's store, vsc-project/khoTangTucNguoiNguoiViet/store/<part>/:
 
   requests/pNNN.json      one answer per PDF page: its printed book page number and its Blocks in reading order
-  entries.json            the verbatim Proverb Entries built from every saved page answer, and each page's book page,
-                          answer hash and entries
+  answers.json            every current page answer, by PDF page, for the review server to rebuild with Fixes
+  entries.json            the verbatim Proverb Entries built from every saved page answer, each page's book page,
+                          answer hash and entries, and the Part's book page offset
   warnings.json           every Warning, with its kind, reason and PDF page: number gaps and duplicates, letter
                           headings out of order, unknown Source Abbreviations, Citations with no pages or that cannot
                           be split, page numbers out of step, failed or missing pages, and Leading Blocks with no owner
+  sources.json            the 63 Sources by Source Abbreviation (as export.py writes them), for the review server
   pages/pNNN.png          each page, for the review server
-  serve.py, web/          the review server and its page, copied from this package: `python3 serve.py` in the store
-                          (on any machine, nothing to install)
-  review.jsonl            the review log of checks and Fixes, which serve.py appends to. No run writes or deletes it
+  serve.py, web/,         the review server, its page, and the code that rebuilds the Proverb Entries with Fixes
+  khotangtucngu/          (assembly.py, citations.py, review.py), copied from this package: `python3 serve.py` in the
+                          store (on any machine, nothing to install)
+  review.jsonl            the review log of Fixes, which serve.py appends to (see review.py). No run writes or
+                          deletes it
   token_usage.jsonl       one line per request sent to this store, summarized at the end
 
 Saved answers are stamped with the PDF's hash, the image settings and a hash of the prompts, so a run only redoes pages
@@ -41,6 +45,7 @@ import fitz
 from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL
 from src.khotangtucngu.assembly import PAGE_MISSING, assemble, warning
 from src.khotangtucngu.citations import Abbreviations, load_abbreviations
+from src.khotangtucngu.export import dated_sources, sources
 from src.khotangtucngu.pages import page_key, request_image, review_image
 from src.khotangtucngu.prompts import SYSTEM_PROMPT, page_schema, prompt_sha1, user_text
 from src.khotangtucngu.settings import (
@@ -49,10 +54,12 @@ from src.khotangtucngu.settings import (
 from src.providers import vlm_requests
 from src.providers.vlm_requests import (
     Model, Phase, Request, current_answer, data_url, file_sha1, image_messages, page_set, print_token_stats, sha1,
-    unique_ids, write_json
+    write_json
 )
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# The modules serve.py rebuilds the Proverb Entries with, copied into <store>/khotangtucngu/
+REVIEW_CODE = ("assembly.py", "citations.py", "review.py")
 PHASE = Phase("page", step="khotangtucngu_page", max_tokens=PAGE_MAX_TOKENS, thinking=False,
               retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT)
 
@@ -113,7 +120,12 @@ def main():
     os.makedirs(store, exist_ok=True)
     print(f"[Kho tàng tục ngữ] {args.part} ({part.pdf}): {n_pages} PDF pages, running {len(only)} "
           f"({'--pages ' + args.pages if args.pages else f'proverb pages {first}-{last}'}); store {store}")
-    abbreviations = Abbreviations(load_abbreviations(FRONT_MATTER))
+    abbreviation_list = load_abbreviations(FRONT_MATTER)
+    abbreviations = Abbreviations(abbreviation_list)
+    # Read before any request is sent, so a Front Matter that doesn't parse stops the run before it costs anything
+    with open(FRONT_MATTER, encoding="utf-8") as f:
+        front_matter = f.read()
+    source_table = sources(front_matter, abbreviation_list, dated_sources(front_matter))
 
     stamp = {"pdf_sha1": file_sha1(pdf), "page_dpi": PAGE_DPI, "page_image": PAGE_IMAGE, "prompt_sha1": prompt_sha1()}
     if args.dry_run:
@@ -136,7 +148,8 @@ def main():
         elif page in only or why != "never ran":
             missing.append(warning(PAGE_MISSING, page_key(page), f"PDF page {page} has no answer: {why}", page))
     entries, warnings, pages = assemble(answers, abbreviations, part.book_page_offset)
-    warnings = unique_ids(sorted(missing + warnings, key=lambda w: w["page"]))
+    # assemble's Warning ids are unique, and a missing page's is its own
+    warnings = sorted(missing + warnings, key=lambda w: w["page"])
 
     os.makedirs(os.path.join(store, "pages"), exist_ok=True)
     for page in sorted(set(only) | set(answers)):
@@ -147,11 +160,20 @@ def main():
                 f.write(review_image(doc, page))
     for p in pages:
         p["image"] = f"pages/{page_key(p['pdf'])}.png"
-    write_json(os.path.join(store, "entries.json"), {"part": args.part, "pages": pages, "entries": entries})
+    write_json(os.path.join(store, "answers.json"), {str(p): answers[p] for p in sorted(answers)})
+    write_json(os.path.join(store, "entries.json"), {"part": args.part, "book_page_offset": part.book_page_offset,
+                                                     "pages": pages, "entries": entries})
     write_json(os.path.join(store, "warnings.json"), warnings)
+    write_json(os.path.join(store, "sources.json"), source_table)
     # The review server's single master copy is this package's; review.jsonl beside it is never touched
     shutil.copyfile(os.path.join(HERE, "serve.py"), os.path.join(store, "serve.py"))
     shutil.copytree(os.path.join(HERE, "web"), os.path.join(store, "web"), dirs_exist_ok=True)
+    code = os.path.join(store, "khotangtucngu")
+    os.makedirs(code, exist_ok=True)
+    for name in REVIEW_CODE:
+        shutil.copyfile(os.path.join(HERE, name), os.path.join(code, name))
+    with open(os.path.join(code, "__init__.py"), "w", encoding="utf-8") as f:
+        f.write('"""Copied from src/khotangtucngu by cli.py: what serve.py rebuilds the Proverb Entries with."""\n')
 
     kinds = {}
     for w in warnings:

@@ -3,7 +3,7 @@ Export: website-ready data from the verbatim Proverb Entries of every transcribe
 
     python3 -m src.khotangtucngu.export
 
-Exports each Part in settings.PARTS whose store has an entries.json, in one go, so a See-also names an entry of any
+Exports each Part in settings.PARTS whose store has an answers.json, in one go, so a See-also names an entry of any
 of them: an Unresolved See-also of Part 1 resolves by itself once Part 2 is transcribed and the export is run again.
 Each Part's store/<part>/export/ is emptied and written afresh, and nothing outside it is touched:
 
@@ -14,10 +14,11 @@ Each Part's store/<part>/export/ is emptied and written afresh, and nothing outs
   expansions.json             every Expansion of a General Abbreviation made, with its entry and the text around it
   unresolved_see_also.json    every Unresolved See-also, for information
 
-Fixes from the store's review.jsonl that are not stale replace the model's Proverb Entries first. Notes, Variants and
-Corrections are lists of spans, {"text"} plus, where it applies: "em" (printed in italics), "strong" (the corrected
-words of a Correction), "source" (a Source Abbreviation, the key of its Source in sources.json) or "general" (a General
-Abbreviation, whose "text" is its Expansion). The proverb is plain text.
+The Proverb Entries are rebuilt from the store's answers.json with the Fixes of its review.jsonl that are not stale in
+place of the model's Blocks of their pages (see review.py). A Citation after "bk" is a Variant Citation, marked
+"variant". Notes, Variants and Corrections are lists of spans, {"text"} plus, where it applies: "em" (printed in
+italics), "strong" (the corrected words of a Correction), "source" (a Source Abbreviation, the key of its Source in
+sources.json) or "general" (a General Abbreviation, whose "text" is its Expansion). The proverb is plain text.
 """
 import os
 import sys
@@ -28,14 +29,14 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 import argparse
-import json
 import re
 import shutil
 import unicodedata
 
-from src.khotangtucngu.citations import clean_citation_text, load_abbreviations
+from src.khotangtucngu.citations import Abbreviations, clean_citation_text, load_abbreviations
+from src.khotangtucngu.review import read_answers, read_fixes, rebuild
 from src.khotangtucngu.settings import FRONT_MATTER, PARTS, STORE_DIR
-from src.providers.vlm_requests import read_json, write_json
+from src.providers.vlm_requests import write_json
 
 VARIANT_LABEL = "Bản khác"
 # A See-also's preview is this many words of the proverb it names
@@ -123,51 +124,14 @@ def intro(front_matter):
     return re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
 
 
-# -- the review log
+# -- the Proverb Entries with the Fixes
 
-def review_fixes(store, page_sha1):
-    """
-    The Fixes of the store's review.jsonl, by the name of the model's entry they replace, as (applied, stale): a
-    Fix applies while every PDF page it was made against still has the answer it saw. Lines of the log, a later one
-    on the same name replacing an earlier:
-
-      {"type": "check", "name": "C 484", ...}                            a checked mark, not used here
-      {"type": "fix", "name": "C 484", "entry": {...a full Proverb Entry...},
-       "answer_sha1": {"420": "<sha1>", "421": "<sha1>"}, ...}          a Fix, with the answer hash of each PDF page
-                                                                         the entry was on
-      {"type": "fix", "name": "C 484", "entry": null, ...}               the Fix dropped
-
-    `page_sha1` is {PDF page: its current answer hash}.
-    """
-    path = os.path.join(store, "review.jsonl")
-    latest = {}
-    if os.path.exists(path):
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    record = json.loads(line)
-                    if record.get("type") == "fix":
-                        latest[record["name"]] = record
-    applied, stale = {}, {}
-    for name, record in latest.items():
-        if record.get("entry") is None:
-            continue
-        made_against = record.get("answer_sha1") or {}
-        current = made_against and all(page_sha1.get(int(p)) == h for p, h in made_against.items())
-        (applied if current else stale)[name] = record["entry"]
-    return applied, stale
-
-
-def with_fixes(store):
-    """The store's verbatim Proverb Entries with its non-stale Fixes in place of the model's, and the counts."""
-    data = read_json(os.path.join(store, "entries.json"))
-    applied, stale = review_fixes(store, {p["pdf"]: p["answer_sha1"] for p in data["pages"]})
-    entries = []
-    for entry in data["entries"]:
-        fix = applied.get(entry["name"])
-        entries.append({**fix, "fixed": True} if fix else {**entry, "fixed": False})
-    unmatched = sorted(set(applied) - {e["name"] for e in data["entries"]})
-    return entries, {"applied": len(applied) - len(unmatched), "stale": sorted(stale), "unmatched": unmatched}
+def with_fixes(store, abbreviations, book_page_offset):
+    """The store's Proverb Entries rebuilt with its Fixes that are not stale, the pages whose Fix applies, and the
+    pages whose Fix is stale."""
+    entries, _, _, applied, stale = rebuild(read_answers(os.path.join(store, "answers.json")), read_fixes(store),
+                                            abbreviations, book_page_offset)
+    return entries, applied, stale
 
 
 # -- text for the reader
@@ -259,9 +223,17 @@ def preview(proverb):
 
 
 def citations(entry_citations, known):
-    """Citations keyed to their Sources: the abbreviation is the key in sources.json, or is marked unknown."""
-    return [{"abbreviation": c["abbreviation"], "pages": c.get("pages", "")}
-            if c["abbreviation"] in known else {**c, "unknown": True} for c in entry_citations]
+    """Citations keyed to their Sources: the abbreviation is the key in sources.json, or is marked unknown. A Variant
+    Citation keeps its "variant"."""
+    out = []
+    for c in entry_citations:
+        citation = {"abbreviation": c["abbreviation"], "pages": c.get("pages", "")}
+        if c.get("variant"):
+            citation["variant"] = True
+        if c["abbreviation"] not in known:
+            citation["unknown"] = True
+        out.append(citation)
+    return out
 
 
 def record(entry, reader, by_name, dated, unresolved):
@@ -319,18 +291,15 @@ def main():
     intro_text = intro(front_matter)
 
     stores = {key: os.path.join(STORE_DIR, key) for key in PARTS
-              if os.path.exists(os.path.join(STORE_DIR, key, "entries.json"))}
+              if os.path.exists(os.path.join(STORE_DIR, key, "answers.json"))}
     if not stores:
-        sys.exit(f"[Kho tàng tục ngữ] No store in {STORE_DIR} has an entries.json: run src.khotangtucngu.cli first")
+        sys.exit(f"[Kho tàng tục ngữ] No store in {STORE_DIR} has an answers.json: run src.khotangtucngu.cli first")
     parts = {}
     for key, store in stores.items():
-        entries, fixes = with_fixes(store)
+        entries, applied, stale = with_fixes(store, Abbreviations(abbreviations), PARTS[key].book_page_offset)
         parts[key] = entries
-        print(f"[Kho tàng tục ngữ] {key}: {len(entries)} Proverb Entries, {fixes['applied']} Fix(es) applied, "
-              f"{len(fixes['stale'])} stale {fixes['stale'] or ''}")
-        if fixes["unmatched"]:
-            print(f"[Kho tàng tục ngữ] {key}: Fixes for entries no longer in the store, not applied: "
-                  f"{fixes['unmatched']}")
+        print(f"[Kho tàng tục ngữ] {key}: {len(entries)} Proverb Entries, Fixes applied on {len(applied)} page(s), "
+              f"stale on {len(stale)} {['p' + str(p) for p in stale] or ''}")
     # Every Part exported now, so a See-also resolves to an entry of any of them
     by_name = {e["name"]: e for entries in parts.values() for e in entries}
 
