@@ -3,8 +3,9 @@
  * Criterion Points labels
  * ==============================================================================
  * Description: How HR reads a Criterion's share of its Category's 100 points, on the
- *              RAG page's live preview and in the candidate modal. The PDF report's
- *              points_label in src/reports/candidate_report.py uses the same wording.
+ *              RAG page's live preview and in the candidate modal, and how many evaluation
+ *              runs gave its Verdict. The PDF report's points_label and run_split_label in
+ *              src/reports/candidate_report.py use the same wording.
  */
 
 /**
@@ -38,4 +39,17 @@ export function maxPointsLabel(maxPoints, isBonus) {
 export function earnedPointsLabel(earnedPoints, maxPoints, isBonus) {
     if (!isBonus) return `${formatPoints(earnedPoints)} / ${formatPoints(maxPoints)}`;
     return earnedPoints > 0 ? `+${formatPoints(earnedPoints)}` : '+0 · không trừ điểm';
+}
+
+/**
+ * How many evaluation runs gave a Criterion its shown Verdict, e.g. "3/5 lần", or
+ * "không thống nhất" when the runs split with no majority. Empty after a single run.
+ * The PDF report's run_split_label in src/reports/candidate_report.py uses the same wording.
+ * @param {Object} c - One entry of a Category's criteria_evaluations.
+ * @returns {string}
+ */
+export function runSplitLabel(c) {
+    if (!c.verdict_runs || !(c.judged_runs > 1)) return '';
+    const count = c.verdict_runs[c.verdict] || 0;
+    return count > 0 ? `${count}/${c.judged_runs} lần` : 'không thống nhất';
 }

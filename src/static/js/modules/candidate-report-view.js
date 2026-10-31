@@ -13,7 +13,7 @@
 
 import { API } from './api.js';
 import { CATEGORY_NAMES, MUST_HAVE, NICE_TO_HAVE } from './criteria-editor.js';
-import { earnedPointsLabel } from './criterion-points.js';
+import { earnedPointsLabel, runSplitLabel } from './criterion-points.js';
 import { renderDevDetailsContent, bindDevDetailsContent } from './dev-details-panel.js';
 import { byId, downloadBlob } from './dom.js';
 import { html, raw } from './html.js';
@@ -66,6 +66,16 @@ const MODAL_MARKUP = `
  */
 function pointsTag(c) {
     return html`<span class="modal-points-tag">${earnedPointsLabel(c.earned_points, c.max_points, c.importance === NICE_TO_HAVE)}</span>`;
+}
+
+/**
+ * How many evaluation runs gave the Criterion its shown Verdict, so HR can tell a clear Verdict from a close one;
+ * nothing after a single run.
+ * @param {Object} c - One entry of a Category's criteria_evaluations.
+ */
+function runSplitTag(c) {
+    const label = runSplitLabel(c);
+    return label && html`<span class="modal-run-split-tag" title="Số lần đánh giá cho kết quả này">${label}</span>`;
 }
 
 /** A titled bullet list, or nothing when the list is empty. */
@@ -252,7 +262,7 @@ export class CandidateReportView {
             <div class="modal-section-title">Tiêu chí đáp ứng:</div>
             <ul class="modal-bullets strengths">${met.map(c => html`
                 <li>
-                    ${c.criterion}${c.importance === MUST_HAVE && MUST_HAVE_TAG}${c.verdict === 'PARTIAL_EVIDENCE' && raw('<span class="modal-partial-tag">Đáp ứng một phần</span>')}${pointsTag(c)}
+                    ${c.criterion}${c.importance === MUST_HAVE && MUST_HAVE_TAG}${c.verdict === 'PARTIAL_EVIDENCE' && raw('<span class="modal-partial-tag">Đáp ứng một phần</span>')}${runSplitTag(c)}${pointsTag(c)}
                     ${(c.evidence_quotes || []).map(q => html`<div class="modal-quote-box">"${q}"</div>`)}
                 </li>
             `)}</ul>
@@ -268,7 +278,7 @@ export class CandidateReportView {
         const missing = d.criteria_evaluations.filter(c => c.verdict === 'NO_EVIDENCE');
         return missing.length > 0 && html`
             <div class="modal-section-title">Tiêu chí chưa có bằng chứng:</div>
-            <ul class="modal-bullets gaps">${missing.map(c => html`<li>${c.criterion}${c.importance === MUST_HAVE && MUST_HAVE_TAG}${pointsTag(c)}</li>`)}</ul>
+            <ul class="modal-bullets gaps">${missing.map(c => html`<li>${c.criterion}${c.importance === MUST_HAVE && MUST_HAVE_TAG}${runSplitTag(c)}${pointsTag(c)}</li>`)}</ul>
         `;
     }
 

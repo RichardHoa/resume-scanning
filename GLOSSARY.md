@@ -49,12 +49,16 @@ How much one Criterion counts inside its Category: Must-have (weight 2), Standar
 _Avoid_: priority, weight (alone)
 
 **Criterion Points**:
-How much of its Category's 100 points one Criterion is worth, and how much a candidate earned on it, shown to HR so they can see where a Category Score comes from. The Must-have and Standard Criteria share the Category's 100 by Importance. A Nice-to-have is worth bonus points on top, and the Category never goes above 100. A Partial earns half a Criterion's points. Shares of the candidate's Overall Score are not Criterion Points: those are a Category's weight.
-_Avoid_: criterion score, weight (alone)
+How much of its Category's 100 points one Criterion is worth, and how much a candidate earned on it, shown to HR so they can see where a Category Score comes from. The Must-have and Standard Criteria share the Category's 100 by Importance. A Nice-to-have is worth bonus points on top, and the Category never goes above 100. A candidate earns the Criterion's points times its Criterion Score, so a Partial in every run earns half. Shares of the candidate's Overall Score are not Criterion Points: those are a Category's weight.
+_Avoid_: weight (alone)
+
+**Criterion Score**:
+A Criterion's 0–1 value for one candidate: the mean Verdict score (Strong 1, Partial ½, No Evidence 0) of the evaluation runs that judged it, e.g. 0.8 for 3 Strong and 2 Partial. With one run it is that run's Verdict score. The Category Score and Criterion Points come from it; the voted Verdict HR is shown, and the Must-have Rejection, do not.
+_Avoid_: criterion points (for the 0–1 value), verdict score
 
 **Category Score**:
-A candidate's 0–100 result in one Category. In each run, the Must-have and Standard Verdicts (Strong 1, Partial ½, No Evidence 0), weighted by Importance, make up the 100, and met Nice-to-haves add on top, capped at 100. Each Criterion's Verdict is voted across the runs: the Verdict more than half of them gave, or Partial Evidence when none has a majority. The Category Score and the Criterion Points HR is shown are computed from those voted Verdicts. A Not Applicable Category has none.
-_Avoid_: dimension score, criterion score
+A candidate's 0–100 result in one Category. In each run, the Must-have and Standard Verdicts (Strong 1, Partial ½, No Evidence 0), weighted by Importance, make up the 100, and met Nice-to-haves add on top, capped at 100. Across the runs, each Criterion is scored by its Criterion Score, and the Category Score and the Criterion Points HR is shown are computed from those. HR is shown each Criterion's voted Verdict: the Verdict more than half of the runs gave, or Partial Evidence when none has a majority. A Not Applicable Category has none.
+_Avoid_: dimension score
 
 **Overall Score**:
 The candidate's 0–100 result: each Category Score times its Category's weight (22% each, 12% for `hidden_culture`), with a Not Applicable Category's weight split equally among the others. A Failed Evaluation still has one, but it is never ranked or shown.
@@ -73,7 +77,7 @@ The stored set of Criteria (each with its Importance) and HR Check Items for one
 _Avoid_: RAG store (alone), vector DB
 
 **Verdict**:
-The judgement the LLM gives one Criterion for one candidate: Strong, Partial or No Evidence. Two cases are always No Evidence, never Partial: a stated minimum not reached (JLPT N3 against "N2 trở lên", 2 years against 3), even when other parts of the Criterion are met; and context without the activity the Criterion asks for (Japanese project names without any described client communication). The LLM writes its reasoning before it writes the Verdict. The LLM never produces a score; the Category score is derived from the Verdicts.
+The judgement the LLM gives one Criterion for one candidate: Strong, Partial or No Evidence. Two cases are always No Evidence, never Partial: a stated minimum not reached (JLPT N3 against "N2 trở lên", 2 years against 3), even when other parts of the Criterion are met; and context without the activity the Criterion asks for (Japanese project names without any described client communication). The rubric also fixes the Verdict at the other boundaries (ADR 0012): evidence only implied by a language, tool or title is Partial; a Criterion with several required parts is Strong with all parts, Partial with some, No Evidence with none; a related match needs a described activity of the same kind, so a tool alone is No Evidence; and years are counted by fixed rules, with internships counted only when the Criterion says so. The LLM writes its reasoning before it writes the Verdict. The LLM never produces a score; the Category Score is derived from each Criterion's Criterion Score across the runs.
 _Avoid_: score (for the LLM's output), category (collides with Category)
 
 **Review Panel**:
