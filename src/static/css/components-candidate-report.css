@@ -246,6 +246,18 @@
     font-style: normal;
 }
 
+.modal-run-split-tag {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #334155;
+    background: #F1F5F9;
+    border: 1px solid #CBD5E1;
+    border-radius: var(--radius-sm);
+    padding: 1px 6px;
+    margin-left: 6px;
+    font-style: normal;
+}
+
 .modal-must-have-tag {
     font-size: 0.72rem;
     font-weight: 700;

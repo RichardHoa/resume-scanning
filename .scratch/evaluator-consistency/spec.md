@@ -31,6 +31,7 @@ No Repeat Evaluation is the baseline: each differing item lists its distinct val
 - **Outcome:** status (scored, Failed Evaluation, Must-have Rejection with the Must-haves it names), Match Recommendation, and Overall Score (min, max, max−min, and each value with its evaluations).
 - **Per Category:** the Category Score, each value with its evaluations. A Not Applicable Category is left out.
 - **Per Criterion:** the Verdict HR sees, meaning the Verdict voted across the Category's runs, with each distinct Verdict and its evaluations.
+- **Criterion Score:** each Criterion's Criterion Score (ADR 0009) per Repeat Evaluation, as its max − min spread. It is what the Category Score is computed from, so it can settle where the shown Verdict still flips. A changed Verdict lists each evaluation's Criterion Score.
 - **Reasoning:** never compared as text, because sampled runs always word it differently. Only for a Criterion whose Verdict differs, the report shows one reasoning per distinct Verdict, side by side, so the reader sees why it flipped.
 - **Failed Evaluation:** a Repeat Evaluation that is a Failed Evaluation is counted and listed with its failed Categories, and the others are still compared. A request that failed (server down, timeout, rejected) is reported like the extractor check's raised runs. The report is kept and the job exits non-zero.
 
@@ -49,6 +50,7 @@ Summary:
   - Scanned Resumes skipped (listed);
   - failed extractions skipped (listed).
 - **Overall Score spread:** the mean max−min across resumes, and the largest max−min with its resume.
+- **Criterion Score spread:** the mean max − min across every (resume, Criterion) pair compared, and the largest with its resume and Criterion.
 - **Most unstable Criteria:** each Criterion's text and Category, with the number of resumes in which its Verdict differed, the number of resumes it was compared in, and that change rate, most first.
 
 Then one section per resume, least stable first: a changed Match Recommendation, then a changed status or Must-have Rejection, then the largest Overall Score spread, then the number of changed Verdicts, then name. Each section shows the outcome, Category Score and Verdict differences, the side-by-side reasoning for each flipped Verdict, and any Failed Evaluations.

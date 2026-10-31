@@ -53,8 +53,8 @@ VERDICT_SCORES = {"STRONG_EVIDENCE": 1.0, "PARTIAL_EVIDENCE": 0.5, "NO_EVIDENCE"
 
 def _score_criteria(criteria: List[Dict[str, Any]]) -> tuple[Optional[int], bool]:
     """
-    The Category score of judged Criteria (each with "importance" and its Verdict's "score"), and whether the met
-    Nice-to-haves hit the cap. Sets each Criterion's Criterion Points (max_points, earned_points). The score is None
+    The Category score of judged Criteria (each with "importance" and a 0-1 "score": one run's Verdict score, or the
+    Criterion Score across runs), and whether the met Nice-to-haves hit the cap. Sets each Criterion's Criterion Points (max_points, earned_points). The score is None
     when every Criterion is Nice-to-have, since then there is no 100 to score against.
     """
     category_base_weight = base_weight(c["importance"] for c in criteria)
@@ -270,6 +270,14 @@ def _vote_verdict(verdicts: List[str], runs: int) -> str:
     return verdict if count * 2 > runs else "PARTIAL_EVIDENCE"
 
 
+def _criterion_score(verdicts: List[str]) -> float:
+    """
+    The Criterion Score: the mean Verdict score of the runs that judged the Criterion, e.g. 3 Strong and 2 Partial
+    give 0.8, where the voted Verdict would give 1.0. With one run it is that run's Verdict score.
+    """
+    return round(sum(VERDICT_SCORES[v] for v in verdicts) / len(verdicts), 2)
+
+
 def _no_majority_reasoning(verdicts: List[str], is_en: bool) -> str:
     """The reasoning shown for a Partial Evidence voted only because the runs split, e.g. 2 Strong, 2 No Evidence."""
     labels = {"STRONG_EVIDENCE": ("Strong", "Mạnh"), "PARTIAL_EVIDENCE": ("Partial", "Một phần"),
@@ -283,10 +291,12 @@ def _no_majority_reasoning(verdicts: List[str], is_en: bool) -> str:
 def _vote_criteria(eval_runs: List[Dict[str, Any]], is_en: bool) -> Optional[Dict[str, Any]]:
     """
     One result from a Category's runs by voting each Criterion's Verdict across them (_vote_verdict), so no single
-    sampled run decides what HR sees. The Category score and Criterion Points are recomputed from the voted Verdicts.
-    Each Criterion's reasoning and quotes come from a run that gave the voted Verdict, and the free text (strengths,
-    gaps, summary) from the run that agrees with the most voted Verdicts, so it can still mention a Verdict the vote
-    overturned. None when a run judged no Criteria.
+    sampled run decides what HR sees. The Category score and Criterion Points are recomputed from each Criterion's
+    Criterion Score (_criterion_score), not from its voted Verdict, so a split vote moves the score only a little;
+    "verdict_runs" counts the runs per Verdict for the split HR is shown. Each Criterion's reasoning and quotes come
+    from a run that gave the voted Verdict, and the free text (strengths, gaps, summary) from the run that agrees
+    with the most voted Verdicts, so it can still mention a Verdict the vote overturned. None when a run judged no
+    Criteria.
     """
     per_run = [{c["criterion"]: c for c in r.get("criteria_evaluations") or []} for r in eval_runs]
     if not per_run or not all(per_run):
@@ -311,7 +321,9 @@ def _vote_criteria(eval_runs: List[Dict[str, Any]], is_en: bool) -> Optional[Dic
             found = next((run[text] for run in per_run if run.get(text, {}).get("verdict") == "STRONG_EVIDENCE"), None)
             source = {**(found or next(run[text] for run in per_run if text in run)),
                       "reasoning": _no_majority_reasoning(run_verdicts[text], is_en)}
-        criteria.append({**source, "verdict": verdict, "score": VERDICT_SCORES[verdict]})
+        criteria.append({**source, "verdict": verdict, "score": _criterion_score(run_verdicts[text]),
+                         "verdict_runs": {v: run_verdicts[text].count(v) for v in VERDICT_SCORES},
+                         "judged_runs": len(run_verdicts[text])})
 
     score, bonus_capped = _score_criteria(criteria)
     if score is None:

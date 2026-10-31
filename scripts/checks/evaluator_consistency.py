@@ -161,6 +161,14 @@ def compare_resume(name: str, results: list[dict]) -> dict:
         if len(set(per_eval.values())) > 1:
             category_differences.append({"category": cat_name, "values": evaluations_by_value(per_eval)})
 
+    # Each Criterion's Criterion Score (the mean Verdict score of its Category's runs) per evaluation that judged it:
+    # what the Category Score is computed from, so it can settle even where the shown Verdict still flips
+    criterion_scores = {key: {n: c["score"] for n, c in per_eval.items() if isinstance(c.get("score"), (int, float))}
+                        for key, per_eval in verdicts.items()}
+    criterion_score_spreads = [{"category": cat, "criterion": crit, "scores": scores,
+                                "spread": round(max(scores.values()) - min(scores.values()), 2)}
+                               for (cat, crit), scores in criterion_scores.items() if len(scores) > 1]
+
     verdict_differences = []
     for (cat_name, criterion), per_eval in verdicts.items():
         values = {n: (per_eval[n].get("verdict") if n in per_eval else MISSING) for n in reports}
@@ -173,7 +181,7 @@ def compare_resume(name: str, results: list[dict]) -> dict:
             g["reasoning"] = first.get("reasoning", "")
         importance = next(iter(per_eval.values())).get("importance", "")
         verdict_differences.append({"category": cat_name, "criterion": criterion, "importance": importance,
-                                    "values": grouped})
+                                    "values": grouped, "criterion_scores": criterion_scores[(cat_name, criterion)]})
 
     scores = [s for s in overall.values() if isinstance(s, (int, float))]
     return {
@@ -188,6 +196,7 @@ def compare_resume(name: str, results: list[dict]) -> dict:
         } if scores else None,
         "category_score_differences": category_differences,
         "verdict_differences": verdict_differences,
+        "criterion_score_spreads": criterion_score_spreads,
         # Every Criterion judged, so the change rate counts the stable ones too; one scored evaluation compares nothing
         "criteria_compared": [{"category": cat, "criterion": crit} for cat, crit in verdicts] if len(reports) > 1 else [],
     }
@@ -229,6 +238,8 @@ def build_report(set_name: str, mode: str, reference_date: str, standard_req: st
     # A resume with one scored evaluation has no spread to measure
     scored = [c for c in resumes if len(c["ok_evaluations"]) > 1]
     widest = max(scored, key=_spread, default=None)
+    criterion_spreads = [(c["resume"], s) for c in resumes for s in c["criterion_score_spreads"]]
+    widest_criterion = max(criterion_spreads, key=lambda rs: rs[1]["spread"], default=None)
     return {
         "resume_set": set_name,
         "mode": mode,
@@ -250,6 +261,13 @@ def build_report(set_name: str, mode: str, reference_date: str, standard_req: st
             "mean": round(sum(_spread(c) for c in scored) / len(scored), 1) if scored else None,
             "largest": _spread(widest) if widest else None,
             "largest_resume": widest["resume"] if widest else None,
+        },
+        "criterion_score_spread": {
+            "mean": round(sum(s["spread"] for _, s in criterion_spreads) / len(criterion_spreads), 3)
+            if criterion_spreads else None,
+            "largest": widest_criterion[1]["spread"] if widest_criterion else None,
+            "largest_resume": widest_criterion[0] if widest_criterion else None,
+            "largest_criterion": widest_criterion[1]["criterion"] if widest_criterion else None,
         },
         "verdict_change_rate": {
             "changed": flipped, "compared": compared,
@@ -312,6 +330,11 @@ def render_markdown(report: dict) -> str:
     if spread["mean"] is not None:
         lines.append(f"- Overall Score spread (max − min): mean {spread['mean']}, largest {spread['largest']} "
                      f"({spread['largest_resume']})")
+    crit_spread = report["criterion_score_spread"]
+    if crit_spread["mean"] is not None:
+        lines.append(f"- Criterion Score spread (max − min, 0–1): mean {crit_spread['mean']} over every Criterion "
+                     f"compared, largest {crit_spread['largest']} ({crit_spread['largest_resume']}: "
+                     f"{crit_spread['largest_criterion']})")
     lines.append("")
     if report["unstable_criteria"]:
         lines += ["### Most unstable Criteria", "",
@@ -356,6 +379,9 @@ def render_markdown(report: dict) -> str:
             lines += ["**Verdict differences**", ""]
             for d in c["verdict_differences"]:
                 lines.append(f"- {d['category']} — {d['criterion']} ({d['importance']})")
+                if d["criterion_scores"]:
+                    lines.append("  - Criterion Score: " + ", ".join(
+                        f"{score} (eval {n})" for n, score in sorted(d["criterion_scores"].items())))
                 for v in d["values"]:
                     reasoning = " ".join(str(v["reasoning"]).split()) or "(no reasoning)"
                     lines.append(f"  - **{v['value']}** — {_evals(v['evaluations'])}: {reasoning}")

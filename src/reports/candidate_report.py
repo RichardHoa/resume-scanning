@@ -99,10 +99,24 @@ def points_label(c: Dict[str, Any]) -> str:
     return "+0 · không trừ điểm"
 
 
+def run_split_label(c: Dict[str, Any]) -> str:
+    """
+    How many evaluation runs gave a Criterion its shown Verdict, e.g. "3/5 lần", or "không thống nhất" when the runs
+    split with no majority. Empty after a single run. Same wording as runSplitLabel in
+    src/static/js/modules/criterion-points.js.
+    """
+    runs = c.get("judged_runs") or 0
+    if not c.get("verdict_runs") or runs <= 1:
+        return ""
+    count = c["verdict_runs"].get(c.get("verdict"), 0)
+    return f"{count}/{runs} lần" if count > 0 else "không thống nhất"
+
+
 def _criterion_view(c: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "text": c.get("criterion", ""),
         "partial": c.get("verdict") == "PARTIAL_EVIDENCE",
+        "run_split": run_split_label(c),
         "must_have": c.get("importance") == MUST_HAVE,
         "points": points_label(c),
         "quotes": c.get("evidence_quotes") or []
