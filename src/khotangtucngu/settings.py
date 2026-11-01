@@ -48,23 +48,33 @@ EDGE_PX = 40
 # The layout answer is a page number and a dozen Line Numbers
 LAYOUT_MAX_TOKENS = 512
 # An Entry Span's answer is the Blocks of one Proverb Entry, about 100-300 tokens in Vietnamese; the cap leaves room
-# for a long note and stops a runaway answer
-SPAN_MAX_TOKENS = 2048
-# The OCR model, served beside the default model (scripts/khotangtucngu/submit.sh), reads each printed line of an
-# Entry Span on its own before the Entry Span request, which gets its OCR Readings with the crop
-# (docs/adr/0002-ocr-readings-of-each-line.md beside the GLOSSARY). It is asked only "OCR:", its model card's prompt
-# for text, at no repetition penalty: a line repeats its words as printed
-OCR_MODEL = "PaddlePaddle/PaddleOCR-VL-1.6"
-OCR_PROMPT = "OCR:"
-OCR_REPETITION_PENALTY = 1.0
-# A line crop: as tall as the gaps to the lines above and below allow (as an Entry Span's, SPAN_EDGE_GAP_PX short of
-# their ink), as wide as the page's Entry Spans. About 2000 x 60 px, under the model's own pixel budget
-# (1280 x 28 x 28), so it is read at the scan's 300 dpi
-OCR_IMAGE = f"grayscale png, one line, {SPAN_EDGE_GAP_PX} px from its neighbours"
-# A printed line is about 15-30 tokens; the cap stops a runaway answer
-OCR_MAX_TOKENS = 256
-# Seconds to wait for one request's answer before it fails and is retried
-REQUEST_TIMEOUT = 180
+# for a long note and stops a runaway answer (p042-L02 once ran to 2048 tokens of newlines before a retry answered in
+# 133)
+SPAN_MAX_TOKENS = 4096
+# The OCR model reads each printed line of an Entry Span on its own before the Entry Span request, which gets its OCR
+# Readings with the crop (docs/adr/0002-ocr-readings-of-each-line.md and 0003-vietocr-reads-each-line.md beside the
+# GLOSSARY): VietOCR's vgg_transformer (pbcquoc/vietocr), a recogniser of one Vietnamese line, run in the CLI's own
+# process on the GPU (ocr.py). Its weights are downloaded once, beside the HuggingFace cache vllm_utils.sh finds
+OCR_MODEL = "vietocr vgg_transformer"
+OCR_WEIGHTS_URL = "https://vocr.vn/data/vietocr/vgg_transformer.pth"
+OCR_WEIGHTS = os.path.join(os.environ.get("HF_HOME") or os.path.expanduser("~/.cache"), "vietocr",
+                           "vgg_transformer.pth")
+# A line's crop: its ink band, OCR_PAD_TOP_PX above (a tone mark over a capital stands tallest) and OCR_PAD_PX below
+# and beyond its ink ends. VietOCR scales it to OCR_IMAGE_HEIGHT, the height its weights were trained at, keeping its
+# aspect up to OCR_IMAGE_MAX_WIDTH: its encoder reads one of its 1024 positions per 2 px of width, so 2048 is the
+# most it holds. A line about 60-90 px tall and up to 1700 px wide at 300 dpi keeps its tone marks about 4-5 px tall,
+# where VietOCR's own 512 px cap would leave them 2-3 px
+OCR_PAD_TOP_PX = 8
+OCR_PAD_PX = 4
+OCR_IMAGE_HEIGHT = 32
+OCR_IMAGE_MIN_WIDTH = 32
+OCR_IMAGE_MAX_WIDTH = 2048
+OCR_IMAGE = f"grayscale png, one line's ink, {OCR_PAD_TOP_PX} px above and {OCR_PAD_PX} px around"
+# Beam search (4 beams, one line at a time) makes fewer errors than greedy decoding
+OCR_BEAM_SEARCH = True
+# Seconds to wait for one request's answer before it fails and is retried: past the 150-210 s a runaway Entry Span
+# answer takes to reach SPAN_MAX_TOKENS, so it fails as cut short, not as a timeout
+REQUEST_TIMEOUT = 300
 # Every first attempt is at temperature 0 (vlm_requests); retries sample, as an identical prompt at temperature 0
 # fails the same way
 RETRY_TEMPERATURE = 0.3

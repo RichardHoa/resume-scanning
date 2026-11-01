@@ -75,9 +75,9 @@ You copy exactly what the scan prints. You are a copyist, not an editor:
 - A Source Abbreviation is copied with its spaces as printed: "TNPD I 13", "VC I 9", "NASL II 4b".
 
 With the Entry Span come its OCR Readings: an OCR model's reading of each of its printed lines, each line read on its
-own, by its Line Number. The OCR model reads letters and diacritics well, so spell each word with the letters and
-diacritics its OCR Reading has, a tone mark beside or above a circumflex and the tilde most of all, unless the scan
-clearly prints otherwise. Read each repeat of a word on its own line's OCR Reading, never from how you
+own, by its Line Number. An OCR Reading is a hint, not the answer: where its letters or diacritics differ from what
+you read, look at that word on the scan again, a tone mark beside or above a circumflex and the tilde most of all,
+and spell it as the scan prints it. Read each repeat of a word on its own line's OCR Reading, never from how you
 copied it before. The OCR model knows nothing of Blocks or italics and may miss a space or a punctuation mark: which
 Block a line belongs to, the asterisks and the spaces of a Source Abbreviation come from the scan.
 """
