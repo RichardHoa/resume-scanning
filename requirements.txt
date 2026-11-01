@@ -164,6 +164,7 @@ typing_extensions==4.15.0
 urllib3==2.7.0
 uvicorn==0.51.0
 uvloop==0.22.1
+vietocr @ git+https://github.com/pbcquoc/vietocr@fe8c3a7fc714aec57ab81cec844eb3adf0c1636c
 vllm==0.30.0
 watchfiles==1.2.0
 weasyprint>=66.0

@@ -12,8 +12,8 @@ from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
 
 from src.khotangtucngu.settings import (
-    EDGE_PX, LABEL_COLOUR, LABEL_PX, LABEL_STRIP_PX, MISSED_INK, MISSED_JOIN_PX, PAGE_DPI, PAGE_IMAGE_LONG_SIDE,
-    SPAN_EDGE_GAP_PX, SPAN_MARGIN_PX
+    EDGE_PX, LABEL_COLOUR, LABEL_PX, LABEL_STRIP_PX, MISSED_INK, MISSED_JOIN_PX, OCR_PAD_PX, OCR_PAD_TOP_PX, PAGE_DPI,
+    PAGE_IMAGE_LONG_SIDE, SPAN_EDGE_GAP_PX, SPAN_MARGIN_PX
 )
 from src.providers.page_images import (
     RENDER_LOCK, line_bands, line_ends, page_ink, rule_columns, whole_page, whole_page_at_dpi
@@ -152,16 +152,12 @@ def entry_spans(found, answer):
 
 
 def line_box(found, n):
-    """The crop of Line Number `n` of a page (`found`, from `find_lines`) for its OCR request: as wide as the page's
-    Entry Spans, and from SPAN_EDGE_GAP_PX short of the ink of the lines above and below it, at most half a margin
-    beyond its own, so no tone mark or dot under a letter is clipped and no Running Head rule comes in."""
-    lines, (w, h) = found["lines"], found["size"]
-    top, bottom = lines[n - 1][0], lines[n - 1][1]
-    above = lines[n - 2][1] + SPAN_EDGE_GAP_PX if n > 1 else 0
-    below = lines[n][0] - SPAN_EDGE_GAP_PX if n < len(lines) else h
-    left, right = _sides(lines, w)
-    return [left, max(0, min(top, max(above, top - SPAN_MARGIN_PX // 2))),
-            right, min(h, max(bottom, min(below, bottom + SPAN_MARGIN_PX // 2)))]
+    """The crop of Line Number `n` of a page (`found`, from `find_lines`) for its OCR Reading: its ink band (its tone
+    marks and dots under letters with it), OCR_PAD_TOP_PX above and OCR_PAD_PX below and beyond its own ink ends, so
+    VietOCR's 32 px height holds the line itself, not the blank width of the Entry Span."""
+    (w, h), (top, bottom, left, right) = found["size"], found["lines"][n - 1]
+    return [max(0, left - OCR_PAD_PX), max(0, top - OCR_PAD_TOP_PX), min(w, right + OCR_PAD_PX),
+            min(h, bottom + OCR_PAD_PX)]
 
 
 def span_image(doc, page, box):
