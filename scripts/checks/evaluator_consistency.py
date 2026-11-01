@@ -215,8 +215,10 @@ def _rejection_changed(c: dict) -> bool:
 
 
 def _is_stable(c: dict) -> bool:
+    # HR sees the same outcome and Verdicts; Scores are left out, as a Criterion Score is a mean over the runs and
+    # moves with any one run's Verdict even where the voted Verdict holds (the spreads are reported on their own)
     return not (c["failed_evaluations"] or _recommendation_changed(c) or _rejection_changed(c)
-                or c["category_score_differences"] or c["verdict_differences"])
+                or c["verdict_differences"])
 
 
 def build_report(set_name: str, mode: str, reference_date: str, standard_req: str, hidden_req: str,
