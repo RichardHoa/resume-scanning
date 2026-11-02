@@ -149,10 +149,9 @@ CATEGORY_EVAL_MAX_TOKENS = 8192
 # attempt sample instead
 CATEGORY_EVAL_RETRY_TEMPERATURE = 0.5
 # Evaluation runs per Category: each Criterion's Verdict is the one most runs gave (Partial Evidence without a
-# majority), and a Must-have rejects only on a majority of No Evidence. Run 1 is greedy; later runs sample at
-# CATEGORY_EVAL_SAMPLE_TEMPERATURE so they are independent judgements instead of copies of run 1 (ADR 0009)
+# majority), and a Must-have rejects only on a majority of No Evidence. Every run is greedy, so any disagreement
+# is a Verdict the same input does not reliably reproduce (ADR 0009)
 DEFAULT_NUM_EVALUATIONS = 5
-CATEGORY_EVAL_SAMPLE_TEMPERATURE = 0.5
 DSPY_MAX_TOKENS = 4096    # DSPy prompt optimization output token limit
 REQUIREMENTS_DECOMPOSITION_MAX_TOKENS = 4096
 # AI Proofreading Pass (src/cli/proofread.py): a page task rewrites at most one page of text; a note task

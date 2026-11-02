@@ -20,6 +20,7 @@ requests failed has none. Writes to the Part's store, vsc-project/khoTangTucNguo
   layout/pNNN.json        one layout answer per PDF page
   layout/pNNN.png         the page with its Line Numbers as the layout request saw it, smaller, for the review server
   ocr/pNNN-LMM.json       one OCR Reading per printed line of an Entry Span, named by its page and Line Number
+  ocr/pNNN-LMM.png        that line as the OCR model saw it (32 px tall), to check its OCR Reading against
   spans/pNNN-LMM.json     one answer per Entry Span, named by its page and the Line Number it starts on
   answers.json            every current page answer, by PDF page, for the review server to rebuild with Fixes
   readings.json           the OCR Readings of each page with an answer joined, by PDF page, which the page's Blocks

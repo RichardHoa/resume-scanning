@@ -80,9 +80,18 @@ def predictor():
     })
 
 
+def seen_image(image):
+    """`image` as the OCR model sees it: scaled to OCR_IMAGE_HEIGHT by VietOCR's own resize (its width rounded up to
+    a multiple of 10 within OCR_IMAGE_MIN_WIDTH and OCR_IMAGE_MAX_WIDTH), in grayscale, as the line's crop is."""
+    from vietocr.tool.translate import resize
+    w, h = resize(*image.size, OCR_IMAGE_HEIGHT, OCR_IMAGE_MIN_WIDTH, OCR_IMAGE_MAX_WIDTH)
+    return image.convert("RGB").resize((w, h), Image.LANCZOS).convert("L")
+
+
 def read_lines(lines, results_dir, stamp, *, label):
     """Reads each of `lines` (Line) with no current OCR Reading in `results_dir` (made from `stamp` and its own),
-    one at a time, and saves it there; a line the OCR model fails on is saved failed, so its page has no answer."""
+    one at a time, and saves it there, with <key>.png, the line as the OCR model saw it, for the developer to check
+    the reading against; a line the OCR model fails on is saved failed, so its page has no answer."""
     os.makedirs(results_dir, exist_ok=True)
     todo = []
     for line in lines:
@@ -99,7 +108,9 @@ def read_lines(lines, results_dir, stamp, *, label):
         result = {"task": line.key, "phase": "ocr", "model": OCR_MODEL, **line_stamp}
         began = time.monotonic()
         try:
-            result.update(status="ok", error=None, answer=reader.predict(Image.open(BytesIO(line.crop()))).strip())
+            image = Image.open(BytesIO(line.crop()))
+            seen_image(image).save(os.path.join(results_dir, f"{line.key}.png"))
+            result.update(status="ok", error=None, answer=reader.predict(image).strip())
         except Exception as e:
             result.update(status="failed", error=f"{type(e).__name__}: {e}")
             print(f"  [{n}/{len(todo)}] {line.key}: failed: {result['error'][:200]}")

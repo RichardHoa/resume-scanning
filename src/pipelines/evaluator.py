@@ -16,7 +16,7 @@ from typing import Dict, List, Any, Optional
 
 from src.core.config import (
     DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL, MAX_NEW_TOKENS,
-    CATEGORY_EVAL_MAX_TOKENS, CATEGORY_EVAL_RETRY_TEMPERATURE, CATEGORY_EVAL_SAMPLE_TEMPERATURE,
+    CATEGORY_EVAL_MAX_TOKENS, CATEGORY_EVAL_RETRY_TEMPERATURE,
     DEFAULT_NUM_EVALUATIONS, SCRUTINY_MAX_QUESTIONS_PER_FIELD, SCRUTINY_MAX_SPLITS_PER_FIELD, HR_CHECK_ITEMS_KEY,
     CATEGORY_LABELS
 )
@@ -193,19 +193,18 @@ class ResumeEvaluator:
         One evaluation run of a Category. importance_map ({criterion_text: importance}) weights the Verdicts in the
         Category score; the LLM never sees it, so the prompt is the same whatever Importance HR set. The schema allows
         only the exact text of each retrieved Criterion, once each.
-        Run 1 (or a run with no index) is greedy; later runs sample, so several runs are independent judgements.
+        Every run is greedy, so runs that disagree show a Verdict the same input does not reliably reproduce.
         """
         eff_language = language or self.language
         resume_snippet = self._extract_relevant_resume_field(category, resume_data)
         prompt = get_category_evaluation_prompt(category_name, self.model_name, retrieved_criteria, resume_snippet)
         json_schema = category_evaluation_schema(retrieved_criteria)
 
-        first_temperature = 0.0 if (run_index or 1) == 1 else CATEGORY_EVAL_SAMPLE_TEMPERATURE
         reply = LLMReply("")
         for attempt in range(1, max_retries + 1):
             reply = self._call_llm(
                 prompt, category, resume_name, run_index=run_index, language=eff_language,
-                temperature=first_temperature if attempt == 1 else CATEGORY_EVAL_RETRY_TEMPERATURE,
+                temperature=0.0 if attempt == 1 else CATEGORY_EVAL_RETRY_TEMPERATURE,
                 json_schema=json_schema, log_dir=log_dir, max_tokens=CATEGORY_EVAL_MAX_TOKENS
             )
             parsed = clean_and_parse_json(reply.text)
