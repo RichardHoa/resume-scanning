@@ -22,7 +22,7 @@ design decisions are recorded in [`docs/adr/`](docs/adr/).
    Questions), then split into Criteria across five Categories, with HR Check Items set aside (ADR 0006). HR reviews
    the Criteria and sets each one's Importance: Must-have, Standard or Nice-to-have (ADR 0007 / 0008).
    Evaluation only reads the HR RAG and stops if there is none (ADR 0005).
-4. **Evaluate**: each Category is judged in five runs (run 1 greedy, later runs sampled, ADR 0009). The LLM gives
+4. **Evaluate**: each Category is judged in five greedy runs (ADR 0009). The LLM gives
    each Criterion a Verdict; the code votes each Verdict across the runs and turns the voted Verdicts into Category
    Scores, the Overall Score and the Match Recommendation. A Must-have with No Evidence in most runs is a Must-have Rejection.
 5. **Review Panel** (ADR 0011): three Panelists and a Coordinator write the Candidate Feedback. It never changes the
