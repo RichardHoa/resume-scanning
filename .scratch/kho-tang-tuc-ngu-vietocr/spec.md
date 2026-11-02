@@ -12,17 +12,17 @@ The OCR model, PaddlePaddle/PaddleOCR-VL-1.6, disagrees with the scan on about 6
 
 VietOCR `vgg_transformer` (pbcquoc/vietocr, Apache-2.0) becomes the only OCR model. It is not a vote beside another reader. It runs in-process in the CLI on the GPU, as the OCR phase before the Entry Span requests. The PaddleOCR-VL vLLM server is removed, and the main model gets back the GPU share it gave up.
 
-Each line is cut tight to its ink and scaled to VietOCR's fixed 32 px height, keeping its aspect ratio (width up to 2048), so the tone marks are about 4–5 px tall instead of the 2–3 px a stock 512 × 32 squeeze gives. No fine-tuning.
+Each line is cut tight to its ink and cut at its word gaps into pieces of at most 512 px at 32 px tall (16:1), each word sheared upright on its own. Each piece goes to VietOCR at full resolution, VietOCR scales it to 32 px tall itself, and the pieces' readings are joined by spaces. The tight crop is what keeps the tone marks about 4–5 px tall: the old crop was about 111 px tall. The 512 px width cap would only squeeze the line sideways, never shrink its marks. No fine-tuning.
 
 The Entry Span prompt stops claiming the OCR model reads diacritics well. Separately, an Entry Span answer's cap goes from 2048 to 4096 tokens.
 
 ## VietOCR's input, as its code defines it (v0.3.13, read 2026-11-01)
 
 - Tensor `N × 3 × 32 × W`: RGB (`img.convert("RGB")`, so a grayscale crop is fine), pixels `/255`, no mean/std normalisation (`tool/translate.py:process_image`).
-- Height: always 32 (`dataset.image_height`). The weights were trained at 32.
+- Height: `dataset.image_height`, a config value VietOCR applies itself on every `predict`; the caller never pre-resizes. 32 is the value in `base.yml`, the only config the weights ship with, so the weights were almost certainly trained at 32 (no document says so outright). The VGG flattens height into the encoder sequence, so another height is out of distribution without fine-tuning (research: `docs/research/khotangtucngu-vietocr-preprocessing-2026-11-02.md`).
 - Width: `32·w/h` rounded **up to a multiple of 10**, clamped to `[image_min_width, image_max_width]` (stock `[32, 512]`), LANCZOS. Past the clamp, the aspect ratio is not kept (`tool/translate.py:resize`).
 - CNN: VGG19-bn, average pools `ss = [2,2],[2,2],[2,1],[2,1],[1,1]`. Height ÷16 (32 → 2 rows), width ÷4. The encoder sequence is `(W/4)·2 = W/2` tokens (`model/backbone/vgg.py`).
-- Ceiling: the sinusoidal `pe` buffer is `transformer.max_seq_length: 1024`, and it is loaded from the checkpoint, so it cannot grow. So **W ≤ 2048** at height 32 (`model/seqmodel/transformer.py`).
+- Ceiling: the sinusoidal `pe` buffer is `transformer.max_seq_length: 1024`, and it is loaded from the checkpoint, so it cannot grow. So **W ≤ 2048** at height 32 (`model/seqmodel/transformer.py`). That is a crash limit, not a trained range: `base.yml` trains at most 512 px wide (256 positions). Our lines come to about 640 px.
 - Output: `translate()` and `translate_beam_search()` stop at 128 tokens. A line is about 70 characters.
 - `Cfg.load_config_from_name()` downloads `base.yml` and the model's YAML from `vocr.vn` on every load. `Predictor` downloads http weights to `tempfile.gettempdir()`. `cnn.pretrained: True` makes torchvision download ImageNet VGG19 weights, which are then overwritten.
 - `predictor.beamsearch: True` decodes one image at a time (`Predictor.predict`). `predict_batch` always decodes greedily.
@@ -36,12 +36,12 @@ The Entry Span prompt stops claiming the OCR model reads diacritics well. Separa
    - `device: cuda`
    - `dataset.image_height: 32`
    - `dataset.image_min_width: 32`
-   - `dataset.image_max_width: 2048`
-   - `predictor.beamsearch: True`
+   - `dataset.image_max_width: 512` (the trained width; wider lines are cut at word gaps, decision 5)
+   - `predictor.beamsearch: False`
    - `transformer.max_seq_length` stays 1024
 4. **Weights cache.** The weights are downloaded once to a fixed cache path on the compute machine, not `/tmp`, and loaded from that path. If the file is already there, nothing is downloaded.
-5. **Line crop for VietOCR.** From `find_lines`' `lines[n - 1] = [top, bottom, left, right]`: the ink band (which already holds tone marks and dots under letters) **8 px above, 4 px below**, and the line's own ink ends **4 px left and right**, clamped to the page. It is cut from the 300 dpi grayscale scan as `span_image` cuts, then handed to VietOCR, which scales it to height 32. It is no longer `line_box`'s full Entry Span width. `line_box` stays if nothing else needs changing.
-6. **Decoding.** Beam search (beam 4, VietOCR's default), one line at a time.
+5. **Line crop for VietOCR.** From `find_lines`' `lines[n - 1] = [top, bottom, left, right]`: the ink band (which already holds tone marks and dots under letters) grown up to its `ocr_tops` entry (the ink just above the band, so a faint hook over a capital is kept), **4 px** above and below, and the line's own ink ends **4 px left and right**, clamped to the page. It is cut from the 300 dpi grayscale scan as `span_image` cuts. It is no longer `line_box`'s full Entry Span width. `line_box` stays if nothing else needs changing. In `ocr.pieces`, the crop is split into words at runs of blank columns of at least 0.15 of its ink height. Each word is sheared upright by its own slant (so roman and italic on one line each get theirs), the gaps between words are kept, and the words are packed left to right into pieces no wider than 16:1 with 4 px either side. A word wider than that is a piece of its own. The pieces are read one at a time and their readings joined with a space. `ocr/pNNN-LMM.png` shows the pieces side by side with a grey bar between.
+6. **Decoding.** Greedy, VietOCR's own default (`base.yml`), one line at a time. Beam search ranks finished readings by summed log-probability with no length penalty, so a shorter reading can win; it dropped the last word of p036-L16.
 7. **Where it runs.** In-process in `cli.py`, as the OCR phase, still run to completion before any Entry Span request. One Predictor is loaded per run. A line VietOCR fails on has no OCR Reading, so its page has no answer, as today. An OCR Reading is still stored one per line in `ocr/pNNN-LMM.json` and still feeds `readings.json`, the Entry Span user text and the Diacritic Disagreements unchanged.
 8. **Stamp.** An OCR Reading is stamped with the OCR model (`vgg_transformer` plus the weights URL), its crop box and padding, image height, min and max width, and beam search, instead of `ocr_model` and `prompt_sha1`. Changing any of them re-reads every line, and so redoes every Entry Span request. Old stores are wiped. No migration.
 9. **Removed.**
@@ -62,5 +62,5 @@ The Entry Span prompt stops claiming the OCR model reads diacritics well. Separa
 
 - A vote of several readers (VietOCR, Tesseract, a VLM), and a bake-off. These come later, if needed.
 - Fine-tuning VietOCR at height 48 or 64.
-- Cutting lines at word gaps into chunks of 16:1 or narrower. It stays in reserve in case long lines read badly at width 2048.
+- Growing small marks before VietOCR reads them: it blurs the shapes that tell the tone marks apart, and no VietOCR training ever did it.
 - Any tests or browser checks. This is verified by reasoning.

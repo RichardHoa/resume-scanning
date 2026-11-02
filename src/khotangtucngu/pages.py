@@ -12,8 +12,8 @@ from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
 
 from src.khotangtucngu.settings import (
-    EDGE_PX, LABEL_COLOUR, LABEL_PX, LABEL_STRIP_PX, MISSED_INK, MISSED_JOIN_PX, OCR_PAD_PX, OCR_PAD_TOP_PX, PAGE_DPI,
-    PAGE_IMAGE_LONG_SIDE, SPAN_EDGE_GAP_PX, SPAN_MARGIN_PX
+    EDGE_PX, LABEL_COLOUR, LABEL_PX, LABEL_STRIP_PX, MISSED_INK, MISSED_JOIN_PX, OCR_ABOVE_GAP_PX, OCR_ABOVE_SHARE,
+    OCR_PAD_PX, PAGE_DPI, PAGE_IMAGE_LONG_SIDE, SPAN_EDGE_GAP_PX, SPAN_MARGIN_PX
 )
 from src.providers.page_images import (
     RENDER_LOCK, line_bands, line_ends, page_ink, rule_columns, whole_page, whole_page_at_dpi
@@ -59,11 +59,34 @@ def _missed(area, lines):
             for s, amount in zip(ndimage.find_objects(labels), amounts) if amount >= MISSED_INK]
 
 
+def _ink_tops(area, lines, height):
+    """For each of `lines`, the top of its ink with the ink just above its band between its ends: rows up from its
+    band's top while no more than OCR_ABOVE_GAP_PX of them in a row are blank, within OCR_ABOVE_SHARE of `height` (the
+    median line's) and below the line before. A mark over a capital (the hook of Ả) can have too little ink for its
+    rows to count in the band."""
+    tops, floor = [], 0
+    for top, bottom, left, right in lines:
+        start = max(floor, top - round(OCR_ABOVE_SHARE * height))
+        inked = area[start:top, left:right].any(axis=1)
+        ink_top, blank = top, 0
+        for row in range(top - 1, start - 1, -1):
+            if inked[row - start]:
+                ink_top, blank = row, 0
+            else:
+                blank += 1
+                if blank > OCR_ABOVE_GAP_PX:
+                    break
+        tops.append(ink_top)
+        floor = bottom
+    return tops
+
+
 def find_lines(doc, page):
     """
     PDF page `page` (1-based) read on its 300 dpi scan: {"size": [width, height], "lines": the printed lines top to
-    bottom, Line Number n being lines[n - 1], "missed": the patches of ink outside the page's text block}. A line is a
-    band of page_images.line_bands with its ends; one with no run of ink big enough to have ends is left out.
+    bottom, Line Number n being lines[n - 1], "ocr_tops": the top of each line's ink with the ink just above its band
+    (`_ink_tops`), for its OCR crop, "missed": the patches of ink outside the page's text block}. A line is a band of
+    page_images.line_bands with its ends; one with no run of ink big enough to have ends is left out.
     """
     ink = page_ink(doc, page, PAGE_DPI)
     h, w = ink.shape
@@ -74,7 +97,8 @@ def find_lines(doc, page):
         left, right = line_ends(area[core_top:core_bottom].sum(axis=0), round(height / 2))
         if right > left:
             lines.append([top, bottom, left, right])
-    return {"size": [w, h], "lines": lines, "missed": _missed(area, lines)}
+    return {"size": [w, h], "lines": lines, "ocr_tops": _ink_tops(area, lines, height),
+            "missed": _missed(area, lines)}
 
 
 def layout_image(doc, page, lines):
@@ -153,10 +177,10 @@ def entry_spans(found, answer):
 
 def line_box(found, n):
     """The crop of Line Number `n` of a page (`found`, from `find_lines`) for its OCR Reading: its ink band (its tone
-    marks and dots under letters with it), OCR_PAD_TOP_PX above and OCR_PAD_PX below and beyond its own ink ends, so
-    VietOCR's 32 px height holds the line itself, not the blank width of the Entry Span."""
-    (w, h), (top, bottom, left, right) = found["size"], found["lines"][n - 1]
-    return [max(0, left - OCR_PAD_PX), max(0, top - OCR_PAD_TOP_PX), min(w, right + OCR_PAD_PX),
+    marks and dots under letters with it) grown up to its ocr_top, OCR_PAD_PX around and beyond its own ink ends, so
+    the height VietOCR scales it to holds the line itself, not the blank width of the Entry Span."""
+    (w, h), (_, bottom, left, right) = found["size"], found["lines"][n - 1]
+    return [max(0, left - OCR_PAD_PX), max(0, found["ocr_tops"][n - 1] - OCR_PAD_PX), min(w, right + OCR_PAD_PX),
             min(h, bottom + OCR_PAD_PX)]
 
 

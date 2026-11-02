@@ -59,19 +59,47 @@ OCR_MODEL = "vietocr vgg_transformer"
 OCR_WEIGHTS_URL = "https://vocr.vn/data/vietocr/vgg_transformer.pth"
 OCR_WEIGHTS = os.path.join(os.environ.get("HF_HOME") or os.path.expanduser("~/.cache"), "vietocr",
                            "vgg_transformer.pth")
-# A line's crop: its ink band, OCR_PAD_TOP_PX above (a tone mark over a capital stands tallest) and OCR_PAD_PX below
-# and beyond its ink ends. VietOCR scales it to OCR_IMAGE_HEIGHT, the height its weights were trained at, keeping its
-# aspect up to OCR_IMAGE_MAX_WIDTH: its encoder reads one of its 1024 positions per 2 px of width, so 2048 is the
-# most it holds. A line about 60-90 px tall and up to 1700 px wide at 300 dpi keeps its tone marks about 4-5 px tall,
-# where VietOCR's own 512 px cap would leave them 2-3 px
-OCR_PAD_TOP_PX = 8
+# A line's crop: its ink band grown up over the ink just above it, then OCR_PAD_PX around and beyond its ink ends.
+# A mark over a capital (the hook of Ả) can have too little ink for its rows to count in the band (a fixed 8 px above
+# cut it off on p036-L02), so the crop takes in the ink between the line's ends above its band, row by row up to
+# OCR_ABOVE_GAP_PX of blank rows, within OCR_ABOVE_SHARE of the median line height and below the line before
+OCR_ABOVE_SHARE = 0.4
+OCR_ABOVE_GAP_PX = 10
 OCR_PAD_PX = 4
+# The crop is handed to VietOCR at full resolution; VietOCR scales it to OCR_IMAGE_HEIGHT itself (tool/translate.py
+# resize), its width kept in aspect, rounded up to a multiple of 10 and clamped to OCR_IMAGE_MIN_WIDTH and
+# OCR_IMAGE_MAX_WIDTH (past the clamp only the width is squeezed, never the height). 32 is the height of base.yml, the
+# only config the weights ship with: its VGG flattens the height into the encoder's sequence (2 rows of tokens per
+# column at 32), so another height reads a sequence the weights never learned and would need fine-tuning. The
+# encoder's 1024 positions (a buffer in the weights) hold floor(W/4) * floor(H/16) tokens, so 2048 px is only where it
+# fails at 32 px tall; base.yml trains at most 512 px wide (256 positions), so that is the most it is given. A line
+# about 85 px tall and 1700 px wide would scale to about 640 px, so a line is cut at its word gaps (ocr.pieces) into
+# pieces of at most 512 px at 32 px tall, read one by one and joined by spaces. A word gap is a run of blank columns at
+# least OCR_GAP_SHARE of the line's ink height: a line about 70 px of ink tall has word spaces of about 15-20 px and
+# gaps between letters of a few px
 OCR_IMAGE_HEIGHT = 32
 OCR_IMAGE_MIN_WIDTH = 32
-OCR_IMAGE_MAX_WIDTH = 2048
-OCR_IMAGE = f"grayscale png, one line's ink, {OCR_PAD_TOP_PX} px above and {OCR_PAD_PX} px around"
-# Beam search (4 beams, one line at a time) makes fewer errors than greedy decoding
-OCR_BEAM_SEARCH = True
+OCR_IMAGE_MAX_WIDTH = 512
+OCR_GAP_SHARE = 0.15
+# Before VietOCR reads a crop (ocr.pieces): a pixel darker than OCR_INK_LEVEL is ink. Each word, on its own as a
+# line can mix roman and italic, is sheared upright by the slant, from 0 to OCR_MAX_SLANT (px across per px up) in
+# steps of OCR_SLANT_STEP, that stacks its ink into the fewest columns, if it stacks it more than OCR_SLANT_MIN_GAIN
+# better than no slant. VietOCR's augmentation for the
+# published weights left shear out (loader/aug.py, 2020-11), so upright text is closer to what it learned. Marks are
+# not grown: a downscale keeps a small mark as grey, and VietOCR trained on blurred and dropped-out ink, while growing
+# a mark blurs the shapes that tell sắc, huyền, hỏi and ngã apart
+OCR_INK_LEVEL = 128
+OCR_MAX_SLANT = 0.4
+OCR_SLANT_STEP = 0.02
+OCR_SLANT_MIN_GAIN = 0.1
+OCR_IMAGE = (f"grayscale png, one line's ink with the ink above it (within {OCR_ABOVE_SHARE} of a line, gaps up to "
+             f"{OCR_ABOVE_GAP_PX} px), {OCR_PAD_PX} px around, cut at word gaps of {OCR_GAP_SHARE} of its ink "
+             f"height into pieces read one by one, each word sheared upright on its own "
+             f"(slant up to {OCR_MAX_SLANT} by {OCR_SLANT_STEP}, if over {OCR_SLANT_MIN_GAIN} better than none)")
+# Greedy decoding: VietOCR's beam search ranks finished readings by their summed log-probability with no length
+# penalty and stops once its top reading ends, so a shorter reading that ended earlier can win, and it dropped a
+# line's last word (p036-L16). Greedy is also VietOCR's own default (base.yml predictor.beamsearch)
+OCR_BEAM_SEARCH = False
 # Seconds to wait for one request's answer before it fails and is retried: past the 150-210 s a runaway Entry Span
 # answer takes to reach SPAN_MAX_TOKENS, so it fails as cut short, not as a timeout
 REQUEST_TIMEOUT = 300
