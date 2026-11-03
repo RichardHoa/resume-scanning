@@ -49,7 +49,7 @@ EDGE_PX = 40
 LAYOUT_MAX_TOKENS = 512
 # An Entry Span's answer is the Blocks of one Proverb Entry, about 100-300 tokens in Vietnamese; the cap leaves room
 # for a long note and stops a runaway answer (p042-L02 once ran to 2048 tokens of newlines before a retry answered in
-# 133)
+# 133; vllm_client now forbids whitespace between JSON tokens, so that runaway can't happen)
 SPAN_MAX_TOKENS = 4096
 # The OCR model reads each printed line of an Entry Span on its own before the Entry Span request, which gets its OCR
 # Readings with the crop (docs/adr/0002-ocr-readings-of-each-line.md and 0003-vietocr-reads-each-line.md beside the

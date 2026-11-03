@@ -215,8 +215,10 @@ def chat(
         }
     }
     if json_schema is not None:
-        # Legacy `guided_json` is silently ignored by current vLLM; `structured_outputs` enforces the schema
-        payload["structured_outputs"] = {"json": json_schema}
+        # Legacy `guided_json` is silently ignored by current vLLM; `structured_outputs` enforces the schema.
+        # Without `disable_any_whitespace` the grammar allows any whitespace between JSON tokens, and a model can
+        # fill max_tokens with newlines there (a Kho tàng tục ngữ Entry Span once did); strings keep their spaces
+        payload["structured_outputs"] = {"json": json_schema, "disable_any_whitespace": True}
     elif not text_output:
         payload["response_format"] = {"type": "json_object"}
 
