@@ -1,0 +1,6 @@
+# The Mac's Apple Vision step of Kho tàng tục ngữ (src/khotangtucngu/vision_ocr.py), at the versions requirements.txt
+# pins, without the GPU stack
+numpy==2.3.5
+pillow==12.2.0
+pymupdf==1.28.2
+scipy==1.17.1

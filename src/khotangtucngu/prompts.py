@@ -2,11 +2,12 @@
 The prompts and output schemas of a page's two kinds of request (vocabulary: vsc-project/khoTangTucNguoiNguoiViet/
 GLOSSARY.md): the layout request sees the whole page with its Line Numbers and answers the printed book page number and
 the Line Number each Proverb Entry and letter heading starts on; each Entry Span request sees one Entry Span cut from
-the page, with the OCR Readings of its lines, and answers its Blocks in reading order.
+the page, with the two Vision reads of its lines, and answers its Blocks in reading order.
 """
 import json
 
 from src.khotangtucngu.assembly import BLOCK_KINDS
+from src.khotangtucngu.diacritics import marked_reading, read_of_line, syllables
 from src.providers.vlm_requests import sha1
 
 _BOOK = """\
@@ -74,12 +75,16 @@ You copy exactly what the scan prints. You are a copyist, not an editor:
 - A subscript is written as a Unicode subscript, as printed: VNP₁₁, VNP₂ I.
 - A Source Abbreviation is copied with its spaces as printed: "TNPD I 13", "VC I 9", "NASL II 4b".
 
-With the Entry Span come its OCR Readings: an OCR model's reading of each of its printed lines, each line read on its
-own, by its Line Number. An OCR Reading is a hint, not the answer: where its letters or diacritics differ from what
-you read, look at that word on the scan again, a tone mark beside or above a circumflex and the tilde most of all,
-and spell it as the scan prints it. Read each repeat of a word on its own line's OCR Reading, never from how you
-copied it before. The OCR model knows nothing of Blocks or italics and may miss a space or a punctuation mark: which
-Block a line belongs to, the asterisks and the spaces of a Source Abbreviation come from the scan.
+With the Entry Span come two OCR reads of each of its printed lines, by Line Number: one of the line on its own, one
+of the whole page. They are a hint, not the answer, and the brackets below are never copied:
+- Where the reads are not sure of a word, it is written [line read|page read], e.g. "[mồ|mô]" or "[VC I 10|VC110]", with
+  one side empty if only the other read has it. Look at it on the scan and spell what the scan prints, which may be
+  neither.
+- An unmarked word was read the same both times and is usually right, but both reads can be wrong. Change one only where
+  the scan clearly prints otherwise, never for what a word ought to be. Every such change is shown to the developer.
+- A line marked "(one read)" has only one read, so none of its words are marked.
+The reads know nothing of Blocks or italics and garble Source Abbreviations and numbers: which Block a line belongs to,
+the asterisks, the Source Abbreviations and the numbers come from the scan.
 """
 
 
@@ -87,15 +92,24 @@ def layout_user_text(page):
     return f"Say on which Line Number each Proverb Entry and letter heading of PDF page {page} starts."
 
 
+def reading_line(n, line_read, page_read):
+    """Line Number `n` with its two reads, as the Entry Span's user text gives it."""
+    if syllables(line_read) and syllables(page_read):
+        return f"L{n}: {marked_reading(line_read, page_read)}"
+    if syllables(line_read) or syllables(page_read):
+        return f"L{n} (one read): {read_of_line(line_read, page_read)}"
+    return f"L{n} (no read):"
+
+
 def span_user_text(page, leading, readings):
-    """The user text of an Entry Span of PDF page `page`, with `readings`, the OCR Readings of its lines as
-    [(Line Number, text)]; a `leading` one is the top of the page, before its first start."""
-    lines = "\n".join(f"L{n}: {text}" for n, text in readings)
+    """The user text of an Entry Span of PDF page `page`, with `readings`, the two reads of its lines as
+    [(Line Number, line read, page read)]; a `leading` one is the top of the page, before its first start."""
+    lines = "\n".join(reading_line(*reading) for reading in readings)
     ask = f"Copy the Blocks of this Entry Span of PDF page {page}, in reading order."
     if leading:
         ask += (" It is the top of the page, finishing the last Proverb Entry of the page before, so it should hold no "
                 "proverb of its own; if it does print a numbered proverb, copy it as a `proverb` Block.")
-    return f"OCR Readings of its lines:\n{lines}\n\n{ask}"
+    return f"The two reads of its lines:\n{lines}\n\n{ask}"
 
 
 def layout_schema():

@@ -81,12 +81,12 @@ def with_fixes(answers, fixes):
     return fixed, applied, stale
 
 
-def rebuild(answers, fixes, abbreviations, book_page_offset, readings=None):
+def rebuild(answers, fixes, abbreviations, book_page_offset, readings=None, flagged=None):
     """The Proverb Entries, Warnings and pages of assembly.assemble, built from `answers` with the Fixes that apply
-    (their Blocks checked against `readings`, the pages' OCR Readings), and the pages whose Fix is applied and stale. An entry is "fixed" when a page it is printed on has an applied
-    Fix."""
+    (their Blocks checked against `readings`, the pages' OCR Readings, and `flagged`, their reads flagged), and the
+    pages whose Fix is applied and stale. An entry is "fixed" when a page it is printed on has an applied Fix."""
     fixed, applied, stale = with_fixes(answers, fixes)
-    entries, warnings, pages = assemble(fixed, abbreviations, book_page_offset, readings)
+    entries, warnings, pages = assemble(fixed, abbreviations, book_page_offset, readings, flagged)
     for entry in entries:
         entry["fixed"] = any(p in applied for p in entry["pdf_pages"])
     return entries, warnings, pages, applied, stale

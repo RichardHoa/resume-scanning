@@ -10,7 +10,8 @@
 # With --dry-run no server is started: the module counts its requests' prompt tokens with the model's processor.
 # Otherwise the profile is served with vision on for this job only (profiles serve text only), with at most
 # <concurrency> requests in flight, and the module runs against it. The server log is logs/vllm_<name>.log, and its
-# state is sampled into logs/vllm_<name>_metrics_<job>.log.
+# state is sampled into logs/vllm_<name>_metrics_<job>.log. If the submit script sets VISION_JOB_PREFLIGHT to a flag of
+# the module, the module first runs with it and no server, and a failure ends the job before the server starts.
 # -----------------------------------------------------------------------------
 
 WATCH_SERVER_EVERY=30    # seconds between samples of the server's state in the metrics log
@@ -112,6 +113,10 @@ run_vision_job() {
     echo "=== Dry run: counting prompt tokens with $MODEL's processor, no vLLM server ==="
     python3 -u -m "$module" --model-name "$MODEL" "${job_args[@]}"
     return $?
+  fi
+
+  if [ -n "$VISION_JOB_PREFLIGHT" ]; then
+    python3 -u -m "$module" "$VISION_JOB_PREFLIGHT" "${job_args[@]}" || return 1
   fi
 
   echo "====================================================================="

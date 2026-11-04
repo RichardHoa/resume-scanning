@@ -4,6 +4,8 @@ their Line Numbers for the layout request, each Entry Span and each of its lines
 requests, and the page smaller for the review server. Places on the page are in px of the 300 dpi scan: a line is [top, bottom, left, right] and a
 crop [left, top, right, bottom], bottom and right exclusive.
 """
+import os
+import unicodedata
 from io import BytesIO
 
 import fitz
@@ -12,12 +14,22 @@ from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
 
 from src.khotangtucngu.settings import (
-    EDGE_PX, LABEL_COLOUR, LABEL_PX, LABEL_STRIP_PX, MISSED_INK, MISSED_JOIN_PX, OCR_ABOVE_GAP_PX, OCR_ABOVE_SHARE,
+    BOOK_DIR, EDGE_PX, LABEL_COLOUR, LABEL_PX, LABEL_STRIP_PX, MISSED_INK, MISSED_JOIN_PX, OCR_ABOVE_GAP_PX, OCR_ABOVE_SHARE,
     OCR_PAD_PX, PAGE_DPI, PAGE_IMAGE_LONG_SIDE, SPAN_EDGE_GAP_PX, SPAN_MARGIN_PX
 )
 from src.providers.page_images import (
     RENDER_LOCK, line_bands, line_ends, page_ink, rule_columns, whole_page, whole_page_at_dpi
 )
+
+
+def part_pdf(name):
+    """The path of a Part's PDF in BOOK_DIR, whichever way the file system spells its accents (composed on Linux,
+    as copied; decomposed if copied from macOS), or None."""
+    for form in ("NFC", "NFD"):
+        path = os.path.join(BOOK_DIR, unicodedata.normalize(form, name))
+        if os.path.exists(path):
+            return path
+    return None
 
 
 def page_key(page):
@@ -28,11 +40,6 @@ def page_key(page):
 def span_key(page, first):
     """An Entry Span's name in the store: its page and the Line Number it starts on."""
     return f"{page_key(page)}-L{first:02d}"
-
-
-def line_key(page, n):
-    """A printed line's name in the store (its OCR Reading): its page and its Line Number."""
-    return f"{page_key(page)}-L{n:02d}"
 
 
 def _sides(lines, width):
@@ -178,7 +185,7 @@ def entry_spans(found, answer):
 def line_box(found, n):
     """The crop of Line Number `n` of a page (`found`, from `find_lines`) for its OCR Reading: its ink band (its tone
     marks and dots under letters with it) grown up to its ocr_top, OCR_PAD_PX around and beyond its own ink ends, so
-    the height VietOCR scales it to holds the line itself, not the blank width of the Entry Span."""
+    the crop holds the line itself, not the blank width of the Entry Span."""
     (w, h), (_, bottom, left, right) = found["size"], found["lines"][n - 1]
     return [max(0, left - OCR_PAD_PX), max(0, found["ocr_tops"][n - 1] - OCR_PAD_PX), min(w, right + OCR_PAD_PX),
             min(h, bottom + OCR_PAD_PX)]

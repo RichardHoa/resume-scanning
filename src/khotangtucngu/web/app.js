@@ -6,7 +6,7 @@ const KIND_NAMES = {
   page_number: "Page number", page_missing: "Missing page", no_owner: "Leading Block with no owner",
   unknown_abbreviation: "Unknown Source Abbreviation", citation_no_pages: "Citation with no pages",
   citation_unsplit: "Citation not split", ink_outside: "Ink outside the lines",
-  diacritic_disagreement: "Diacritics differ from OCR",
+  diacritic_disagreement: "Diacritics differ from OCR", model_edit: "Model Edit",
 };
 const BLOCK_NAMES = {
   letter: "Letter heading", proverb: "Proverb", citations: "Citations", variant: "Variant (BK)", note: "Note",

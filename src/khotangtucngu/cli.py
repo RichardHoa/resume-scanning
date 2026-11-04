@@ -6,32 +6,36 @@ CLI Entrypoint for transcribing the Proverb Entries of one Kho tàng tục ngữ
 The Part is a key of settings.PARTS, which gives its PDF in vsc-project/khoTangTucNguoiNguoiViet/, its proverb pages
 and its book page offset. With no --pages, every proverb page of the Part (36-865 for Part 1, past the Front Matter).
 
-Each page is read in three steps (docs/adr/0001-entry-spans-from-numbered-lines.md beside the GLOSSARY). Code finds its
-printed lines on the scan, and a layout request sees the page with each line's Line Number written beside it and
-answers the printed book page number, the first line under the Running Head and the Line Number each Proverb Entry and
-letter heading starts on. Code cuts the page at those lines into Entry Spans. The OCR model (settings.OCR_MODEL, run
-in this process by ocr.py) reads each of their lines on its own, and each Entry Span is copied as Blocks in its own
-request, with the OCR Readings of its lines (docs/adr/0002-ocr-readings-of-each-line.md,
-0003-vietocr-reads-each-line.md).
+A Mac reads the pages first (vision_ocr.py): it finds each page's printed lines, and Apple Vision reads each line on its
+own and with the whole page, and those two folders of the store are copied here. This job finds no lines itself: before
+any request, it exits naming any page of this run whose lines or Vision read are missing, failed or made from another
+PDF. --pages needs reads for those pages only. --check-reads does only this check, which the job runs before it starts
+its server, so a page that can't finish costs no GPU time.
+
+Each page is then read in two steps (docs/adr/0001-entry-spans-from-numbered-lines.md beside the GLOSSARY). A layout
+request sees the page with each line's Line Number written beside it and answers the printed book page number, the first
+line under the Running Head and the Line Number each Proverb Entry and letter heading starts on. Code cuts the page at
+those lines into Entry Spans, and each is copied as Blocks in its own request, with the two reads of its lines
+(docs/adr/0002-ocr-readings-of-each-line.md, 0005-two-reads-and-model-edits.md).
 A page's answer is its Entry Spans' Blocks in order, with the layout's printed page number; a page any of whose
 requests failed has none. Writes to the Part's store, vsc-project/khoTangTucNguoiNguoiViet/store/<part>/:
 
-  lines/pNNN.json         each page's printed lines found on the scan, and ink outside them
   layout/pNNN.json        one layout answer per PDF page
   layout/pNNN.png         the page with its Line Numbers as the layout request saw it, smaller, for the review server
-  ocr/pNNN-LMM.json       one OCR Reading per printed line of an Entry Span, named by its page and Line Number
-  ocr/pNNN-LMM.png        that line's pieces as the OCR model saw them (32 px tall), to check its OCR Reading against
   spans/pNNN-LMM.json     one answer per Entry Span, named by its page and the Line Number it starts on
   answers.json            every current page answer, by PDF page, for the review server to rebuild with Fixes
   readings.json           the OCR Readings of each page with an answer joined, by PDF page, which the page's Blocks
                           (and a Fix's) are checked against for Diacritic Disagreements
+  agreed.json             the same readings of each page, with their Agreed Syllables flagged
+                          (diacritics.flagged_reads), which the page's Blocks (and a Fix's) are checked against for
+                          Model Edits
   entries.json            the verbatim Proverb Entries built from every page answer, each page's book page, answer
                           hash, entries and Entry Spans (their crops as shares of the page, for the review server), and
                           the Part's book page offset
   warnings.json           every Warning, with its kind, reason and PDF page: number gaps and duplicates, letter
                           headings out of order, unknown Source Abbreviations, Citations with no pages or that cannot
-                          be split, Diacritic Disagreements, page numbers out of step, failed or missing pages,
-                          Leading Blocks with no owner, and ink outside every printed line found
+                          be split, Diacritic Disagreements, Model Edits, page numbers out of step, failed or missing
+                          pages, Leading Blocks with no owner, and ink outside every printed line found
   sources.json            the 63 Sources by Source Abbreviation (as export.py writes them), for the review server
   pages/pNNN.png          each page, for the review server
   serve.py, web/,         the review server, its page, and the code that rebuilds the Proverb Entries with Fixes
@@ -42,12 +46,11 @@ requests failed has none. Writes to the Part's store, vsc-project/khoTangTucNguo
   token_usage.jsonl       one line per request sent to this store, summarized at the end by step (layout, span)
 
 Saved answers are stamped with the PDF's hash, the image settings and a hash of the prompts (a layout answer also with
-the page's lines, an OCR Reading with the OCR model's settings and its line's crop, an Entry Span answer with its
-lines, crop and OCR Readings), so a run only redoes requests whose answer is missing, failed or stamped differently,
-and runs over different pages add up in the store. The outputs are always rebuilt from every saved answer, not only
-this run's. --dry-run sends nothing: it counts each layout request's prompt tokens with
-the model's own processor (images included) to check they fit the context window; Entry Span requests need layout
-answers, so they are not counted, and no line is read by the OCR model.
+the page's lines, an Entry Span answer with its lines, crop and the two reads of its lines), so a run only redoes
+requests whose answer is missing, failed or stamped differently, and runs over different pages add up in the store.
+The outputs are always rebuilt from every saved answer, not only this run's. --dry-run sends nothing: it needs the Mac's
+lines and reads like any run, and counts each layout request's prompt tokens with the model's own processor (images
+included) to check they fit the context window; Entry Span requests need layout answers, so they are not counted.
 """
 import os
 import sys
@@ -60,31 +63,31 @@ if _PROJECT_ROOT not in sys.path:
 import argparse
 import json
 import shutil
-import unicodedata
 
 import fitz
 
 from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL
 from src.khotangtucngu.assembly import INK_OUTSIDE, LETTER, PAGE_MISSING, assemble, warning
 from src.khotangtucngu.citations import Abbreviations, load_abbreviations
+from src.khotangtucngu.diacritics import flagged_reads, read_of_line
 from src.khotangtucngu.export import dated_sources, sources
-from src.khotangtucngu.ocr import Line, read_lines, reader_stamp
 from src.khotangtucngu.pages import (
-    entry_spans, find_lines, layout_image, layout_problem, line_box, line_key, page_key, review_image,
-    review_layout_image, span_image, span_key
+    entry_spans, layout_image, layout_problem, page_key, part_pdf, review_image, review_layout_image, span_image,
+    span_key
 )
 from src.khotangtucngu.prompts import (
     LAYOUT_SYSTEM_PROMPT, SPAN_SYSTEM_PROMPT, layout_prompt_sha1, layout_schema, layout_user_text, span_prompt_sha1,
     span_schema, span_user_text
 )
 from src.khotangtucngu.settings import (
-    BOOK_DIR, FRONT_MATTER, LABEL_STRIP_PX, LAYOUT_IMAGE, LAYOUT_MAX_TOKENS, OCR_IMAGE, PAGE_DPI, PAGE_IMAGE, PARTS,
+    BOOK_DIR, FRONT_MATTER, LABEL_STRIP_PX, LAYOUT_IMAGE, LAYOUT_MAX_TOKENS, PAGE_DPI, PAGE_IMAGE, PARTS,
     REQUEST_TIMEOUT, RETRY_TEMPERATURE, SPAN_MAX_TOKENS, STORE_DIR
 )
+from src.khotangtucngu.vision_ocr import saved_lines, vision_problem
 from src.providers import vlm_requests
 from src.providers.vlm_requests import (
     Model, Phase, Request, current_answer, data_url, file_sha1, image_messages, page_set, print_token_stats,
-    read_json, sha1, write_json
+    read_result, sha1, write_json
 )
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -107,17 +110,9 @@ def parse_args():
     parser.add_argument("--vllm-url", default=DEFAULT_VLLM_URL)
     parser.add_argument("--dry-run", action="store_true",
                         help="Send nothing; count every request's prompt tokens and check they fit the context window")
+    parser.add_argument("--check-reads", action="store_true",
+                        help="Only check this run's pages have current Vision reads: the job does so before its server")
     return parser.parse_args()
-
-
-def part_pdf(name):
-    """The path of a Part's PDF in BOOK_DIR, whichever way the file system spells its accents (composed on Linux,
-    as copied; decomposed if copied from macOS), or None."""
-    for form in ("NFC", "NFD"):
-        path = os.path.join(BOOK_DIR, unicodedata.normalize(form, name))
-        if os.path.exists(path):
-            return path
-    return None
 
 
 def layout_stamp(page, found):
@@ -126,41 +121,18 @@ def layout_stamp(page, found):
 
 
 def span_stamp(page, span):
-    """What an Entry Span's answer depends on beyond the phase's stamp: its user text (its OCR Readings with it), its
-    lines and its crop."""
+    """What an Entry Span's answer depends on beyond the phase's stamp: its user text (the two reads of its lines with
+    it), its lines and its crop."""
     return {"user_sha1": sha1(span_user_text(page, span["leading"], span["readings"])),
             "lines": [span["first"], span["last"]], "box": span["box"]}
 
 
-def ocr_stamp(found, n):
-    """What a line's OCR Reading depends on beyond the phase's stamp: its crop."""
-    return {"box": line_box(found, n)}
-
-
-def ocr_lines(doc, page_spans, found):
-    for page, spans in page_spans.items():
-        for span in spans:
-            for n in range(span["first"], span["last"] + 1):
-                stamp = ocr_stamp(found[page], n)
-                yield Line(line_key(page, n), lambda page=page, box=stamp["box"]: span_image(doc, page, box), stamp)
-
-
-def with_readings(page, spans, found, ocr_dir, ocr_base):
-    """Gives each of a page's `spans` whose lines all have a current OCR Reading its "readings", [(Line Number,
-    text)]. Returns why the first other has none, or None."""
-    first_why = None
+def with_readings(spans, record):
+    """Gives each of a page's `spans` its "readings", [(Line Number, line read, page read)], from the page's Vision
+    `record`."""
     for span in spans:
-        readings = []
-        for n in range(span["first"], span["last"] + 1):
-            key = line_key(page, n)
-            text, why = current_answer(ocr_dir, key, {**ocr_base, **ocr_stamp(found, n)})
-            if text is None:
-                first_why = first_why or f"OCR Reading {key} {why}"
-                break
-            readings.append((n, text))
-        else:
-            span["readings"] = readings
-    return first_why
+        lines = record["lines"][span["first"] - 1:span["last"]]
+        span["readings"] = [(line["n"], line["line_read"], line["page_read"]) for line in lines]
 
 
 def layout_requests(doc, pages, found):
@@ -179,12 +151,10 @@ def layout_requests(doc, pages, found):
 
 
 def span_requests(doc, page_spans):
-    """The Entry Span requests of `page_spans`' Entry Spans that have their OCR Readings (see `with_readings`)."""
+    """The Entry Span requests of `page_spans`' Entry Spans, which have their "readings" (see `with_readings`)."""
     schema = span_schema()
     for page, spans in page_spans.items():
         for span in spans:
-            if "readings" not in span:
-                continue
             yield Request(span_key(page, span["first"]), (
                 lambda page=page, span=span: image_messages(
                     SPAN_SYSTEM_PROMPT,
@@ -193,12 +163,12 @@ def span_requests(doc, page_spans):
             ), schema, span_stamp(page, span))
 
 
-def page_answer(page, found, layout_dir, layout_base, ocr_dir, ocr_base, spans_dir, span_base):
+def page_answer(page, found, record, pdf_sha1, layout_dir, layout_base, spans_dir, span_base):
     """
-    (answer, Entry Spans, None) for a page whose layout answer, every OCR Reading of its Entry Spans' lines and every
-    Entry Span answer are current: its answer is the Entry Spans' Blocks in order with the layout's printed page
-    number, and each Entry Span gets "readings" (see `with_readings`) and "blocks", [first, last + 1], the indexes of
-    its Blocks in the answer. Else (None, None, why it has none).
+    (answer, Entry Spans, None) for a page whose layout answer, Vision `record` and every Entry Span answer are current:
+    its answer is the Entry Spans' Blocks in order with the layout's printed page number, and each Entry Span gets
+    "readings" (see `with_readings`) and "blocks", [first, last + 1], the indexes of its Blocks in the answer. Else
+    (None, None, why it has none).
     """
     if found is None:
         return None, None, "never ran"
@@ -207,10 +177,11 @@ def page_answer(page, found, layout_dir, layout_base, ocr_dir, ocr_base, spans_d
     layout, why = current_answer(layout_dir, page_key(page), {**layout_base, **layout_stamp(page, found)})
     if layout is None:
         return None, None, why if why == "never ran" else f"layout request {why}"
-    spans, blocks = entry_spans(found, layout), []
-    why = with_readings(page, spans, found, ocr_dir, ocr_base)
+    why = vision_problem(record, found, pdf_sha1)
     if why:
-        return None, None, why
+        return None, None, f"Vision read {why}"
+    spans, blocks = entry_spans(found, layout), []
+    with_readings(spans, record)
     for span in spans:
         key = span_key(page, span["first"])
         answer, why = current_answer(spans_dir, key, {**span_base, **span_stamp(page, span)})
@@ -254,9 +225,9 @@ def main():
     only = page_set(args.pages, n_pages) if args.pages else list(range(first, min(last, n_pages) + 1))
 
     store = os.path.join(STORE_DIR, args.part)
-    lines_dir, layout_dir, ocr_dir, spans_dir = (os.path.join(store, d) for d in ("lines", "layout", "ocr", "spans"))
+    lines_dir, vision_dir, layout_dir, spans_dir = (os.path.join(store, d)
+                                                    for d in ("lines", "vision", "layout", "spans"))
     usage_file = os.path.join(store, "token_usage.jsonl")
-    os.makedirs(lines_dir, exist_ok=True)
     print(f"[Kho tàng tục ngữ] {args.part} ({part.pdf}): {n_pages} PDF pages, running {len(only)} "
           f"({'--pages ' + args.pages if args.pages else f'proverb pages {first}-{last}'}); store {store}")
     abbreviation_list = load_abbreviations(FRONT_MATTER)
@@ -269,22 +240,28 @@ def main():
     pdf_sha1 = file_sha1(pdf)
     layout_base = {"pdf_sha1": pdf_sha1, "page_dpi": PAGE_DPI, "layout_image": LAYOUT_IMAGE,
                    "prompt_sha1": layout_prompt_sha1()}
-    ocr_base = {"pdf_sha1": pdf_sha1, "page_dpi": PAGE_DPI, "ocr_image": OCR_IMAGE, **reader_stamp()}
     span_base = {"pdf_sha1": pdf_sha1, "page_dpi": PAGE_DPI, "page_image": PAGE_IMAGE,
                  "prompt_sha1": span_prompt_sha1()}
 
-    # -- the printed lines: found again for this run's pages, read back for the others
-    print(f"[Kho tàng tục ngữ] Finding the printed lines of {len(only)} page(s)")
-    found = {}
-    for page in only:
-        found[page] = find_lines(doc, page)
-        write_json(os.path.join(lines_dir, f"{page_key(page)}.json"), {"pdf_sha1": pdf_sha1, **found[page]})
+    # -- the Mac's printed lines and Vision reads, of every page saved from this PDF: this run's must all be current
+    found, records, unread = {}, {}, []
     for page in range(1, n_pages + 1):
-        path = os.path.join(lines_dir, f"{page_key(page)}.json")
-        if page not in found and os.path.exists(path):
-            saved = read_json(path)
-            if saved.get("pdf_sha1") == pdf_sha1:
-                found[page] = {k: saved[k] for k in ("size", "lines", "ocr_tops", "missed")}
+        lines = saved_lines(lines_dir, page, pdf_sha1)
+        if lines is not None:
+            found[page], records[page] = lines, read_result(vision_dir, page_key(page))
+    for page in only:
+        why = "no printed lines from this PDF"
+        if page in found:
+            why = vision_problem(records[page], found[page], pdf_sha1)
+        if why:
+            unread.append(f"  {page_key(page)}: {why}")
+    if unread:
+        sys.exit(f"[Kho tàng tục ngữ] {len(unread)} page(s) of this run have no current Vision read. On the Mac, run "
+                 f"python3 -m src.khotangtucngu.vision_ocr --{args.part} with these pages, and copy its output here:\n"
+                 + "\n".join(unread))
+    if args.check_reads:
+        print(f"[Kho tàng tục ngữ] All {len(only)} page(s) of this run have current Vision reads")
+        return
 
     if args.dry_run:
         with open(os.path.join(store, "dry_run_tokens.jsonl"), "w", encoding="utf-8") as out:
@@ -302,31 +279,32 @@ def main():
             layout, _ = current_answer(layout_dir, page_key(page), {**layout_base, **layout_stamp(page, found[page])})
             if layout is not None:
                 page_spans[page] = entry_spans(found[page], layout)
-    read_lines(ocr_lines(doc, page_spans, found), ocr_dir, ocr_base, label="[Kho tàng tục ngữ] OCR Readings")
-    for page, spans in page_spans.items():
-        with_readings(page, spans, found[page], ocr_dir, ocr_base)
+                with_readings(page_spans[page], records[page])
     vlm_requests.run_phase(span_requests(doc, page_spans), spans_dir, span_base,
                            label="[Kho tàng tục ngữ] Entry Span requests", phase=SPAN, model=model,
                            usage_file=usage_file)
 
     # -- outputs, rebuilt from every saved answer
-    answers, spans, readings, missing = {}, {}, {}, []
+    answers, spans, readings, flagged, missing = {}, {}, {}, {}, []
     for page in range(1, n_pages + 1):
-        answer, page_spans_now, why = page_answer(page, found.get(page), layout_dir, layout_base, ocr_dir, ocr_base,
-                                                  spans_dir, span_base)
+        answer, page_spans_now, why = page_answer(page, found.get(page), records.get(page), pdf_sha1, layout_dir,
+                                                  layout_base, spans_dir, span_base)
         if answer is not None:
             answers[page], spans[page] = answer, page_spans_now
-            readings[page] = "\n".join(text for span in page_spans_now for _, text in span["readings"])
-        # A page outside this run counts only if its requests ran and one failed, or were made from other input
-        elif page in only or why != "never ran":
+            reads = [(line_read, page_read) for span in page_spans_now for _, line_read, page_read in span["readings"]]
+            readings[page] = "\n".join(read_of_line(*read) for read in reads)
+            flagged[page] = flagged_reads(reads)
+        # A page outside this run counts only if its requests ran and one failed, or were made from other input: the
+        # Mac may have read the whole Part for a job over a small batch
+        elif page in only or (why != "never ran" and found[page]["lines"]):
             missing.append(warning(PAGE_MISSING, page_key(page), f"PDF page {page} has no answer: {why}", page))
-        if page in found and found[page]["missed"]:
+        if (page in only or page in answers) and found[page]["missed"]:
             patches = found[page]["missed"]
             top, bottom = min(m[1] for m in patches), max(m[3] for m in patches)
             missing.append(warning(INK_OUTSIDE, page_key(page), f"PDF page {page} has {len(patches)} patch(es) of "
                                    f"ink outside every printed line found ({top}-{bottom} px down the 300 dpi scan), "
                                    f"in no Entry Span", page))
-    entries, warnings, pages = assemble(answers, abbreviations, part.book_page_offset, readings)
+    entries, warnings, pages = assemble(answers, abbreviations, part.book_page_offset, readings, flagged)
     # assemble's Warning ids are unique, and a missing page's and a page's missed ink are their own
     warnings = sorted(missing + warnings, key=lambda w: w["page"])
 
@@ -350,6 +328,7 @@ def main():
         p["spans"] = review_spans(page, spans[page], found[page]["size"], answers[page], entries)
     write_json(os.path.join(store, "answers.json"), {str(p): answers[p] for p in sorted(answers)})
     write_json(os.path.join(store, "readings.json"), {str(p): readings[p] for p in sorted(readings)})
+    write_json(os.path.join(store, "agreed.json"), {str(p): flagged[p] for p in sorted(flagged)})
     write_json(os.path.join(store, "entries.json"), {"part": args.part, "book_page_offset": part.book_page_offset,
                                                      "pages": pages, "entries": entries})
     write_json(os.path.join(store, "warnings.json"), warnings)
