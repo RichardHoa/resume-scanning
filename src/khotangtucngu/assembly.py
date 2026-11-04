@@ -15,7 +15,7 @@ import json
 import unicodedata
 
 from .citations import see_also_names
-from .diacritics import disagreements
+from .diacritics import ADDED, DROPPED, disagreements, model_edits
 
 # The kinds of Block a page answer holds (prompts.py tells the model what each is)
 LETTER, PROVERB, CITATIONS, VARIANT, NOTE, CORRECTION, SEE_ALSO = (
@@ -30,7 +30,7 @@ _TONES = {"̀", "́", "̃", "̉", "̣"}
 
 NUMBER_GAP, NUMBER_DUPLICATE, LETTER_ORDER = "number_gap", "number_duplicate", "letter_order"
 PAGE_NUMBER, PAGE_MISSING, NO_OWNER = "page_number", "page_missing", "no_owner"
-DIACRITIC = "diacritic_disagreement"
+DIACRITIC, MODEL_EDIT = "diacritic_disagreement", "model_edit"
 # Raised by cli.py, not here: ink on a page outside every printed line found, which no Entry Span holds
 INK_OUTSIDE = "ink_outside"
 
@@ -98,28 +98,49 @@ def _unique_ids(warnings):
     return warnings
 
 
-def _diacritic_warnings(page, blocks, reading, owners):
-    """A Diacritic Disagreement Warning for each syllable of a page's `blocks` that its OCR Readings (`reading`,
-    joined) mark otherwise, one per Proverb Entry (`owners`, by Block) and pair of readings, with how often it came."""
+def _counted_warnings(kind, page, items, owners):
+    """A Warning of `kind` for each of `items`, (index of the Block, reason), one per Proverb Entry (`owners`, by Block)
+    and reason, with how often it came."""
     counts = {}
-    for b, ours, theirs in disagreements(blocks, reading):
-        key = (owners[b], ours, theirs)
+    for b, reason in items:
+        key = (owners[b], reason)
         counts[key] = counts.get(key, 0) + 1
     warnings = []
-    for (owner, ours, theirs), n in counts.items():
+    for (owner, reason), n in counts.items():
         where = f"{owner}: " if owner else f"PDF page {page}: "
         times = f" ({n} times)" if n > 1 else ""
-        warnings.append(warning(DIACRITIC, f"p{page}-{owner}" if owner else f"p{page}", f'{where}"{ours}" where the '
-                                f'OCR Reading has "{theirs}"{times}', page))
+        warnings.append(warning(kind, f"p{page}-{owner}" if owner else f"p{page}", f"{where}{reason}{times}", page))
     return warnings
 
 
-def assemble(answers, abbreviations, book_page_offset, readings=None):
+def _diacritic_warnings(page, blocks, reading, owners, flagged=None):
+    """A Diacritic Disagreement Warning for each syllable of a page's `blocks` that its OCR Readings (`reading`,
+    joined) mark otherwise, unless Agreed in `flagged`."""
+    return _counted_warnings(DIACRITIC, page, [(b, f'"{ours}" where the OCR Reading has "{theirs}"')
+                                               for b, ours, theirs in disagreements(blocks, reading, flagged)], owners)
+
+
+def _model_edit_reason(did, ours, theirs):
+    if did == DROPPED:
+        return f'the model dropped "{theirs}", which both reads have'
+    if did == ADDED:
+        return f'the model added "{ours}", which no read has'
+    return f'the model wrote "{ours}" where both reads have "{theirs}"'
+
+
+def _model_edit_warnings(page, blocks, flagged, owners):
+    """A Model Edit Warning for each change of a page's `blocks` to an Agreed Syllable of `flagged`, or word added."""
+    return _counted_warnings(MODEL_EDIT, page, [(b, _model_edit_reason(did, ours, theirs))
+                                                for b, did, ours, theirs in model_edits(blocks, flagged)], owners)
+
+
+def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=None):
     """
     `answers`: {PDF page: its current page answer}; `abbreviations`: citations.Abbreviations; `book_page_offset`: the
     Part's book page minus PDF page; `readings`: {PDF page: its OCR Readings joined}, which a page's Blocks are checked
-    against for Diacritic Disagreements (none for a page without). Returns the verbatim
-    Proverb Entries in book order, the Warnings they raise (all but failed or missing pages), and each page's
+    against for Diacritic Disagreements (none for a page without); `flagged`: {PDF page: its reads flagged, from
+    diacritics.flagged_reads}, which they are checked against for Model Edits (none for a page without). Returns the
+    verbatim Proverb Entries in book order, the Warnings they raise (all but failed or missing pages), and each page's
     {"pdf", "book_page", "printed_page", "answer_sha1", "entries"}, the names of the entries it holds. An entry's
     "blocks" is {PDF page (a string): [first, last + 1]}, the indexes of its Blocks in that page's answer.
     """
@@ -214,8 +235,11 @@ def assemble(answers, abbreviations, book_page_offset, readings=None):
                 report(problems, page, current["name"])
             elif kind == SEE_ALSO:
                 current["see_also"] += see_also_names(text)
+        page_flagged = flagged.get(page) if flagged else None
         if readings and page in readings:
-            warnings += _diacritic_warnings(page, blocks, readings[page], owners)
+            warnings += _diacritic_warnings(page, blocks, readings[page], owners, page_flagged)
+        if page_flagged:
+            warnings += _model_edit_warnings(page, blocks, page_flagged, owners)
         if unowned_kinds:
             warnings.append(warning(NO_OWNER, f"p{page}", f"PDF page {page} has {len(unowned_kinds)} Block(s) "
                                     f"({', '.join(unowned_kinds)}) with no Proverb Entry to join: {unowned}", page))

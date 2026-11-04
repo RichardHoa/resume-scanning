@@ -17,8 +17,8 @@ and says so.
 Besides the store's files:
 
   GET  /assembled     the Proverb Entries, Warnings and pages rebuilt from answers.json with the Fixes that are not
-                      stale (their Blocks checked against the OCR Readings in readings.json), the Fixes by PDF
-                      page, and the pages whose Fix is applied and stale
+                      stale (their Blocks checked against the OCR Readings in readings.json and the reads flagged in
+                      agreed.json), the Fixes by PDF page, and the pages whose Fix is applied and stale
   POST /preview       {"page", "printed_page", "blocks"}: the entries and Warnings of that page were it so
   POST /review        a Fix line, appended to review.jsonl with its time and the hash of its page's current answer
 
@@ -74,6 +74,12 @@ def _readings():
     return {int(page): reading for page, reading in _read("readings.json").items()}
 
 
+def _flagged():
+    """Each page's two reads with their Agreed Syllables flagged, by PDF page, which its Blocks are checked against for
+    Model Edits."""
+    return {int(page): flagged for page, flagged in _read("agreed.json").items()}
+
+
 def assembled(page=None, printed_page=None, blocks=None):
     """The store rebuilt with its Fixes; with `page`, as if that page's printed number and Blocks were `printed_page`
     and `blocks`."""
@@ -83,7 +89,7 @@ def assembled(page=None, printed_page=None, blocks=None):
         answers[page] = {**answers.get(page, {}), "printed_page": printed_page, "blocks": blocks}
         fixes.pop(page, None)
     offset = _read("entries.json", lambda f: json.load(f)["book_page_offset"])
-    entries, warnings, pages, applied, stale = rebuild(answers, fixes, abbreviations, offset, _readings())
+    entries, warnings, pages, applied, stale = rebuild(answers, fixes, abbreviations, offset, _readings(), _flagged())
     # A failed or missing page has no answer, and ink outside the found lines is no Block's, so no Fix can change
     # their Warnings
     missing = [w for w in _read("warnings.json") if w["kind"] in (PAGE_MISSING, INK_OUTSIDE)]

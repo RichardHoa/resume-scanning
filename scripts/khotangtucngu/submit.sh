@@ -15,7 +15,9 @@
 #
 # A layout request per PDF page sees its 300 dpi scan with each printed line's Line Number and answers where each
 # Proverb Entry starts; one request per Entry Span then reads its Blocks from its crop of the scan. The code groups the
-# Blocks of every page saved in the Part's store into verbatim Proverb Entries and Warnings.
+# Blocks of every page saved in the Part's store into verbatim Proverb Entries and Warnings. Each page's printed lines
+# and Apple Vision reads come from a Mac (src/khotangtucngu/vision_ocr.py): run it and copy its output here first, for
+# the same pages.
 #
 # Usage:
 #   sbatch scripts/khotangtucngu/submit.sh --part-<n> [--model <key>] [cli.py flags]    # Parts: src/khotangtucngu/settings.py
@@ -23,15 +25,13 @@
 #   bash scripts/khotangtucngu/submit.sh --part-1 --dry-run                 # on the login node: token counts, no GPU
 #
 # The model profile is served with vision on for this job only (profiles serve text only), and with at most
-# KHOTANGTUCNGU_CONCURRENCY requests in flight (scripts/lib/vision_job.sh). The OCR model, which reads each line of an
-# Entry Span before its request, runs in the CLI's own process on the same GPU (src/khotangtucngu/ocr.py), in the
-# memory the server leaves.
+# KHOTANGTUCNGU_CONCURRENCY requests in flight (scripts/lib/vision_job.sh).
 # -----------------------------------------------------------------------------
 
 KHOTANGTUCNGU_CONCURRENCY=40    # the default profile's
 MAX_IMAGES_PER_PROMPT=1    # a layout request sends its page, an Entry Span request its crop
-# The profile's 27B model keeps about 82 GB, for its 54 GB of weights and the KV cache of its 40 requests; the OCR
-# model's weights are about 150 MB
+VISION_JOB_PREFLIGHT=--check-reads    # a page of this run with no current Vision read ends the job before its server
+# The profile's 27B model keeps about 82 GB, for its 54 GB of weights and the KV cache of its 40 requests
 VLLM_GPU_MEMORY_UTILIZATION=0.85
 
 # -----------------------------------------------------------------------------

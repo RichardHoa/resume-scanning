@@ -202,28 +202,57 @@ python3 scripts/proofread/compare_ocr_hint.py vsc-project/ai-pass/<with-hint> vs
 
 ### Kho tàng tục ngữ người Việt (scanned proverb collection)
 
-`src/khotangtucngu` transcribes the Proverb Entries of one PDF Part of the book with the default vision model,
-one request per PDF page. It then lets you review them page by page against the scan and exports website data.
+`src/khotangtucngu` transcribes the Proverb Entries of one PDF Part of the book with the default vision model, using
+two Apple Vision reads of every line made on a Mac. It then lets you review them page by page against the scan and
+exports website data.
 Its terms (PDF Part, Proverb Entry, Citation, Warning, Fix, ...) are in
 [`vsc-project/khoTangTucNguoiNguoiViet/GLOSSARY.md`](vsc-project/khoTangTucNguoiNguoiViet/GLOSSARY.md). The Parts,
 their proverb pages and book page offsets are in `src/khotangtucngu/settings.py`; only `--part-1` (PDF pages 36–865)
 is set up now.
 
 Everything for one Part lives in its store, `vsc-project/khoTangTucNguoiNguoiViet/store/<part>/`. `vsc-project/` is
-not in git apart from `front-matter.md`, so first copy the Part's PDF there on the cluster
+not in git apart from `front-matter.md`, so first copy the Part's PDF there on both the Mac and the cluster
 (`kho tàng tục ngữ người việt tập 1 - p1.pdf`).
 
-**1. Transcribe (cluster, from the repository root).**
+**1. Read the pages with Apple Vision (Mac, from the repository root, in your own terminal).** Vision runs only on
+macOS, so this step is not part of the job. Install its dependencies first:
+`pip install -r requirements-macos.txt`. Compiling its reader needs Apple's Command Line Tools.
+
+```bash
+python3 -m src.khotangtucngu.vision_ocr --part-1 --pages 36-45,420-424   # a first batch
+python3 -m src.khotangtucngu.vision_ocr --part-1                         # every proverb page, about 18 minutes
+```
+
+- Runs over different pages add up, and a rerun skips pages with a current read. A page Vision fails on is saved as
+  failed and read again next time. A new macOS version reads every page again.
+- A changed line finder doesn't count as out of date: delete `store/<part>/lines/` to read the pages again with it.
+- It ends by printing pages read, pages failed, the share of Disputed Syllables, and the line that copies its output to
+  the cluster. It transfers nothing itself. That line copies only these two folders, never `review.jsonl`:
+
+```bash
+rsync -a vsc-project/khoTangTucNguoiNguoiViet/store/part-1/lines vsc-project/khoTangTucNguoiNguoiViet/store/part-1/vision \
+      <user>@<login node>:<repo>/vsc-project/khoTangTucNguoiNguoiViet/store/part-1/
+```
+
+| File | What it holds |
+| --- | --- |
+| `lines/pNNN.json` | each page's printed lines found on the scan, and ink outside them |
+| `vision/pNNN.json` | each page's Vision record: the PDF's hash, the stamp of how it was read, its status, each Line Number's box and two reads, and the observations matching no line |
+
+**2. Transcribe (cluster, from the repository root).** Copy the reads across first, then use the same `--pages`.
 
 ```bash
 bash scripts/khotangtucngu/submit.sh --part-1 --dry-run            # login node: token counts, sends nothing
-sbatch scripts/khotangtucngu/submit.sh --part-1 --pages 36-45,420-424   # a trial, with an entry over a page break
+sbatch scripts/khotangtucngu/submit.sh --part-1 --pages 36-45,420-424   # a first batch, with an entry over a page break
 sbatch scripts/khotangtucngu/submit.sh --part-1                    # every proverb page of the Part
 sbatch scripts/khotangtucngu/submit.sh --part-1 --pages 420        # redo the pages you name (ranges and single pages)
 ```
 
-- Each page's answer is saved as soon as it arrives. A rerun only redoes pages that failed, never ran, or were made
-  under a different prompt, image setting or PDF. If the full run hits the job's 4-hour limit, submit the same
+- Before any request, including with `--dry-run`, the job exits naming any page of this run whose lines or Vision read
+  are missing, failed or made from another PDF, before its server starts. A job with `--pages` needs reads for those
+  pages only.
+- Each answer is saved as soon as it arrives. A rerun only redoes requests that failed, never ran, or were made
+  under a different prompt, image setting, read or PDF. If the full run hits the job's 4-hour limit, submit the same
   command again and it carries on.
 - Runs over different pages add up in the store. The outputs are rebuilt from every saved answer each time.
 - `--dry-run` writes its per-request counts to `store/<part>/dry_run_tokens.jsonl`.
@@ -233,8 +262,11 @@ A run writes into the store:
 
 | File | What it holds |
 | --- | --- |
-| `requests/pNNN.json` | each PDF page's answer: its printed page number and its Blocks |
+| `layout/pNNN.json`, `layout/pNNN.png` | each PDF page's layout answer, and the page with its Line Numbers as that request saw it |
+| `spans/pNNN-LMM.json` | each Entry Span's answer, named by its page and the Line Number it starts on |
 | `answers.json` | every current page answer, for the review server to rebuild the entries with Fixes |
+| `readings.json` | each page's OCR Readings joined, which its Blocks are checked against for Diacritic Disagreements |
+| `agreed.json` | the same readings with their Agreed Syllables flagged, which its Blocks are checked against for Model Edits |
 | `entries.json` | the verbatim Proverb Entries, plus each page's book page, answer hash and entries |
 | `warnings.json` | every Warning, with its kind, reason and PDF page |
 | `sources.json` | the 63 Sources, for the review server to write Citations out |
@@ -248,11 +280,15 @@ Warnings flag:
 - letter headings out of order;
 - unknown Source Abbreviations;
 - Citations with no pages or that can't be split;
+- Diacritic Disagreements;
+- Model Edits: where the model's Blocks differ from an Agreed Syllable or add a word no read has. The model's text is
+  kept and the Warning names both spellings. A Fix that restores the reads' spelling clears it;
 - page numbers out of step with the PDF page;
 - failed or missing pages;
-- Leading Blocks with no Proverb Entry to join.
+- Leading Blocks with no Proverb Entry to join;
+- ink outside every printed line found.
 
-**2. Review (any machine, nothing to install).** Copy the store to the laptop, into the same path in your clone of
+**3. Review (any machine, nothing to install).** Copy the store to the laptop, into the same path in your clone of
 this repository, then start the server in it:
 
 ```bash
@@ -278,7 +314,7 @@ cd vsc-project/khoTangTucNguoiNguoiViet/store/part-1 && python3 serve.py   # htt
   `--exclude review.jsonl` so the copy on the cluster never overwrites your review.
 - **Fixing the model's reading:** to redo pages, rerun them on the cluster with `--pages` and pull the store again.
 
-**3. Export (laptop, no GPU).**
+**4. Export (laptop, no GPU).**
 
 ```bash
 python3 -m src.khotangtucngu.export
