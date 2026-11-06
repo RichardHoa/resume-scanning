@@ -48,8 +48,8 @@ EDGE_PX = 40
 # The layout answer is a page number and a dozen Line Numbers
 LAYOUT_MAX_TOKENS = 512
 # An Entry Span's answer is the Blocks of one Proverb Entry, about 100-300 tokens in Vietnamese; the cap leaves room
-# for a long note and stops a runaway answer (p042-L02 once ran to 2048 tokens of newlines before a retry answered in
-# 133; vllm_client now forbids whitespace between JSON tokens, so that runaway can't happen)
+# for a long note and stops a runaway answer (p042-L02 ran to it in newlines on all 3 attempts; the server now forbids
+# whitespace between JSON tokens, scripts/khotangtucngu/submit.sh)
 SPAN_MAX_TOKENS = 4096
 # Apple Vision reads every printed line and every whole page on a Mac before the job runs (vision_ocr.py;
 # docs/adr/0004-apple-vision-reads-each-page.md and 0005-two-reads-and-model-edits.md beside the GLOSSARY). Language
@@ -70,11 +70,22 @@ VISION_READ_TIMEOUT = 300
 OCR_ABOVE_SHARE = 0.4
 OCR_ABOVE_GAP_PX = 10
 OCR_PAD_PX = 4
+# ...and this many px under its band, as far as the next line's ink: a dot under a letter can have too little ink for its
+# rows to count in the band either, and with only OCR_PAD_PX under it the line read lost the dot 11 times on 15 pages
+# (thụ→thu, mặn→măn) where the page read never did
+OCR_BELOW_PX = 20
+# The crops each line is read from once more, each (px under its band, zoom), to tell how stable its reads are: an Agreed
+# Syllable every one of them also reads is Stable. Vision's reads held like this where the model was more often wrong to
+# change them (làn on A 42, muộn on C 508), and flipped where it was right (chẳng on A 28)
+VISION_STABILITY_CROPS = ((12, 1), (12, 2), (20, 2), (12, 3))
 # Seconds to wait for one request's answer before it fails and is retried: past the 150-210 s a runaway Entry Span
 # answer takes to reach SPAN_MAX_TOKENS, so it fails as cut short, not as a timeout
 REQUEST_TIMEOUT = 300
 # Every first attempt is at temperature 0 (vlm_requests); retries sample, as an identical prompt at temperature 0
 # fails the same way
 RETRY_TEMPERATURE = 0.3
+# No repetition penalty: vLLM applies it to every token of the prompt too, the reads included, so it pushes a copyist off
+# the very word it is copying and onto one the prompt doesn't hold (lần→làn on A 42, VCVN→VCSVN on A 10)
+REPETITION_PENALTY = 1.0
 # The review server shows each page about this many px on its long side
 PAGE_IMAGE_LONG_SIDE = 2000

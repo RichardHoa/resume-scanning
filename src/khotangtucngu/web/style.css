@@ -41,6 +41,8 @@ button[aria-pressed="true"] { background: var(--accent); color: #fff; border-col
 .warning { border-left: 3px solid var(--warn); background: var(--warn-bg); padding: 2px 8px; margin: 4px 0;
            border-radius: 3px; font-size: 13px; }
 .warning .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--warn); font-weight: 700; }
+.warning.priority { background: var(--warn); color: #fff; font-weight: 600; }
+.warning.priority .kind { color: #fff; }
 #warnings:not(:empty) { padding: 6px 0; border-bottom: 1px solid var(--line); }
 .fixline { margin-top: 4px; color: var(--ok); }
 .small-btn { font-size: 12px; padding: 0 6px; }

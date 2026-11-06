@@ -15,7 +15,7 @@ from scipy import ndimage
 
 from src.khotangtucngu.settings import (
     BOOK_DIR, EDGE_PX, LABEL_COLOUR, LABEL_PX, LABEL_STRIP_PX, MISSED_INK, MISSED_JOIN_PX, OCR_ABOVE_GAP_PX, OCR_ABOVE_SHARE,
-    OCR_PAD_PX, PAGE_DPI, PAGE_IMAGE_LONG_SIDE, SPAN_EDGE_GAP_PX, SPAN_MARGIN_PX
+    OCR_BELOW_PX, OCR_PAD_PX, PAGE_DPI, PAGE_IMAGE_LONG_SIDE, SPAN_EDGE_GAP_PX, SPAN_MARGIN_PX
 )
 from src.providers.page_images import (
     RENDER_LOCK, line_bands, line_ends, page_ink, rule_columns, whole_page, whole_page_at_dpi
@@ -182,13 +182,18 @@ def entry_spans(found, answer):
     return spans
 
 
-def line_box(found, n):
-    """The crop of Line Number `n` of a page (`found`, from `find_lines`) for its OCR Reading: its ink band (its tone
-    marks and dots under letters with it) grown up to its ocr_top, OCR_PAD_PX around and beyond its own ink ends, so
-    the crop holds the line itself, not the blank width of the Entry Span."""
-    (w, h), (_, bottom, left, right) = found["size"], found["lines"][n - 1]
+def line_box(found, n, below_px=OCR_BELOW_PX):
+    """The crop of Line Number `n` of a page (`found`, from `find_lines`) for its OCR Reading: its ink band grown up to
+    its ocr_top and `below_px` down, for the tone marks and dots under letters the band leaves out, stopping at the
+    next line's ocr_top; OCR_PAD_PX around and beyond its own ink ends, so the crop holds the line itself, not the blank
+    width of the Entry Span."""
+    (w, h), lines = found["size"], found["lines"]
+    _, bottom, left, right = lines[n - 1]
+    below = bottom + below_px
+    if n < len(lines):
+        below = max(bottom + OCR_PAD_PX, min(below, found["ocr_tops"][n]))
     return [max(0, left - OCR_PAD_PX), max(0, found["ocr_tops"][n - 1] - OCR_PAD_PX), min(w, right + OCR_PAD_PX),
-            min(h, bottom + OCR_PAD_PX)]
+            min(h, below)]
 
 
 def span_image(doc, page, box):

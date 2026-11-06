@@ -33,7 +33,7 @@ from datetime import datetime
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-from khotangtucngu.assembly import INK_OUTSIDE, PAGE_MISSING, answer_sha1
+from khotangtucngu.assembly import INK_OUTSIDE, PAGE_MISSING, answer_sha1, priority_first
 from khotangtucngu.citations import Abbreviations
 from khotangtucngu.review import REVIEW_LOG, fix_problem, read_fixes, rebuild
 
@@ -93,7 +93,7 @@ def assembled(page=None, printed_page=None, blocks=None):
     # A failed or missing page has no answer, and ink outside the found lines is no Block's, so no Fix can change
     # their Warnings
     missing = [w for w in _read("warnings.json") if w["kind"] in (PAGE_MISSING, INK_OUTSIDE)]
-    warnings = sorted(missing + warnings, key=lambda w: w["page"])
+    warnings = priority_first(missing + warnings)
     return {"entries": entries, "warnings": warnings, "pages": pages, "applied": applied, "stale": stale,
             "fixes": {str(p): f for p, f in fixes.items()}}
 

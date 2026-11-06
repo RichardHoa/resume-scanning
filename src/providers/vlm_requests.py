@@ -197,6 +197,18 @@ def _log_attempt(key, attempt, outcome, elapsed, completion_tokens, finish_reaso
           f"{detail}{why}")
 
 
+def _save_spiral(key, attempt, messages, reply, temperature, results_dir):
+    """Saves a request that ran to its max_tokens, as sent, into <results_dir>/spirals/<key>-a<attempt>/ with the start
+    and end of its reply, and says so: a spiral's prompt is otherwise lost, as only its answer is saved."""
+    folder = os.path.join(results_dir, "spirals", f"{key}-a{attempt}")
+    save_request(messages, folder)
+    write_json(os.path.join(folder, "reply.json"), {
+        "task": key, "attempt": attempt, "temperature": temperature, "completion_tokens": reply.completion_tokens,
+        "finish_reason": reply.finish_reason, "content_chars": len(reply.content),
+        "content_start": reply.content[:2000], "content_end": reply.content[-300:]})
+    print(f"    [Spiral] {key} attempt {attempt}: ran to {reply.completion_tokens} token(s); prompt saved in {folder}")
+
+
 def run_one(req, out_path, stamp, *, phase, model, request_dir=None, usage_file=None, in_flight=None):
     from src.providers import vllm_client
     result = {"task": req.key, "phase": phase.id, "model": model.name, **stamp, "attempt_log": []}
@@ -209,13 +221,14 @@ def run_one(req, out_path, stamp, *, phase, model, request_dir=None, usage_file=
             in_flight.start(req.key, attempt)
         started = time.monotonic()
         reply = None
+        temperature = 0.0 if attempt == 1 else phase.retry_temperature
         try:
             reply = vllm_client.chat(
                 model.vllm_url, model.name, messages,
-                temperature=0.0 if attempt == 1 else phase.retry_temperature,
+                temperature=temperature,
                 json_schema=req.schema, max_tokens=phase.max_tokens, step=phase.step,
                 enable_thinking=phase.thinking, timeout=phase.timeout, usage_file=usage_file,
-                text_output=phase.text, repetition_penalty=phase.repetition_penalty
+                text_output=phase.text, repetition_penalty=phase.repetition_penalty, resume_name=req.key
             )
         except RuntimeError as e:
             too_long = "context length" in str(e) or "max_model_len" in str(e)
@@ -223,6 +236,8 @@ def run_one(req, out_path, stamp, *, phase, model, request_dir=None, usage_file=
         else:
             result.update(reasoning=reply.reasoning, finish_reason=reply.finish_reason,
                           completion_tokens=reply.completion_tokens, content=reply.content)
+            if reply.finish_reason == "length":
+                _save_spiral(req.key, attempt, messages, reply, temperature, os.path.dirname(out_path))
             try:
                 answer = reply.content.strip() if phase.text else json.loads(reply.content)
                 result.update(status="ok", error=None, answer=answer)

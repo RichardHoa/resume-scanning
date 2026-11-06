@@ -76,22 +76,26 @@ def read_of_line(line_read, page_read):
     return line_read if syllables(line_read) else page_read
 
 
-def flagged_reads(reads):
+def flagged_reads(reads, crop_reads=None):
     """
     The two reads of a page's lines, `reads` as [(line read, page read)], flagged for checking Blocks against: {
     "syllables": [[syllable, Agreed?, counts if dropped?]] for each syllable of the lines' OCR Readings joined, in
-    order, "page_only": [[index in "syllables" it would go before, syllable]] for the syllables only a page read has}.
-    A line with one read has no Agreed Syllable. A label the Blocks never hold doesn't count if dropped, nor does a
-    syllable of two or more letters printed all in capitals, as those are Source Abbreviations, so that a Citation can't
-    raise a Model Edit.
+    order, "page_only": [[index in "syllables" it would go before, syllable]] for the syllables only a page read has,
+    "stable": [Stable?] for each of "syllables"}. A line with one read has no Agreed Syllable. A label the Blocks never
+    hold doesn't count if dropped, nor does a syllable of two or more letters printed all in capitals, as those are Source
+    Abbreviations, so that a Citation can't raise a Model Edit. An Agreed Syllable is Stable if each of its line's
+    `crop_reads` (for each line, the reads of its other crops) also has it; with none it isn't.
     """
-    marked, page_only = [], []
-    for line_read, page_read in reads:
+    marked, page_only, stable = [], [], []
+    for k, (line_read, page_read) in enumerate(reads):
         line = unicodedata.normalize("NFC", line_read)
         spans, page = _spans(line), syllables(page_read)
         if not spans or not page:
-            marked += [[s, False, False] for s in syllables(read_of_line(line_read, page_read))]
+            found = syllables(read_of_line(line_read, page_read))
+            marked += [[s, False, False] for s in found]
+            stable += [False] * len(found)
             continue
+        crops = [set(syllables(read)) for read in crop_reads[k]] if crop_reads else []
         ours, at = [s for s, _, _ in spans], len(marked)
         agreed, labels = [False] * len(ours), _label_places(ours)
         for op, i1, i2, j1, j2 in _lined_up(ours, page):
@@ -101,7 +105,8 @@ def flagged_reads(reads):
                 page_only += [[at + i1, s] for s in page[j1:j2]]
         marked += [[s, agreed[i], agreed[i] and i not in labels and not (len(s) > 1 and line[start:end].isupper())]
                    for i, (s, start, end) in enumerate(spans)]
-    return {"syllables": marked, "page_only": page_only}
+        stable += [agreed[i] and bool(crops) and all(s in crop for crop in crops) for i, s in enumerate(ours)]
+    return {"syllables": marked, "page_only": page_only, "stable": stable}
 
 
 def marked_reading(line_read, page_read):
@@ -156,8 +161,9 @@ def disagreements(blocks, reading, flagged=None):
 
 def model_edits(blocks, flagged):
     """
-    [(index of the Block, what the model did, its syllable or None, the reads' syllable or None)] for each Model Edit
-    in the text of `blocks` (a page answer's), lined up by bare letters with `flagged` (`flagged_reads`):
+    [(index of the Block, what the model did, its syllable or None, the reads' syllable or None, whether the reads'
+    syllable is Stable)] for each Model Edit in the text of `blocks` (a page answer's), lined up by bare letters with
+    `flagged` (`flagged_reads`):
     - CHANGED: a syllable lined up, or paired one-to-one in a stretch of equal length, with an Agreed Syllable it
       differs from;
     - DROPPED: an Agreed Syllable the Blocks left out, in a stretch of or next to their text;
@@ -165,7 +171,7 @@ def model_edits(blocks, flagged):
       from it, and not one only a page read has at that place.
     """
     ours = _block_syllables(blocks)
-    theirs = flagged["syllables"]
+    theirs, stable = flagged["syllables"], flagged["stable"]
 
     def edited(i):
         return (0 <= i < len(ours) and ours[i][2]
@@ -178,15 +184,16 @@ def model_edits(blocks, flagged):
                 b, s, _ = ours[i1 + k]
                 t, agreed, _ = theirs[j1 + k]
                 if agreed and s != t and edited(i1 + k):
-                    out.append((b, CHANGED, s, t))
+                    out.append((b, CHANGED, s, t, stable[j1 + k]))
             continue
         near = [i for i in (range(i1, i2) if i2 > i1 else (i1 - 1, i1)) if edited(i)]
         if not near:
             continue
         across = theirs[j1:j2]
-        out += [(ours[near[0]][0], DROPPED, None, t) for t, agreed, counts in across if agreed and counts]
+        out += [(ours[near[0]][0], DROPPED, None, t, stable[at])
+                for at, (t, agreed, counts) in enumerate(across, j1) if agreed and counts]
         if all(agreed for _, agreed, _ in across):
             behind = {bare(s) for at, s in flagged["page_only"] if j1 - _BEHIND_REACH <= at <= j2 + _BEHIND_REACH}
-            out += [(ours[i][0], ADDED, ours[i][1], None) for i in range(i1, i2)
+            out += [(ours[i][0], ADDED, ours[i][1], None, False) for i in range(i1, i2)
                     if edited(i) and bare(ours[i][1]) not in behind]
     return out

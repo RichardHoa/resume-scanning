@@ -23,6 +23,17 @@ _NEXT_ABBREVIATION = re.compile(r"(?:^|(?<=[\s,;]))[A-ZĐ][A-ZĐ]")
 _VARIANT_MARK = re.compile(r"(?:^|(?<=[\s,;]))bk(?![^\W\d_])")
 # A See-also name: a letter (Ă and Â are letters of their own) and a number, written "C 534"
 _NAME = re.compile(r"([A-ZĂÂĐÊÔƠƯ])\s*(\d+)")
+# The fewest letters an abbreviation needs to be taken for a known one a letter away: shorter ones are too alike
+_NEAREST_MIN_LETTERS = 4
+
+
+def _one_letter_apart(a, b):
+    """Whether adding, dropping or changing one letter turns one of two different words into the other."""
+    short, long = sorted((a, b), key=len)
+    if len(long) - len(short) > 1:
+        return False
+    i = next((k for k, (x, y) in enumerate(zip(short, long)) if x != y), len(short))
+    return short[i + (len(short) == len(long)):] == long[i + 1:]
 
 
 def load_abbreviations(front_matter):
@@ -60,17 +71,29 @@ class Abbreviations:
                 return a
         return None
 
+    def nearest(self, abbreviation):
+        """The one known abbreviation with the same volume whose letters are one letter from those of `abbreviation`
+        ("VCVN I" for "VCSVN I"), or None if there is none or several, or it only lost its volume ("TNPD", not TNCD)."""
+        letters, _, volume = abbreviation.partition(" ")
+        if len(letters) < _NEAREST_MIN_LETTERS or any(a.startswith(abbreviation + " ") for a in self.known):
+            return None
+        near = [a for a in self.known if a.partition(" ")[2] == volume
+                and a.partition(" ")[0] != letters and _one_letter_apart(a.partition(" ")[0], letters)]
+        return near[0] if len(near) == 1 else None
+
     def unknown(self, abbreviation, text):
         """The problem of an abbreviation not among the 63, naming the volumes it may have lost ("VNP₂" for VNP₂ I or
-        VNP₂ II)."""
+        VNP₂ II), or the known one it was taken for."""
         volumes = sorted(a for a in self.known if a.startswith(abbreviation + " "))
-        hint = f" (no volume: {' or '.join(volumes)}?)" if volumes else ""
+        nearest = self.nearest(abbreviation)
+        hint = f" (no volume: {' or '.join(volumes)}?)" if volumes else f" (taken as {nearest})" if nearest else ""
         return UNKNOWN_ABBREVIATION, f'unknown Source Abbreviation "{abbreviation}"{hint} in "{text}"'
 
     def split(self, raw):
         """Printed Citations "HT 63 NL 7 TNLG II 7, 25" -> [{"abbreviation": "HT", "pages": "63"}, ...], the pages
         as printed: what follows an abbreviation up to the next one (or a "bk"). A Citation after "bk" is a Variant
-        Citation, {"abbreviation": "VD", "pages": "", "variant": True}, and may have no pages: "VC I 11 bk VD"."""
+        Citation, {"abbreviation": "VD", "pages": "", "variant": True}, and may have no pages: "VC I 11 bk VD". An
+        unknown abbreviation one letter from a known one is kept as the known one, still with its problem (`nearest`)."""
         text = clean_citation_text(raw)
         citations, problems, i, variant = [], [], 0, False
         while True:
@@ -81,7 +104,7 @@ class Abbreviations:
             if _VARIANT_MARK.match(text, i):
                 i, variant = i + 2, True
                 continue
-            abbreviation = self.at(text, i)
+            abbreviation = printed = self.at(text, i)
             if abbreviation is None:
                 m = _LIKE_ABBREVIATION.match(text, i)
                 if m is None:
@@ -90,9 +113,10 @@ class Abbreviations:
                                                        f'"{text}"'))
                     i = stop
                     continue
-                abbreviation = m.group()
-                problems.append(self.unknown(abbreviation, text))
-            end = i + len(abbreviation)
+                printed = m.group()
+                abbreviation = self.nearest(printed) or printed
+                problems.append(self.unknown(printed, text))
+            end = i + len(printed)
             stop = self._next(text, end)
             pages = text[end:stop].strip(" ,;.")
             citation = {"abbreviation": abbreviation, "pages": pages}
@@ -112,23 +136,30 @@ class Abbreviations:
         found = [m.start() for m in (_NEXT_ABBREVIATION.search(text, i), _VARIANT_MARK.search(text, i)) if m]
         return min(found, default=len(text))
 
-    def split_correction(self, raw):
+    def split_correction(self, raw, cited=()):
         """A Correction "Nằm giữa mất... CCM = Nằm giữa *không* mất..." -> {"wrong": "Nằm giữa mất...", "sources":
         ["CCM"], "right": "Nằm giữa *không* mất..."}: the Source Abbreviations are the abbreviation-shaped words that
-        end the wording before "=", each known or raising an unknown-abbreviation problem."""
+        end the wording before "=", each known or raising an unknown-abbreviation problem. One printed without its
+        volume ("VCVN") is the volume its Proverb Entry cites, if `cited`, the entry's abbreviations, holds just one."""
         text = clean_citation_text(raw)
         left, eq, right = text.partition("=")
         sources, problems, wrong = [], [], left.rstrip(" ,;")
         while True:
-            found = next((a for a in self._longest_first
-                          if wrong.endswith(a) and (len(wrong) == len(a) or not wrong[-len(a) - 1].isalpha())), None)
+            found = source = next((a for a in self._longest_first
+                                   if wrong.endswith(a) and (len(wrong) == len(a) or not wrong[-len(a) - 1].isalpha())),
+                                  None)
             if found is None:
                 m = _ENDING_ABBREVIATION.search(wrong)
                 if m is None:
                     break
                 found = m.group()
-                problems.append(self.unknown(found, text))
-            sources.insert(0, found)
+                volumes = {a for a in cited if a.startswith(found + " ") and a in self.known}
+                if len(volumes) == 1:
+                    source = volumes.pop()
+                else:
+                    source = self.nearest(found) or found
+                    problems.append(self.unknown(found, text))
+            sources.insert(0, source)
             wrong = wrong[:-len(found)].rstrip(" ,;")
         correction = {"wrong": wrong, "sources": sources, "right": right.strip()}
         if not eq or not sources or not wrong or not correction["right"]:

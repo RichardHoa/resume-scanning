@@ -23,6 +23,9 @@ requests failed has none. Writes to the Part's store, vsc-project/khoTangTucNguo
   layout/pNNN.json        one layout answer per PDF page
   layout/pNNN.png         the page with its Line Numbers as the layout request saw it, smaller, for the review server
   spans/pNNN-LMM.json     one answer per Entry Span, named by its page and the Line Number it starts on
+  layout/spirals/, spans/spirals/
+                          <key>-a<attempt>/ for each attempt that ran to max_tokens: its prompt as sent and the start
+                          and end of its reply (vlm_requests.py)
   answers.json            every current page answer, by PDF page, for the review server to rebuild with Fixes
   readings.json           the OCR Readings of each page with an answer joined, by PDF page, which the page's Blocks
                           (and a Fix's) are checked against for Diacritic Disagreements
@@ -32,10 +35,10 @@ requests failed has none. Writes to the Part's store, vsc-project/khoTangTucNguo
   entries.json            the verbatim Proverb Entries built from every page answer, each page's book page, answer
                           hash, entries and Entry Spans (their crops as shares of the page, for the review server), and
                           the Part's book page offset
-  warnings.json           every Warning, with its kind, reason and PDF page: number gaps and duplicates, letter
-                          headings out of order, unknown Source Abbreviations, Citations with no pages or that cannot
-                          be split, Diacritic Disagreements, Model Edits, page numbers out of step, failed or missing
-                          pages, Leading Blocks with no owner, and ink outside every printed line found
+  warnings.json           every Warning, with its kind, reason and PDF page, the Stable Model Edits first: number gaps
+                          and duplicates, letter headings out of order, unknown Source Abbreviations, Citations with no
+                          pages or that cannot be split, Diacritic Disagreements, Model Edits, page numbers out of step,
+                          failed or missing pages, Leading Blocks with no owner, and ink outside every printed line found
   sources.json            the 63 Sources by Source Abbreviation (as export.py writes them), for the review server
   pages/pNNN.png          each page, for the review server
   serve.py, web/,         the review server, its page, and the code that rebuilds the Proverb Entries with Fixes
@@ -45,8 +48,8 @@ requests failed has none. Writes to the Part's store, vsc-project/khoTangTucNguo
                           deletes it
   token_usage.jsonl       one line per request sent to this store, summarized at the end by step (layout, span)
 
-Saved answers are stamped with the PDF's hash, the image settings and a hash of the prompts (a layout answer also with
-the page's lines, an Entry Span answer with its lines, crop and the two reads of its lines), so a run only redoes
+Saved answers are stamped with the PDF's hash, the image settings, the repetition penalty and a hash of the prompts (a
+layout answer also with the page's lines, an Entry Span answer with its lines, crop and the two reads of its lines), so a run only redoes
 requests whose answer is missing, failed or stamped differently, and runs over different pages add up in the store.
 The outputs are always rebuilt from every saved answer, not only this run's. --dry-run sends nothing: it needs the Mac's
 lines and reads like any run, and counts each layout request's prompt tokens with the model's own processor (images
@@ -67,7 +70,7 @@ import shutil
 import fitz
 
 from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL
-from src.khotangtucngu.assembly import INK_OUTSIDE, LETTER, PAGE_MISSING, assemble, warning
+from src.khotangtucngu.assembly import INK_OUTSIDE, LETTER, PAGE_MISSING, assemble, priority_first, warning
 from src.khotangtucngu.citations import Abbreviations, load_abbreviations
 from src.khotangtucngu.diacritics import flagged_reads, read_of_line
 from src.khotangtucngu.export import dated_sources, sources
@@ -81,7 +84,7 @@ from src.khotangtucngu.prompts import (
 )
 from src.khotangtucngu.settings import (
     BOOK_DIR, FRONT_MATTER, LABEL_STRIP_PX, LAYOUT_IMAGE, LAYOUT_MAX_TOKENS, PAGE_DPI, PAGE_IMAGE, PARTS,
-    REQUEST_TIMEOUT, RETRY_TEMPERATURE, SPAN_MAX_TOKENS, STORE_DIR
+    REPETITION_PENALTY, REQUEST_TIMEOUT, RETRY_TEMPERATURE, SPAN_MAX_TOKENS, STORE_DIR
 )
 from src.khotangtucngu.vision_ocr import saved_lines, vision_problem
 from src.providers import vlm_requests
@@ -94,9 +97,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # The modules serve.py rebuilds the Proverb Entries with, copied into <store>/khotangtucngu/
 REVIEW_CODE = ("assembly.py", "citations.py", "diacritics.py", "review.py")
 LAYOUT = Phase("layout", step="khotangtucngu_layout", max_tokens=LAYOUT_MAX_TOKENS, thinking=False,
-               retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT)
+               retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT, repetition_penalty=REPETITION_PENALTY)
 SPAN = Phase("span", step="khotangtucngu_span", max_tokens=SPAN_MAX_TOKENS, thinking=False,
-             retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT)
+             retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT, repetition_penalty=REPETITION_PENALTY)
 
 
 def parse_args():
@@ -128,11 +131,12 @@ def span_stamp(page, span):
 
 
 def with_readings(spans, record):
-    """Gives each of a page's `spans` its "readings", [(Line Number, line read, page read)], from the page's Vision
-    `record`."""
+    """Gives each of a page's `spans` its "readings", [(Line Number, line read, page read)], and its lines' "crop_reads",
+    from the page's Vision `record`."""
     for span in spans:
         lines = record["lines"][span["first"] - 1:span["last"]]
         span["readings"] = [(line["n"], line["line_read"], line["page_read"]) for line in lines]
+        span["crop_reads"] = [line["crop_reads"] for line in lines]
 
 
 def layout_requests(doc, pages, found):
@@ -239,9 +243,9 @@ def main():
 
     pdf_sha1 = file_sha1(pdf)
     layout_base = {"pdf_sha1": pdf_sha1, "page_dpi": PAGE_DPI, "layout_image": LAYOUT_IMAGE,
-                   "prompt_sha1": layout_prompt_sha1()}
+                   "prompt_sha1": layout_prompt_sha1(), "repetition_penalty": REPETITION_PENALTY}
     span_base = {"pdf_sha1": pdf_sha1, "page_dpi": PAGE_DPI, "page_image": PAGE_IMAGE,
-                 "prompt_sha1": span_prompt_sha1()}
+                 "prompt_sha1": span_prompt_sha1(), "repetition_penalty": REPETITION_PENALTY}
 
     # -- the Mac's printed lines and Vision reads, of every page saved from this PDF: this run's must all be current
     found, records, unread = {}, {}, []
@@ -293,7 +297,7 @@ def main():
             answers[page], spans[page] = answer, page_spans_now
             reads = [(line_read, page_read) for span in page_spans_now for _, line_read, page_read in span["readings"]]
             readings[page] = "\n".join(read_of_line(*read) for read in reads)
-            flagged[page] = flagged_reads(reads)
+            flagged[page] = flagged_reads(reads, [crops for span in page_spans_now for crops in span["crop_reads"]])
         # A page outside this run counts only if its requests ran and one failed, or were made from other input: the
         # Mac may have read the whole Part for a job over a small batch
         elif page in only or (why != "never ran" and found[page]["lines"]):
@@ -306,7 +310,7 @@ def main():
                                    f"in no Entry Span", page))
     entries, warnings, pages = assemble(answers, abbreviations, part.book_page_offset, readings, flagged)
     # assemble's Warning ids are unique, and a missing page's and a page's missed ink are their own
-    warnings = sorted(missing + warnings, key=lambda w: w["page"])
+    warnings = priority_first(missing + warnings)
 
     os.makedirs(os.path.join(store, "pages"), exist_ok=True)
     for page in sorted(set(only) | set(answers)):

@@ -7,7 +7,9 @@ const KIND_NAMES = {
   unknown_abbreviation: "Unknown Source Abbreviation", citation_no_pages: "Citation with no pages",
   citation_unsplit: "Citation not split", ink_outside: "Ink outside the lines",
   diacritic_disagreement: "Diacritics differ from OCR", model_edit: "Model Edit",
+  stable_model_edit: "Priority · Model Edit of a stable read",
 };
+const PRIORITY = "stable_model_edit";
 const BLOCK_NAMES = {
   letter: "Letter heading", proverb: "Proverb", citations: "Citations", variant: "Variant (BK)", note: "Note",
   correction: "Sửa lại", see_also: "Xem thêm",
@@ -252,8 +254,11 @@ function warningOf(w, entry) {
   return entry.pdf_pages.includes(w.page) && w.id.replace(/#\d+$/, "").endsWith("-" + entry.name);
 }
 
+function isPriority(w) { return w.kind === PRIORITY; }
+
 function warningLine(w) {
-  return h("div", {class: "warning"}, h("span", {class: "kind"}, KIND_NAMES[w.kind] || w.kind), " ", w.reason);
+  return h("div", {class: "warning" + (isPriority(w) ? " priority" : "")},
+           h("span", {class: "kind"}, KIND_NAMES[w.kind] || w.kind), " ", w.reason);
 }
 
 function pageLink(p, text) {
@@ -337,8 +342,9 @@ function renderRight() {
     own.forEach(w => owned.add(w));
     return entryCard(entry, own);
   });
-  // The page's own Warnings, about no entry of it: its number, a missing answer, Blocks with no owner
-  $("#warnings").replaceChildren(...warnings.filter(w => !owned.has(w)).map(warningLine));
+  // At the top, the page's priority Warnings, also on their entries' cards, then its own, about no entry of it: its
+  // number, a missing answer, Blocks with no owner
+  $("#warnings").replaceChildren(...warnings.filter(w => isPriority(w) || !owned.has(w)).map(warningLine));
   right.replaceChildren(...(fixOf(current) && isStale(current) ? [staleBox(current)] : []), ...cards);
   if (PAGES[current] && !entries.length) right.append(h("p", {class: "muted"}, "No Proverb Entries on this page."));
 }
@@ -492,9 +498,11 @@ function pageLabel(p) {
 function renderPicker() {
   const pick = $("#pick");
   pick.replaceChildren(...PAGE_LIST.map(p => {
-    const n = VIEW.warnings.filter(w => w.page === p).length;
+    const onPage = VIEW.warnings.filter(w => w.page === p);
+    const n = onPage.length, urgent = onPage.filter(isPriority).length;
     const fix = fixOf(p) ? (isStale(p) ? " · stale Fix" : " · edited") : "";
-    return h("option", {value: p, selected: p === current}, pageLabel(p) + (n ? ` ⚠${n}` : "") + fix);
+    return h("option", {value: p, selected: p === current},
+             pageLabel(p) + (urgent ? ` ‼${urgent}` : "") + (n ? ` ⚠${n}` : "") + fix);
   }));
 }
 
@@ -504,6 +512,7 @@ function renderProgress() {
   $("#progress").textContent = `${VIEW.entries.length} entries · ${n} edited on ${pages - VIEW.stale.length} page(s)` +
     (VIEW.stale.length ? ` · ${VIEW.stale.length} stale Fix(es)` : "");
   $("#edits").textContent = `Edits (${pages})`;
+  $("#next-priority").textContent = `Next priority ‼ (${VIEW.warnings.filter(isPriority).length})`;
 }
 
 // Each Entry Span as cropped for its request, labelled with its first Line Number and what the model made of it
@@ -571,6 +580,8 @@ function wire() {
   $("#prev").addEventListener("click", () => step(-1));
   $("#next").addEventListener("click", () => step(1));
   $("#pick").addEventListener("change", e => showPage(Number(e.target.value)));
+  $("#next-priority").addEventListener("click", () => nextWhere(p => VIEW.warnings.some(w => w.page === p && isPriority(w)),
+                                                                "No other page has a priority Warning"));
   $("#next-warn").addEventListener("click", () => nextWhere(p => VIEW.warnings.some(w => w.page === p),
                                                             "No other page has Warnings"));
   $("#next-edit").addEventListener("click", () => nextWhere(p => !!fixOf(p), "No other page has a Fix"));
@@ -584,6 +595,7 @@ function wire() {
     if (e.target.closest("textarea, input, select") || $(".editor") || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "ArrowLeft") step(-1);
     else if (e.key === "ArrowRight") step(1);
+    else if (e.key === "p") $("#next-priority").click();
     else if (e.key === "w") $("#next-warn").click();
     else if (e.key === "e") $("#next-edit").click();
     else if (e.key === "s") $("#spans").click();
@@ -629,7 +641,9 @@ async function load() {
     return;
   }
   const asked = Number((location.hash.match(/^#p(\d+)$/) || [])[1]);
-  showPage(PAGE_LIST.includes(asked) ? asked : PAGE_LIST[0]);
+  // With no page asked for, the first with a priority Warning: the server lists those first
+  const urgent = VIEW.warnings.find(isPriority);
+  showPage(PAGE_LIST.includes(asked) ? asked : urgent ? urgent.page : PAGE_LIST[0]);
 }
 
 load();

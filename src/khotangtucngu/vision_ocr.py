@@ -11,11 +11,12 @@ dependencies are requirements-macos.txt.
 Each page's printed lines are found on the scan, and each is read twice (docs/adr/0005-two-reads-and-model-edits.md):
 on its own from its crop at PAGE_DPI on white padding, and with the whole page at VISION_PAGE_DPI, each observation of
 which goes to the line whose band holds the centre of its box. An observation matching no line, or spanning two, is
-saved as unmatched and otherwise unused. Writes to the Part's store, vsc-project/khoTangTucNguoiNguoiViet/store/<part>/:
+saved as unmatched and otherwise unused. Each line is also read from the VISION_STABILITY_CROPS, which only tell how
+stable its Agreed Syllables are. Writes to the Part's store, vsc-project/khoTangTucNguoiNguoiViet/store/<part>/:
 
   lines/pNNN.json     the page's printed lines found on the scan, and ink outside them
   vision/pNNN.json    the page's Vision record: the PDF's hash, the stamp of how it was read, its status and error, each
-                      Line Number's box and two reads, and the unmatched observations
+                      Line Number's box, two reads and crop reads, and the unmatched observations
 
 A page whose record is current is skipped, so runs over different pages add up and an interrupted run carries on; a
 page Vision fails on is saved as failed and read again next time. The run ends by printing the `rsync` line that copies
@@ -39,7 +40,7 @@ from src.khotangtucngu.diacritics import flagged_reads, syllables
 from src.khotangtucngu.pages import find_lines, line_box, page_key, part_pdf, span_image
 from src.khotangtucngu.settings import (
     PAGE_DPI, PARTS, STORE_DIR, VISION_LANGUAGE, VISION_LANGUAGE_CORRECTION, VISION_LINE_PAD_PX, VISION_PAGE_DPI,
-    VISION_READ_TIMEOUT, VISION_REVISION
+    VISION_READ_TIMEOUT, VISION_REVISION, VISION_STABILITY_CROPS
 )
 from src.providers.page_images import whole_page_at_dpi
 from src.providers.vlm_requests import file_sha1, page_set, read_json, read_result, write_json
@@ -127,7 +128,7 @@ def vision_stamp():
     """How every Vision record of a run is read: a record stamped otherwise is read again."""
     return {"macos": platform.mac_ver()[0], "vision_revision": VISION_REVISION, "language": VISION_LANGUAGE,
             "language_correction": VISION_LANGUAGE_CORRECTION, "line_dpi": PAGE_DPI, "page_dpi": VISION_PAGE_DPI,
-            "line_pad_px": VISION_LINE_PAD_PX}
+            "line_pad_px": VISION_LINE_PAD_PX, "stability_crops": [list(crop) for crop in VISION_STABILITY_CROPS]}
 
 
 def joined(observations):
@@ -155,26 +156,35 @@ def page_reads(observations, found):
     return {n: joined(found_here) for n, found_here in on_line.items()}, unmatched
 
 
-def padded(png):
-    """A line's crop (png) as an image on white, VISION_LINE_PAD_PX wider on every side."""
+def padded(png, zoom=1):
+    """A line's crop (png) `zoom` times larger, as an image on white, VISION_LINE_PAD_PX (as large) wider on every side."""
     crop = Image.open(BytesIO(png))
-    image = Image.new("L", (crop.width + 2 * VISION_LINE_PAD_PX, crop.height + 2 * VISION_LINE_PAD_PX), 255)
-    image.paste(crop, (VISION_LINE_PAD_PX, VISION_LINE_PAD_PX))
+    if zoom != 1:
+        crop = crop.resize((crop.width * zoom, crop.height * zoom), Image.Resampling.LANCZOS)
+    pad = VISION_LINE_PAD_PX * zoom
+    image = Image.new("L", (crop.width + 2 * pad, crop.height + 2 * pad), 255)
+    image.paste(crop, (pad, pad))
     return image
 
 
 def read_page(reader, doc, page, found, folder):
-    """A page's "lines" and "unmatched" for its Vision record: every line read on its own, and the page read whole,
-    using image files in `folder`."""
+    """A page's "lines" and "unmatched" for its Vision record: every line read on its own and from each of
+    VISION_STABILITY_CROPS, and the page read whole, using image files in `folder`."""
     path = os.path.join(folder, "image.png")
     with open(path, "wb") as f:
         f.write(whole_page_at_dpi(doc, page, VISION_PAGE_DPI))
     on_line, unmatched = page_reads(reader.read(path), found)
+
+    def read_crop(box, zoom=1):
+        padded(span_image(doc, page, box), zoom).save(path)
+        return joined(reader.read(path))
+
     lines = []
     for n in range(1, len(found["lines"]) + 1):
         box = line_box(found, n)
-        padded(span_image(doc, page, box)).save(path)
-        lines.append({"n": n, "box": box, "line_read": joined(reader.read(path)), "page_read": on_line.get(n, "")})
+        lines.append({"n": n, "box": box, "line_read": read_crop(box), "page_read": on_line.get(n, ""),
+                      "crop_reads": [read_crop(line_box(found, n, below_px), zoom)
+                                     for below_px, zoom in VISION_STABILITY_CROPS]})
     return {"lines": lines, "unmatched": unmatched}
 
 

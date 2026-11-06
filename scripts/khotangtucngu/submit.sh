@@ -31,6 +31,9 @@
 KHOTANGTUCNGU_CONCURRENCY=40    # the default profile's
 MAX_IMAGES_PER_PROMPT=1    # a layout request sends its page, an Entry Span request its crop
 VISION_JOB_PREFLIGHT=--check-reads    # a page of this run with no current Vision read ends the job before its server
+# No whitespace between JSON tokens, where an Entry Span's answer can run to max_tokens of newlines (p042-L02). vLLM takes
+# this from the server only, and only with a named backend: "auto" is refused, and tries xgrammar first anyway
+VISION_JOB_SERVER_ARGS=(--structured-outputs-config '{"backend":"xgrammar","disable_any_whitespace":true}')
 # The profile's 27B model keeps about 82 GB, for its 54 GB of weights and the KV cache of its 40 requests
 VLLM_GPU_MEMORY_UTILIZATION=0.85
 

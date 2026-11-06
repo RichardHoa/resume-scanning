@@ -85,8 +85,8 @@ def record_usage(
     error: Optional[str] = None
 ) -> None:
     """
-    Appends one request's token counts to `usage_file` (default TOKEN_USAGE_FILE), with the resume it was made for
-    (None for calls made for no resume), how long it took, and for a request that got no answer, why (its
+    Appends one request's token counts to `usage_file` (default TOKEN_USAGE_FILE), with the resume or vision task it was
+    made for (None for calls made for neither), how long it took, and for a request that got no answer, why (its
     finish_reason is then "error"). Never fails the request it describes.
     """
     usage_file = usage_file or TOKEN_USAGE_FILE
@@ -215,10 +215,10 @@ def chat(
         }
     }
     if json_schema is not None:
-        # Legacy `guided_json` is silently ignored by current vLLM; `structured_outputs` enforces the schema.
-        # Without `disable_any_whitespace` the grammar allows any whitespace between JSON tokens, and a model can
-        # fill max_tokens with newlines there (a Kho tàng tục ngữ Entry Span once did); strings keep their spaces
-        payload["structured_outputs"] = {"json": json_schema, "disable_any_whitespace": True}
+        # Legacy `guided_json` is silently ignored by current vLLM; `structured_outputs` enforces the schema. Its grammar
+        # allows any whitespace between JSON tokens unless the server is started with `disable_any_whitespace`: vLLM
+        # 0.30 reads that from --structured-outputs-config only and ignores it on a request (scripts/khotangtucngu/submit.sh)
+        payload["structured_outputs"] = {"json": json_schema}
     elif not text_output:
         payload["response_format"] = {"type": "json_object"}
 

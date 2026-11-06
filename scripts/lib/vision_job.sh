@@ -11,7 +11,8 @@
 # Otherwise the profile is served with vision on for this job only (profiles serve text only), with at most
 # <concurrency> requests in flight, and the module runs against it. The server log is logs/vllm_<name>.log, and its
 # state is sampled into logs/vllm_<name>_metrics_<job>.log. If the submit script sets VISION_JOB_PREFLIGHT to a flag of
-# the module, the module first runs with it and no server, and a failure ends the job before the server starts.
+# the module, the module first runs with it and no server, and a failure ends the job before the server starts. If it
+# sets the array VISION_JOB_SERVER_ARGS, those flags are added to the server's for this job.
 # -----------------------------------------------------------------------------
 
 WATCH_SERVER_EVERY=30    # seconds between samples of the server's state in the metrics log
@@ -99,6 +100,7 @@ run_vision_job() {
 
   # Vision on: drop the profile's text-only and image-limit flags, then allow this job's images
   serve_vision_on "$max_images"
+  VLLM_EXTRA_ARGS+=("${VISION_JOB_SERVER_ARGS[@]}")
 
   if [ -z "$PROJECT_ROOT" ]; then
     echo "[CRITICAL ERROR] PROJECT_ROOT is not set after sourcing config.sh!" >&2
