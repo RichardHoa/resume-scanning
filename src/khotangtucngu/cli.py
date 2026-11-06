@@ -18,7 +18,13 @@ line under the Running Head and the Line Number each Proverb Entry and letter he
 those lines into Entry Spans, and each is copied as Blocks in its own request, with the two reads of its lines
 (docs/adr/0002-ocr-readings-of-each-line.md, 0005-two-reads-and-model-edits.md).
 A page's answer is its Entry Spans' Blocks in order, with the layout's printed page number; a page any of whose
-requests failed has none. Writes to the Part's store, vsc-project/khoTangTucNguoiNguoiViet/store/<part>/:
+requests failed has none.
+
+The store's review.jsonl (review.py) is read before any request and never written. A Confirmed Span gets no request: it
+owns every line whose centre falls in its band, the page is cut around it, and the lines left below it are read as a
+Leading span (docs/adr/0006-confirmed-spans-override-the-layout.md). A page whose "page_complete" line still applies gets
+no request at all. A run stops before any request if a Confirmed Span was made from another PDF, naming the pages.
+Writes to the Part's store, vsc-project/khoTangTucNguoiNguoiViet/store/<part>/:
 
   layout/pNNN.json        one layout answer per PDF page
   layout/pNNN.png         the page with its Line Numbers as the layout request saw it, smaller, for the review server
@@ -26,25 +32,27 @@ requests failed has none. Writes to the Part's store, vsc-project/khoTangTucNguo
   layout/spirals/, spans/spirals/
                           <key>-a<attempt>/ for each attempt that ran to max_tokens: its prompt as sent and the start
                           and end of its reply (vlm_requests.py)
-  answers.json            every current page answer, by PDF page, for the review server to rebuild with Fixes
-  readings.json           the OCR Readings of each page with an answer joined, by PDF page, which the page's Blocks
-                          (and a Fix's) are checked against for Diacritic Disagreements
+  answers.json            every current page answer, by PDF page, for the review server to lay Confirmed Spans over: the
+                          model's Blocks (a Confirmed Span's as its record keeps them), and its printed number, first
+                          line, PDF hash, size and spans, each with its Block range, band, crop, Line Numbers, whether
+                          it is Leading and its reads, so the review server needs no PDF and no line data
+  readings.json           the OCR Readings of each page with an answer joined, by PDF page, which the page's Blocks are
+                          checked against for Diacritic Disagreements
   agreed.json             the same readings of each page, with their Agreed Syllables flagged
-                          (diacritics.flagged_reads), which the page's Blocks (and a Fix's) are checked against for
-                          Model Edits
-  entries.json            the verbatim Proverb Entries built from every page answer, each page's book page, answer
-                          hash, entries and Entry Spans (their crops as shares of the page, for the review server), and
-                          the Part's book page offset
+                          (diacritics.flagged_reads), which the page's Blocks are checked against for Model Edits
+  entries.json            the verbatim Proverb Entries built from every page answer with the Confirmed Spans laid over,
+                          each page's book page, entries and Entry Spans (their crops as shares of the page, for the
+                          review server), and the Part's book page offset
   warnings.json           every Warning, with its kind, reason and PDF page, the Stable Model Edits first: number gaps
                           and duplicates, letter headings out of order, unknown Source Abbreviations, Citations with no
                           pages or that cannot be split, Diacritic Disagreements, Model Edits, page numbers out of step,
                           failed or missing pages, Leading Blocks with no owner, and ink outside every printed line found
   sources.json            the 63 Sources by Source Abbreviation (as export.py writes them), for the review server
   pages/pNNN.png          each page, for the review server
-  serve.py, web/,         the review server, its page, and the code that rebuilds the Proverb Entries with Fixes
-  khotangtucngu/          (assembly.py, citations.py, diacritics.py, review.py), copied from this package:
+  serve.py, web/,         the review server, its page, and the code that rebuilds the Proverb Entries with Confirmed
+  khotangtucngu/          Spans (assembly.py, citations.py, diacritics.py, review.py), copied from this package:
                           `python3 serve.py` in the store (on any machine, nothing to install)
-  review.jsonl            the review log of Fixes, which serve.py appends to (see review.py). No run writes or
+  review.jsonl            the review log of Confirmed Spans, which serve.py appends to (see review.py). No run writes or
                           deletes it
   token_usage.jsonl       one line per request sent to this store, summarized at the end by step (layout, span)
 
@@ -70,18 +78,19 @@ import shutil
 import fitz
 
 from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL
-from src.khotangtucngu.assembly import INK_OUTSIDE, LETTER, PAGE_MISSING, assemble, priority_first, warning
+from src.khotangtucngu.assembly import INK_OUTSIDE, PAGE_MISSING, priority_first, warning
 from src.khotangtucngu.citations import Abbreviations, load_abbreviations
 from src.khotangtucngu.diacritics import flagged_reads, read_of_line
 from src.khotangtucngu.export import dated_sources, sources
 from src.khotangtucngu.pages import (
-    entry_spans, layout_image, layout_problem, page_key, part_pdf, review_image, review_layout_image, span_image,
-    span_key
+    entry_spans, in_band, layout_image, layout_problem, page_key, part_pdf, review_image, review_layout_image,
+    span_image, span_key
 )
 from src.khotangtucngu.prompts import (
     LAYOUT_SYSTEM_PROMPT, SPAN_SYSTEM_PROMPT, layout_prompt_sha1, layout_schema, layout_user_text, span_prompt_sha1,
     span_schema, span_user_text
 )
+from src.khotangtucngu.review import read_log, rebuild
 from src.khotangtucngu.settings import (
     BOOK_DIR, FRONT_MATTER, LABEL_STRIP_PX, LAYOUT_IMAGE, LAYOUT_MAX_TOKENS, PAGE_DPI, PAGE_IMAGE, PARTS,
     REPETITION_PENALTY, REQUEST_TIMEOUT, RETRY_TEMPERATURE, SPAN_MAX_TOKENS, STORE_DIR
@@ -167,54 +176,63 @@ def span_requests(doc, page_spans):
             ), schema, span_stamp(page, span))
 
 
-def page_answer(page, found, record, pdf_sha1, layout_dir, layout_base, spans_dir, span_base):
+def bands_of(log, page):
+    """The bands of a page's Confirmed Spans, from `log` (review.read_log)."""
+    return [record["band"] for record in log["confirmed"].get(page, [])]
+
+
+def complete_line(page, found, log):
+    """A page's "page_complete" line if it still applies: every line from its body start down falls in a band, so the
+    page needs no request. Once a span is undone, or the line finder changes, it may not."""
+    line = log["complete"].get(page)
+    lines = found["lines"]
+    if line is None or not 1 <= line["body_start"] <= len(lines):
+        return None
+    bands = bands_of(log, page)
+    return line if all(in_band(l, bands) for l in lines[line["body_start"] - 1:]) else None
+
+
+def page_answer(page, found, record, pdf_sha1, layout_dir, layout_base, spans_dir, span_base, log):
     """
-    (answer, Entry Spans, None) for a page whose layout answer, Vision `record` and every Entry Span answer are current:
-    its answer is the Entry Spans' Blocks in order with the layout's printed page number, and each Entry Span gets
-    "readings" (see `with_readings`) and "blocks", [first, last + 1], the indexes of its Blocks in the answer. Else
-    (None, None, why it has none).
+    (answer, None) for a page whose every request is current or needs none. Its answer is the printed page number and
+    first line from its layout answer (or its "page_complete" line), the PDF's hash, the page's size, its spans top to
+    bottom and their Blocks in order: an Entry Span's from its answer, a Confirmed Span's the model's from its record, so
+    undoing it needs no run. Each span has what review.lay_confirmed names. Else (None, why it has none).
     """
     if found is None:
-        return None, None, "never ran"
+        return None, "never ran"
     if not found["lines"]:
-        return None, None, "no printed line was found on it"
-    layout, why = current_answer(layout_dir, page_key(page), {**layout_base, **layout_stamp(page, found)})
-    if layout is None:
-        return None, None, why if why == "never ran" else f"layout request {why}"
-    why = vision_problem(record, found, pdf_sha1)
-    if why:
-        return None, None, f"Vision read {why}"
-    spans, blocks = entry_spans(found, layout), []
-    with_readings(spans, record)
+        return None, "no printed line was found on it"
+    complete, spans, pieces = complete_line(page, found, log), [], []
+    if complete:
+        printed, body_start = complete["printed_page"], complete["body_start"]
+    else:
+        layout, why = current_answer(layout_dir, page_key(page), {**layout_base, **layout_stamp(page, found)})
+        if layout is None:
+            return None, why if why == "never ran" else f"layout request {why}"
+        why = vision_problem(record, found, pdf_sha1)
+        if why:
+            return None, f"Vision read {why}"
+        printed, body_start = layout["printed_page"], layout["body_start"]
+        spans = entry_spans(found, layout, bands_of(log, page))
+        with_readings(spans, record)
     for span in spans:
         key = span_key(page, span["first"])
         answer, why = current_answer(spans_dir, key, {**span_base, **span_stamp(page, span)})
         if answer is None:
-            return None, None, f"Entry Span {key} (Line Numbers {span['first']}-{span['last']}) {why}"
-        span["blocks"] = [len(blocks), len(blocks) + len(answer["blocks"])]
-        blocks += answer["blocks"]
-    return {"printed_page": layout["printed_page"], "blocks": blocks}, spans, None
-
-
-def review_spans(page, spans, size, answer, entries):
-    """
-    A page's Entry Spans for the review server: each one's crop as shares of the page, the Line Number it starts on,
-    its kind ("leading", "letter" or "entry") and its label: "Leading" for the Leading span, then the letter headings
-    and the names of the Proverb Entries whose Blocks on this page start in it (from the model's `entries`).
-    """
-    w, h = size
-    starts = [(e["blocks"][str(page)][0], e["name"]) for e in entries if str(page) in e["blocks"]]
-    out = []
-    for span in spans:
-        first, stop = span["blocks"]
-        letters = [b["text"] for b in answer["blocks"][first:stop] if b.get("kind") == LETTER]
-        names = [name for at, name in starts if first <= at < stop]
-        kind = "leading" if span["leading"] else "entry" if names or not letters else "letter"
-        label = " · ".join((["Leading"] if span["leading"] else []) + letters + names)
-        left, top, right, bottom = span["box"]
-        out.append({"box": [round(left / w, 4), round(top / h, 4), round(right / w, 4), round(bottom / h, 4)],
-                    "start": span["first"], "kind": kind, "label": label or "(no Blocks)"})
-    return out
+            return None, f"Entry Span {key} (Line Numbers {span['first']}-{span['last']}) {why}"
+        pieces.append((span, answer["blocks"]))
+    for held in log["confirmed"].get(page, []):
+        pieces.append(({"first": held["first"], "last": held["last"], "leading": held["leading"], "box": held["crop"],
+                        "band": held["band"], "readings": held["readings"], "crop_reads": held["crop_reads"]},
+                       held["model_blocks"]))
+    pieces.sort(key=lambda piece: piece[0]["band"][0])
+    blocks = []
+    for span, span_blocks in pieces:
+        span["blocks"] = [len(blocks), len(blocks) + len(span_blocks)]
+        blocks += span_blocks
+    return {"printed_page": printed, "body_start": body_start, "pdf_sha1": pdf_sha1, "size": found["size"],
+            "blocks": blocks, "spans": [span for span, _ in pieces]}, None
 
 
 def main():
@@ -263,41 +281,51 @@ def main():
         sys.exit(f"[Kho tàng tục ngữ] {len(unread)} page(s) of this run have no current Vision read. On the Mac, run "
                  f"python3 -m src.khotangtucngu.vision_ocr --{args.part} with these pages, and copy its output here:\n"
                  + "\n".join(unread))
+
+    # -- the developer's decisions: bands mean something only on the PDF they were made from
+    log = read_log(store)
+    other_pdf = [page for page, held in sorted(log["confirmed"].items()) if any(r["pdf_sha1"] != pdf_sha1 for r in held)]
+    if other_pdf:
+        sys.exit(f"[Kho tàng tục ngữ] {store}/review.jsonl has Confirmed Spans made from another PDF, on PDF page(s) "
+                 f"{', '.join(map(str, other_pdf))}: their Blocks would be placed on different text")
     if args.check_reads:
         print(f"[Kho tàng tục ngữ] All {len(only)} page(s) of this run have current Vision reads")
         return
+    to_read = [page for page in only if not complete_line(page, found[page], log)]
+    print(f"[Kho tàng tục ngữ] {sum(map(len, log['confirmed'].values()))} Confirmed Span(s) in the review log, "
+          f"{len(only) - len(to_read)} page(s) of this run fully confirmed: no request for them")
 
     if args.dry_run:
         with open(os.path.join(store, "dry_run_tokens.jsonl"), "w", encoding="utf-8") as out:
-            vlm_requests.count_tokens(list(layout_requests(doc, only, found)), LAYOUT, args.model_name, out,
+            vlm_requests.count_tokens(list(layout_requests(doc, to_read, found)), LAYOUT, args.model_name, out,
                                       label="Layout requests")
         print(f"[Dry Run] Per-request counts in {store}/dry_run_tokens.jsonl")
         return
 
     model = Model(args.model_name, args.vllm_url)
-    vlm_requests.run_phase(layout_requests(doc, only, found), layout_dir, layout_base,
+    vlm_requests.run_phase(layout_requests(doc, to_read, found), layout_dir, layout_base,
                            label="[Kho tàng tục ngữ] Layout requests", phase=LAYOUT, model=model, usage_file=usage_file)
     page_spans = {}
-    for page in only:
+    for page in to_read:
         if found[page]["lines"]:
             layout, _ = current_answer(layout_dir, page_key(page), {**layout_base, **layout_stamp(page, found[page])})
             if layout is not None:
-                page_spans[page] = entry_spans(found[page], layout)
+                page_spans[page] = entry_spans(found[page], layout, bands_of(log, page))
                 with_readings(page_spans[page], records[page])
     vlm_requests.run_phase(span_requests(doc, page_spans), spans_dir, span_base,
                            label="[Kho tàng tục ngữ] Entry Span requests", phase=SPAN, model=model,
                            usage_file=usage_file)
 
     # -- outputs, rebuilt from every saved answer
-    answers, spans, readings, flagged, missing = {}, {}, {}, {}, []
+    answers, readings, flagged, missing = {}, {}, {}, []
     for page in range(1, n_pages + 1):
-        answer, page_spans_now, why = page_answer(page, found.get(page), records.get(page), pdf_sha1, layout_dir,
-                                                  layout_base, spans_dir, span_base)
+        answer, why = page_answer(page, found.get(page), records.get(page), pdf_sha1, layout_dir, layout_base,
+                                  spans_dir, span_base, log)
         if answer is not None:
-            answers[page], spans[page] = answer, page_spans_now
-            reads = [(line_read, page_read) for span in page_spans_now for _, line_read, page_read in span["readings"]]
+            answers[page] = answer
+            reads = [(line_read, page_read) for span in answer["spans"] for _, line_read, page_read in span["readings"]]
             readings[page] = "\n".join(read_of_line(*read) for read in reads)
-            flagged[page] = flagged_reads(reads, [crops for span in page_spans_now for crops in span["crop_reads"]])
+            flagged[page] = flagged_reads(reads, [crops for span in answer["spans"] for crops in span["crop_reads"]])
         # A page outside this run counts only if its requests ran and one failed, or were made from other input: the
         # Mac may have read the whole Part for a job over a small batch
         elif page in only or (why != "never ran" and found[page]["lines"]):
@@ -308,8 +336,8 @@ def main():
             missing.append(warning(INK_OUTSIDE, page_key(page), f"PDF page {page} has {len(patches)} patch(es) of "
                                    f"ink outside every printed line found ({top}-{bottom} px down the 300 dpi scan), "
                                    f"in no Entry Span", page))
-    entries, warnings, pages = assemble(answers, abbreviations, part.book_page_offset, readings, flagged)
-    # assemble's Warning ids are unique, and a missing page's and a page's missed ink are their own
+    entries, warnings, pages, _ = rebuild(answers, log, abbreviations, part.book_page_offset, readings, flagged)
+    # rebuild's Warning ids are unique, and a missing page's and a page's missed ink are their own
     warnings = priority_first(missing + warnings)
 
     os.makedirs(os.path.join(store, "pages"), exist_ok=True)
@@ -329,7 +357,6 @@ def main():
         p["image"] = f"pages/{page_key(page)}.png"
         p["layout_image"] = f"layout/{page_key(page)}.png"
         p["layout_page_share"] = round(w / (w + LABEL_STRIP_PX), 4)
-        p["spans"] = review_spans(page, spans[page], found[page]["size"], answers[page], entries)
     write_json(os.path.join(store, "answers.json"), {str(p): answers[p] for p in sorted(answers)})
     write_json(os.path.join(store, "readings.json"), {str(p): readings[p] for p in sorted(readings)})
     write_json(os.path.join(store, "agreed.json"), {str(p): flagged[p] for p in sorted(flagged)})

@@ -14,10 +14,10 @@ Each Part's store/<part>/export/ is emptied and written afresh, and nothing outs
   expansions.json             every Expansion of a General Abbreviation made, with its entry and the text around it
   unresolved_see_also.json    every Unresolved See-also, for information
 
-The Proverb Entries are rebuilt from the store's answers.json with the Fixes of its review.jsonl that are not stale in
-place of the model's Blocks of their pages (see review.py). A Citation after "bk" is a Variant Citation, marked
-"variant". Notes, Variants and Corrections are lists of spans, {"text"} plus, where it applies: "em" (printed in
-italics), "strong" (the corrected words of a Correction), "source" (a Source Abbreviation, the key of its Source in
+The Proverb Entries are rebuilt from the store's answers.json with the Confirmed Spans of its review.jsonl laid over the
+model's Blocks (see review.py); an entry is "fixed" only if a span holding it was edited, not if it was confirmed as it
+stood. A Citation after "bk" is a Variant Citation, marked "variant". Notes, Variants and Corrections are lists of
+spans, {"text"} plus, where it applies: "em" (printed in italics), "strong" (the corrected words of a Correction), "source" (a Source Abbreviation, the key of its Source in
 sources.json) or "general" (a General Abbreviation, whose "text" is its Expansion). The proverb is plain text.
 """
 import os
@@ -34,7 +34,7 @@ import shutil
 import unicodedata
 
 from src.khotangtucngu.citations import Abbreviations, clean_citation_text, load_abbreviations
-from src.khotangtucngu.review import read_answers, read_fixes, rebuild
+from src.khotangtucngu.review import read_answers, read_log, rebuild
 from src.khotangtucngu.settings import FRONT_MATTER, PARTS, STORE_DIR
 from src.providers.vlm_requests import write_json
 
@@ -124,14 +124,13 @@ def intro(front_matter):
     return re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
 
 
-# -- the Proverb Entries with the Fixes
+# -- the Proverb Entries with the Confirmed Spans
 
-def with_fixes(store, abbreviations, book_page_offset):
-    """The store's Proverb Entries rebuilt with its Fixes that are not stale, the pages whose Fix applies, and the
-    pages whose Fix is stale."""
-    entries, _, _, applied, stale = rebuild(read_answers(os.path.join(store, "answers.json")), read_fixes(store),
-                                            abbreviations, book_page_offset)
-    return entries, applied, stale
+def with_confirmed(store, abbreviations, book_page_offset):
+    """The store's Proverb Entries rebuilt with its Confirmed Spans, and how many of those there are."""
+    log = read_log(store)
+    entries, _, _, _ = rebuild(read_answers(os.path.join(store, "answers.json")), log, abbreviations, book_page_offset)
+    return entries, sum(len(held) for held in log["confirmed"].values())
 
 
 # -- text for the reader
@@ -296,10 +295,9 @@ def main():
         sys.exit(f"[Kho tàng tục ngữ] No store in {STORE_DIR} has an answers.json: run src.khotangtucngu.cli first")
     parts = {}
     for key, store in stores.items():
-        entries, applied, stale = with_fixes(store, Abbreviations(abbreviations), PARTS[key].book_page_offset)
+        entries, confirmed = with_confirmed(store, Abbreviations(abbreviations), PARTS[key].book_page_offset)
         parts[key] = entries
-        print(f"[Kho tàng tục ngữ] {key}: {len(entries)} Proverb Entries, Fixes applied on {len(applied)} page(s), "
-              f"stale on {len(stale)} {['p' + str(p) for p in stale] or ''}")
+        print(f"[Kho tàng tục ngữ] {key}: {len(entries)} Proverb Entries, {confirmed} Confirmed Span(s)")
     # Every Part exported now, so a See-also resolves to an entry of any of them
     by_name = {e["name"]: e for entries in parts.values() for e in entries}
 

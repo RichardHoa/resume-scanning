@@ -205,7 +205,7 @@ python3 scripts/proofread/compare_ocr_hint.py vsc-project/ai-pass/<with-hint> vs
 `src/khotangtucngu` transcribes the Proverb Entries of one PDF Part of the book with the default vision model, using
 two Apple Vision reads of every line made on a Mac. It then lets you review them page by page against the scan and
 exports website data.
-Its terms (PDF Part, Proverb Entry, Citation, Warning, Fix, ...) are in
+Its terms (PDF Part, Proverb Entry, Citation, Warning, Confirmed Span, ...) are in
 [`vsc-project/khoTangTucNguoiNguoiViet/GLOSSARY.md`](vsc-project/khoTangTucNguoiNguoiViet/GLOSSARY.md). The Parts,
 their proverb pages and book page offsets are in `src/khotangtucngu/settings.py`; only `--part-1` (PDF pages 36–865)
 is set up now.
@@ -254,6 +254,13 @@ sbatch scripts/khotangtucngu/submit.sh --part-1 --pages 420        # redo the pa
 - Each answer is saved as soon as it arrives. A rerun only redoes requests that failed, never ran, or were made
   under a different prompt, image setting, read or PDF. If the full run hits the job's 4-hour limit, submit the same
   command again and it carries on.
+- The job runs 60 requests at a time, its own setting in `scripts/khotangtucngu/submit.sh`. Make the first job at 60 a
+  small batch of pages, to show whether the KV cache still fits its GPU memory share of 0.85.
+- **Confirmed Spans:** the job reads `review.jsonl` if the store has one, and never writes it. A Confirmed Span gets no
+  request, however the layout is read later. A partly confirmed page gets its layout request (reused as usual) and
+  requests for its other spans, and lines left below a Confirmed Span are read as a continuation of the entry above. A
+  fully confirmed page gets no request at all until one of its spans is undone. If a Confirmed Span was made from
+  another PDF, the job stops before any request, naming the pages.
 - Runs over different pages add up in the store. The outputs are rebuilt from every saved answer each time.
 - `--dry-run` writes its per-request counts to `store/<part>/dry_run_tokens.jsonl`.
 - Logs: `logging/slurm_khotangtucngu_<job>.out`, plus `logs/vllm_khotangtucngu.log` for the server.
@@ -264,15 +271,15 @@ A run writes into the store:
 | --- | --- |
 | `layout/pNNN.json`, `layout/pNNN.png` | each PDF page's layout answer, and the page with its Line Numbers as that request saw it |
 | `spans/pNNN-LMM.json` | each Entry Span's answer, named by its page and the Line Number it starts on |
-| `answers.json` | every current page answer, for the review server to rebuild the entries with Fixes |
+| `answers.json` | every current page answer with the model's Blocks and its spans (Block range, band, crop, Line Numbers, whether Leading, reads), for the review server to lay Confirmed Spans over |
 | `readings.json` | each page's OCR Readings joined, which its Blocks are checked against for Diacritic Disagreements |
 | `agreed.json` | the same readings with their Agreed Syllables flagged, which its Blocks are checked against for Model Edits |
-| `entries.json` | the verbatim Proverb Entries, plus each page's book page, answer hash and entries |
+| `entries.json` | the verbatim Proverb Entries with the Confirmed Spans laid over, plus each page's book page, entries and spans |
 | `warnings.json` | every Warning, with its kind, reason and PDF page |
 | `sources.json` | the 63 Sources, for the review server to write Citations out |
 | `pages/pNNN.png` | each page's scan, for the review server |
-| `serve.py`, `web/`, `khotangtucngu/` | the review server, its page, and the code that rebuilds the entries with Fixes |
-| `review.jsonl` | the review log of Fixes; written only by `serve.py`, never by a run |
+| `serve.py`, `web/`, `khotangtucngu/` | the review server, its page, and the code that rebuilds the entries with Confirmed Spans |
+| `review.jsonl` | the review log: each Confirmed Span in full, undos, printed page numbers. Append-only, written only by `serve.py`, never by a run |
 | `token_usage.jsonl` | one line per request sent |
 
 Warnings flag:
@@ -282,11 +289,16 @@ Warnings flag:
 - Citations with no pages or that can't be split;
 - Diacritic Disagreements;
 - Model Edits: where the model's Blocks differ from an Agreed Syllable or add a word no read has. The model's text is
-  kept and the Warning names both spellings. A Fix that restores the reads' spelling clears it;
+  kept and the Warning names both spellings;
 - page numbers out of step with the PDF page;
 - failed or missing pages;
 - Leading Blocks with no Proverb Entry to join;
-- ink outside every printed line found.
+- ink outside every printed line found;
+- a model span only partly overlapping a Confirmed Span, after a run without the latest log.
+
+A Confirmed Span's Blocks raise no Warning, but its numbers still feed other spans' checks: an unconfirmed A 16 still
+warns that it follows A 14, and a second A 4 keeps its duplicate Warning. Confirming A 14 does hide "A 14 follows A 12"
+for good, even if A 13 really is missing, until you undo it. Missing page and Ink outside the lines Warnings always stay.
 
 **3. Review (any machine, nothing to install).** Copy the store to the laptop, into the same path in your clone of
 this repository, then start the server in it:
@@ -302,17 +314,34 @@ cd vsc-project/khoTangTucNguoiNguoiViet/store/part-1 && python3 serve.py   # htt
   no owner) sit above. Under each entry, its Citations are written out with the Source each matches among the 63, or
   in red if it matches none.
 - **Moving around:** ◀ ▶ (or ← →) step through the pages. "Next with Warnings" (`w`) and "Next edited" (`e`) jump
-  ahead. "Edits" lists every page with a Fix.
-- **Editing:** nobody checks every entry. Where you see the model got something wrong, "✎ Edit" (on hover) opens the
-  entry's Blocks as printed text, one row each: change, add, delete or reorder them, and a live preview shows the
-  entry and its Warnings. "✎ Edit the page" also edits the printed page number and Blocks outside any entry. Saving
-  appends a Fix of the page to `review.jsonl`, and the entries and Warnings are rebuilt with it. An edited entry is
-  marked, with its changes against the transcription.
-- **Stale Fixes:** if a rerun changes the answer a Fix was made against, the Fix is shown as stale and isn't applied
-  until you edit the page again from it or drop it.
-- **Keep your review log:** `review.jsonl` is written where you review. When you pull a rerun's store again, keep
-  `--exclude review.jsonl` so the copy on the cluster never overwrites your review.
-- **Fixing the model's reading:** to redo pages, rerun them on the cluster with `--pages` and pull the store again.
+  ahead, and lead only to what is unsettled or changed. The header counts the spans confirmed, with no total: nobody
+  confirms every entry. "Confirmed" lists the spans you edited, and every Confirmed Span with its toggle.
+- **Confirming and editing:** on an entry's card, "✓ Confirm" and "✎ Edit" (on hover) act on the Entry Span holding that
+  entry's Blocks on this page. Either way it becomes a Confirmed Span straight away, with no run: its Warnings go, and
+  its rectangle on the scan changes colour. Two entries in one span share its confirmation, and an entry running onto
+  the next page is confirmed separately on each page. A letter heading, or Leading Blocks with no owner, has a card of
+  its own.
+- **The editor:** it opens the whole span as printed text, one row per Block: change, add, delete or reorder them. A live
+  preview shows the entries and the Warnings the Blocks would raise, which never stop you saving. You can edit a
+  Confirmed Span again, and the latest save wins. An edited span is tagged, with its changes against the model's Blocks.
+- **Undo:** puts the model's Blocks and their Warnings back straight away. The next run reads the span again if its saved
+  answer is no longer current.
+- **The printed page number:** the line above the entries edits, confirms and undoes it. Doing either settles its Page
+  number Warning for good.
+- **Overlaps:** a run without your latest log can cut a span that only partly overlaps a Confirmed Span. It stays, with
+  a Warning and no buttons, until a run with the log cuts the page again.
+- **Your review log is the master copy:** `review.jsonl` is written where you review, on the laptop. Before a run, push
+  it to the same path on the cluster yourself. A run without your latest log loses nothing, and only wastes requests
+  on spans you have since confirmed. Keep `--exclude review.jsonl` when you pull a rerun's store, so the cluster's
+  older copy never overwrites yours:
+
+```bash
+rsync -a vsc-project/khoTangTucNguoiNguoiViet/store/part-1/review.jsonl \
+      <user>@<login node>:<repo>/vsc-project/khoTangTucNguoiNguoiViet/store/part-1/
+```
+
+- **Redoing the model's reading:** to redo pages, rerun them on the cluster with `--pages` and pull the store again.
+  Confirmed Spans keep their Blocks and their place whatever the new answers say.
 
 **4. Export (laptop, no GPU).**
 
@@ -321,7 +350,8 @@ python3 -m src.khotangtucngu.export
 ```
 
 - **Which Parts:** it exports every Part whose store has an `answers.json`, so a See-also resolves across Parts.
-- **Fixes:** the entries are rebuilt with the Fixes that aren't stale in place of the model's Blocks of their pages.
+- **Confirmed Spans:** the entries are rebuilt with them laid over the model's Blocks. An entry's `fixed` is true only
+  if a span holding it was edited, not if it was confirmed as it stood.
 - **Output:** it empties and rewrites each `store/<part>/export/` and writes nothing outside it:
   - `letters/<letter>.json`, one record per Proverb Entry;
   - `sources.json`, the 63 Sources with their Source Notes;

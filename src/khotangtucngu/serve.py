@@ -6,23 +6,26 @@ can be reviewed:
 
     python3 serve.py [--port 8000]
 
-serves the store on http://127.0.0.1:<port>/ and opens it in a browser: each page's scan (pages/) on the left with the
-model's Entry Spans drawn on it, or the page as the layout request saw it with its Line Numbers (layout/), and its
-Proverb Entries on the right with their Warnings and their Citations matched to the 63 Sources (sources.json). The
-developer edits whatever they see is wrong; nobody checks every entry. Each edit saves a Fix of the page, the corrected
-Blocks of its answer, appended to review.jsonl here with its time (see review.py for its lines). No run rebuilds or
-deletes review.jsonl, and nothing else in the store is changed. If the store can't be written, the page is read-only
-and says so.
+serves the store on http://127.0.0.1:<port>/ and opens it in a browser: each page's scan (pages/) on the left with its
+Entry Spans drawn on it, or the page as the layout request saw it with its Line Numbers (layout/), and its Proverb
+Entries on the right with their Warnings and their Citations matched to the 63 Sources (sources.json). The developer
+edits or confirms an Entry Span where they choose to; nobody checks every entry. Either way it becomes a Confirmed Span,
+its full detail appended to review.jsonl here with its time (see review.py for its lines). No run rebuilds or deletes
+review.jsonl, and nothing else in the store is changed. This server can't tell whether a Confirmed Span was made from
+another PDF, as it has no PDF: a run stops on that. If the store can't be written, the page is read-only and says so.
 
 Besides the store's files:
 
-  GET  /assembled     the Proverb Entries, Warnings and pages rebuilt from answers.json with the Fixes that are not
-                      stale (their Blocks checked against the OCR Readings in readings.json and the reads flagged in
-                      agreed.json), the Fixes by PDF page, and the pages whose Fix is applied and stale
-  POST /preview       {"page", "printed_page", "blocks"}: the entries and Warnings of that page were it so
-  POST /review        a Fix line, appended to review.jsonl with its time and the hash of its page's current answer
-
-entries.json and warnings.json stay the model's, for the page's "as transcribed" view.
+  GET  /assembled     the Proverb Entries, Warnings and pages rebuilt from answers.json with the review log (their Blocks
+                      checked against the OCR Readings in readings.json and the reads flagged in agreed.json), each
+                      page's Blocks and spans, and every Confirmed Span
+  POST /preview       {"page", "band", "blocks"}: the entries and Warnings of that page were that span's Blocks those, the
+                      Warnings raised whether or not the span is already confirmed
+  POST /review        one of:
+                      {"type": "confirmed", "page", "band", "blocks"}: the span confirmed, with those Blocks (null keeps
+                      the ones it has); "page_complete" is appended too if it was the page's last
+                      {"type": "unconfirmed", "page", "band"}: the Confirmed Span undone
+                      {"type": "printed_page", "page", "printed_page"}: the page's number set or confirmed (null undoes it)
 """
 import argparse
 import json
@@ -33,9 +36,11 @@ from datetime import datetime
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-from khotangtucngu.assembly import INK_OUTSIDE, PAGE_MISSING, answer_sha1, priority_first
+from khotangtucngu.assembly import INK_OUTSIDE, PAGE_MISSING, priority_first
 from khotangtucngu.citations import Abbreviations
-from khotangtucngu.review import REVIEW_LOG, fix_problem, read_fixes, rebuild
+from khotangtucngu.review import (
+    REVIEW_LOG, band_problem, blocks_differ, blocks_problem, lay_confirmed, read_log, rebuild
+)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REVIEW = os.path.join(HERE, REVIEW_LOG)
@@ -64,7 +69,7 @@ def _read(name, parse=json.load):
 
 
 def _answers():
-    """The model's page answers by PDF page, a new dict each time (the answers in it are shared, never changed)."""
+    """The page answers by PDF page, a new dict each time (the answers in it are shared, never changed)."""
     return {int(page): answer for page, answer in _read("answers.json").items()}
 
 
@@ -80,33 +85,98 @@ def _flagged():
     return {int(page): flagged for page, flagged in _read("agreed.json").items()}
 
 
-def assembled(page=None, printed_page=None, blocks=None):
-    """The store rebuilt with its Fixes; with `page`, as if that page's printed number and Blocks were `printed_page`
-    and `blocks`."""
-    answers, fixes = _answers(), read_fixes(HERE)
+def _page_of(request):
+    """The PDF page with an answer that `request` names."""
+    page = request.get("page") if isinstance(request, dict) else None
+    if not isinstance(page, int) or page not in _answers():
+        raise ValueError(f"PDF page {page} has no answer")
+    return page
+
+
+def _span_line(page, answer, records, request):
+    """
+    The "confirmed" line of the span of `request`, on `page` with its `answer` and `records` (its Confirmed Spans' lines),
+    with the Blocks `request` gives, or the ones it has. Confirming a span again carries its model's Blocks forward. A
+    span cut across a band can't be confirmed: its lines are partly the Confirmed Span's.
+    """
+    why = band_problem(request.get("band"))
+    if why:
+        raise ValueError(why)
+    laid = lay_confirmed(answer, records)
+    span = next((s for s in laid["spans"] if s["band"] == request["band"]), None)
+    if span is None:
+        raise ValueError(f"PDF page {page} has no Entry Span at pixel rows {request['band']}")
+    if span["overlap"]:
+        raise ValueError(f"the Entry Span of Line Numbers {span['first']}-{span['last']} overlaps a Confirmed Span: "
+                         f"run the page with the latest review log first")
+    blocks = request.get("blocks")
+    if blocks is None:
+        blocks = laid["blocks"][span["blocks"][0]:span["blocks"][1]]
+    why = blocks_problem(blocks)
+    if why:
+        raise ValueError(why)
+    return {"type": "confirmed", "page": page, "pdf_sha1": answer["pdf_sha1"], "band": span["band"],
+            "first": span["first"], "last": span["last"], "leading": span["leading"], "crop": span["box"],
+            "readings": span["readings"], "crop_reads": span["crop_reads"], "blocks": blocks,
+            "model_blocks": span["model_blocks"], "edited": blocks_differ(blocks, span["model_blocks"])}
+
+
+def assembled(preview=None):
+    """The store rebuilt with its review log; with `preview` ({"page", "band", "blocks"}), as if that span's Blocks were
+    those, and raising their Warnings."""
+    answers, log = _answers(), read_log(HERE)
+    if preview:
+        page = preview["page"]
+        records = log["confirmed"].get(page, [])
+        line = _span_line(page, answers[page], records, preview)
+        log["confirmed"][page] = [r for r in records if r["band"] != line["band"]] + [{**line, "preview": True}]
     abbreviations = Abbreviations(list(_read("sources.json")))
-    if page is not None:
-        answers[page] = {**answers.get(page, {}), "printed_page": printed_page, "blocks": blocks}
-        fixes.pop(page, None)
     offset = _read("entries.json", lambda f: json.load(f)["book_page_offset"])
-    entries, warnings, pages, applied, stale = rebuild(answers, fixes, abbreviations, offset, _readings(), _flagged())
-    # A failed or missing page has no answer, and ink outside the found lines is no Block's, so no Fix can change
-    # their Warnings
+    entries, warnings, pages, laid = rebuild(answers, log, abbreviations, offset, _readings(), _flagged())
+    for p in pages:
+        p["blocks"] = laid[p["pdf"]]["blocks"]
+    # A failed or missing page has no answer, and ink outside the found lines is no Block's, so no Confirmed Span can
+    # change their Warnings
     missing = [w for w in _read("warnings.json") if w["kind"] in (PAGE_MISSING, INK_OUTSIDE)]
     warnings = priority_first(missing + warnings)
-    return {"entries": entries, "warnings": warnings, "pages": pages, "applied": applied, "stale": stale,
-            "fixes": {str(p): f for p, f in fixes.items()}}
+    confirmed = [{k: r.get(k) for k in ("page", "band", "first", "last", "edited", "time")}
+                 for records in log["confirmed"].values() for r in records]
+    return {"entries": entries, "warnings": warnings, "pages": pages, "confirmed": confirmed}
 
 
 def preview(request):
-    """The entries and Warnings of a page were its printed number and Blocks those of `request`."""
-    page = request.get("page") if isinstance(request, dict) else None
-    why = fix_problem({**request, "type": "fix", "answer_sha1": "preview"}) if page is not None else "no PDF page"
-    if why or request.get("blocks") is None:
-        raise ValueError(why or "no Blocks")
-    view = assembled(page, request["printed_page"], request["blocks"])
+    """The entries and Warnings of a page were one span's Blocks those of `request`."""
+    page = _page_of(request)
+    if request.get("blocks") is None:
+        raise ValueError("no Blocks")
+    view = assembled(request)
     return {"entries": [e for e in view["entries"] if page in e["pdf_pages"]],
             "warnings": [w for w in view["warnings"] if w["page"] == page]}
+
+
+def review_lines(request):
+    """The lines of the review log that `request`, a POST /review, appends, without their time."""
+    page, kind = _page_of(request), request.get("type")
+    if kind == "printed_page":
+        number = request.get("printed_page")
+        if number is not None and not isinstance(number, str):
+            raise ValueError("the printed page number is not text")
+        return [{"type": kind, "page": page, "printed_page": number}]
+    records = read_log(HERE)["confirmed"].get(page, [])
+    if kind == "unconfirmed":
+        if not any(r["band"] == request.get("band") for r in records):
+            raise ValueError(f"PDF page {page} has no Confirmed Span at pixel rows {request.get('band')}")
+        return [{"type": kind, "page": page, "band": request["band"]}]
+    if kind != "confirmed":
+        raise ValueError(f"no line of the review log has type {kind!r}")
+    answer = _answers()[page]
+    line = _span_line(page, answer, records, request)
+    lines = [line]
+    after = lay_confirmed(answer, [r for r in records if r["band"] != line["band"]] + [line])
+    if all(span["confirmed"] for span in after["spans"]):
+        lines.append({"type": "page_complete", "page": page, "printed_page": answer["printed_page"],
+                      "body_start": answer["body_start"]})
+    return lines
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -128,29 +198,23 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path not in ("/review", "/preview"):
             return self._send(404, "text/plain; charset=utf-8", b"not found")
         try:
-            record = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)))
+            request = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)))
             if self.path == "/preview":
-                return self._send_json(preview(record))
-            if isinstance(record, dict) and record.get("blocks") is not None:
-                # Made against the page's answer now, whatever the page loaded before a rerun
-                answer = _answers().get(record.get("page"))
-                if answer is None:
-                    raise ValueError(f"PDF page {record.get('page')} has no answer to fix")
-                record["answer_sha1"] = answer_sha1(answer)
-            why = fix_problem(record)
-            if why:
-                raise ValueError(why)
+                return self._send_json(preview(request))
+            lines = review_lines(request)
         except ValueError as e:
             return self._send(400, "text/plain; charset=utf-8", str(e).encode("utf-8"))
         if not writable():
             return self._send(403, "text/plain; charset=utf-8", b"this store is read-only")
-        record["time"] = datetime.now().astimezone().isoformat(timespec="seconds")
+        time = datetime.now().astimezone().isoformat(timespec="seconds")
+        for line in lines:
+            line["time"] = time
         try:
             with _append_lock, open(REVIEW, "a", encoding="utf-8") as f:
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                f.write("".join(json.dumps(line, ensure_ascii=False) + "\n" for line in lines))
         except OSError as e:
             return self._send(403, "text/plain; charset=utf-8", str(e).encode("utf-8"))
-        self._send_json(record)
+        self._send_json(lines[0])
 
     def end_headers(self):
         # answers.json, entries.json, warnings.json and the page images are rebuilt by a rerun
@@ -182,7 +246,7 @@ def main():
     url = f"http://127.0.0.1:{args.port}/"
     print(f"Reviewing {HERE} at {url} (Ctrl-C to stop)")
     if not writable():
-        print("This store can't be written: the page is read-only, and Fixes can't be saved")
+        print("This store can't be written: the page is read-only, and nothing can be confirmed")
     webbrowser.open(url)
     try:
         server.serve_forever()

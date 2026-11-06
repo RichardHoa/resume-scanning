@@ -154,19 +154,44 @@ def layout_problem(answer, n_lines):
     return None
 
 
-def entry_spans(found, answer):
+def in_band(line, bands):
+    """Whether the centre of `line` falls inside one of `bands`, a page's Confirmed Spans' [top, bottom] pixel rows."""
+    centre = (line[0] + line[1]) / 2
+    return any(top <= centre < bottom for top, bottom in bands)
+
+
+def _clear_of(top, bottom, bands):
+    """The pixel rows [top, bottom] cut back off `bands`: a line whose centre is outside a band may still touch it, if
+    the line finder changed since the band was made."""
+    for band_top, band_bottom in bands:
+        if band_top < bottom and top < band_bottom:
+            if band_top + band_bottom < top + bottom:
+                top = band_bottom
+            else:
+                bottom = band_top
+    return [top, bottom]
+
+
+def entry_spans(found, answer, bands=()):
     """
-    The Entry Spans of a page, top to bottom, from its lines (`found`, from `find_lines`) and its checked layout
-    answer: {"first", "last" (its first and last Line Numbers), "leading" (it is the lines from body_start above the
-    first start, which continue the page before), "box" (its crop)}. Every line from body_start down is in exactly one.
+    The Entry Spans of a page left to read, top to bottom, from its lines (`found`, from `find_lines`), its checked
+    layout answer and `bands`, the [top, bottom] pixel rows of its Confirmed Spans, which own every line whose centre
+    falls in them: {"first", "last" (its first and last Line Numbers), "leading" (it begins at no start the model named:
+    the lines from body_start above the first start, or below a band, which continue the Proverb Entry above), "box" (its
+    crop), "band" (its pixel rows)}. Starts inside a band are ignored, and the first line below one is forced to be a
+    start. Every line from body_start down is in exactly one of these or in a band.
     """
     lines, (w, h) = found["lines"], found["size"]
-    starts = answer["starts"]
-    firsts = ([answer["body_start"]] if not starts or starts[0] > answer["body_start"] else []) + starts
+    starts = set(answer["starts"])
+    free = [n for n in range(answer["body_start"], len(lines) + 1) if not in_band(lines[n - 1], bands)]
+    firsts = [n for k, n in enumerate(free) if n in starts or k == 0 or free[k - 1] != n - 1]
     left, right = _sides(lines, w)
+    open_lines, begins = set(free), set(firsts)
     spans = []
-    for k, first in enumerate(firsts):
-        last = firsts[k + 1] - 1 if k + 1 < len(firsts) else len(lines)
+    for first in firsts:
+        last = first
+        while last + 1 in open_lines and last + 1 not in begins:
+            last += 1
         i, j = first - 1, last - 1
         if i == 0:
             top = lines[i][0] - SPAN_MARGIN_PX
@@ -178,7 +203,8 @@ def entry_spans(found, answer):
         bottom = (lines[j][1] + SPAN_MARGIN_PX if j == len(lines) - 1
                   else max(lines[j + 1][0] - SPAN_EDGE_GAP_PX, lines[j][1]))
         spans.append({"first": first, "last": last, "leading": first not in starts,
-                      "box": [left, max(0, top), right, min(h, bottom)]})
+                      "box": [left, max(0, top), right, min(h, bottom)],
+                      "band": _clear_of(lines[i][0], lines[j][1], bands)})
     return spans
 
 

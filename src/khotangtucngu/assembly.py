@@ -8,10 +8,8 @@ Leading Block joins the last Proverb Entry of the page before, and entry numbers
 nothing carries over: the next stretch starts afresh.
 
 Standard library only, importing only citations.py and diacritics.py, relatively: cli.py copies them, this file and
-review.py into the store, where serve.py rebuilds the entries with the developer's Fixes.
+review.py into the store, where serve.py rebuilds the entries with the developer's Confirmed Spans.
 """
-import hashlib
-import json
 import unicodedata
 
 from .citations import see_also_names
@@ -35,6 +33,8 @@ DIACRITIC, MODEL_EDIT = "diacritic_disagreement", "model_edit"
 STABLE_MODEL_EDIT = "stable_model_edit"
 # Raised by cli.py, not here: ink on a page outside every printed line found, which no Entry Span holds
 INK_OUTSIDE = "ink_outside"
+# Raised by review.py: a model span cut by a run without the latest review log, only partly overlapping a Confirmed Span
+CONFIRMED_OVERLAP = "confirmed_overlap"
 
 
 def priority_first(warnings):
@@ -48,11 +48,6 @@ def warning(kind, place, reason, page):
     return {"id": f"{kind}:{place}", "kind": kind, "reason": reason, "page": page}
 
 
-def answer_sha1(answer):
-    """The hash of a page answer, which a Fix made against it records."""
-    return hashlib.sha1(json.dumps(answer, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
-
-
 def first_letter(text):
     """The letter of the alphabet a proverb is ordered under: its first letter without its tone mark."""
     for ch in text:
@@ -62,11 +57,14 @@ def first_letter(text):
     return ""
 
 
-def _page_number_warnings(answers, book_page_offset):
+def _page_number_warnings(answers, book_page_offset, settled):
     """A Warning for each page whose printed number isn't the book page its PDF page makes it (PDF page +
-    `book_page_offset`), or that prints none though it opens no letter: only a letter's first page prints none."""
+    `book_page_offset`), or that prints none though it opens no letter: only a letter's first page prints none. Pages in
+    `settled` have a number the developer gave."""
     warnings = []
     for p in sorted(answers):
+        if p in settled:
+            continue
         printed = unicodedata.normalize("NFC", str(answers[p].get("printed_page", ""))).strip()
         expected = p + book_page_offset
         if not printed:
@@ -105,11 +103,13 @@ def _unique_ids(warnings):
     return warnings
 
 
-def _counted_warnings(kind, page, items, owners):
+def _counted_warnings(kind, page, items, owners, confirmed):
     """A Warning of `kind` for each of `items`, (index of the Block, reason), one per Proverb Entry (`owners`, by Block)
-    and reason, with how often it came."""
+    and reason, with how often it came. Blocks in `confirmed`, a Confirmed Span's, raise none."""
     counts = {}
     for b, reason in items:
+        if b in confirmed:
+            continue
         key = (owners[b], reason)
         counts[key] = counts.get(key, 0) + 1
     warnings = []
@@ -120,11 +120,12 @@ def _counted_warnings(kind, page, items, owners):
     return warnings
 
 
-def _diacritic_warnings(page, blocks, reading, owners, flagged=None):
+def _diacritic_warnings(page, blocks, reading, owners, confirmed, flagged=None):
     """A Diacritic Disagreement Warning for each syllable of a page's `blocks` that its OCR Readings (`reading`,
     joined) mark otherwise, unless Agreed in `flagged`."""
     return _counted_warnings(DIACRITIC, page, [(b, f'"{ours}" where the OCR Reading has "{theirs}"')
-                                               for b, ours, theirs in disagreements(blocks, reading, flagged)], owners)
+                                               for b, ours, theirs in disagreements(blocks, reading, flagged)], owners,
+                             confirmed)
 
 
 def _model_edit_reason(did, ours, theirs):
@@ -135,26 +136,31 @@ def _model_edit_reason(did, ours, theirs):
     return f'the model wrote "{ours}" where both reads have "{theirs}"'
 
 
-def _model_edit_warnings(page, blocks, flagged, owners):
+def _model_edit_warnings(page, blocks, flagged, owners, confirmed):
     """A Model Edit Warning for each change of a page's `blocks` to an Agreed Syllable of `flagged`, or word added: a
     Stable Model Edit if the syllable is Stable."""
     edits = model_edits(blocks, flagged)
     return [w for kind, wanted in ((STABLE_MODEL_EDIT, True), (MODEL_EDIT, False))
             for w in _counted_warnings(kind, page, [(b, _model_edit_reason(did, ours, theirs))
-                                                    for b, did, ours, theirs, stable in edits if stable == wanted], owners)]
+                                                    for b, did, ours, theirs, stable in edits if stable == wanted],
+                                       owners, confirmed)]
 
 
-def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=None):
+def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=None, confirmed=None, settled=()):
     """
     `answers`: {PDF page: its current page answer}; `abbreviations`: citations.Abbreviations; `book_page_offset`: the
     Part's book page minus PDF page; `readings`: {PDF page: its OCR Readings joined}, which a page's Blocks are checked
     against for Diacritic Disagreements (none for a page without); `flagged`: {PDF page: its reads flagged, from
-    diacritics.flagged_reads}, which they are checked against for Model Edits (none for a page without). Returns the
+    diacritics.flagged_reads}, which they are checked against for Model Edits (none for a page without); `confirmed`:
+    {PDF page: the indexes of its Confirmed Spans' Blocks}, which raise no Warning, though their numbers and letters
+    still feed the checks of other Blocks; `settled`: the pages whose printed number the developer gave. Returns the
     verbatim Proverb Entries in book order, the Warnings they raise (all but failed or missing pages), and each page's
-    {"pdf", "book_page", "printed_page", "answer_sha1", "entries"}, the names of the entries it holds. An entry's
-    "blocks" is {PDF page (a string): [first, last + 1]}, the indexes of its Blocks in that page's answer.
+    {"pdf", "book_page", "printed_page", "entries"}, the names of the entries it holds. An entry's "blocks" is {PDF page
+    (a string): [first, last + 1]}, the indexes of its Blocks in that page's answer.
     """
-    entries, warnings, pages = [], _page_number_warnings(answers, book_page_offset), []
+    entries, warnings, pages = [], _page_number_warnings(answers, book_page_offset, settled), []
+    confirmed = confirmed or {}
+    judged = False          # the Block being read is a Confirmed Span's
     seen = {}               # entry name -> its entry, for duplicates
     letter = None           # the letter of the stretch's last heading or entry
     current = None          # the entry the next Block belongs to
@@ -166,7 +172,7 @@ def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=No
 
     def report(problems, page, owner):
         """A Warning for each (kind, reason) problem of a split of `owner`'s Citations or Correction."""
-        for kind, reason in problems:
+        for kind, reason in [] if judged else problems:
             warnings.append(warning(kind, f"p{page}-{owner}", f"{owner}: {reason}", page))
 
     def cite(raw, page, owner):
@@ -183,13 +189,17 @@ def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=No
         names, unowned_kinds = [], []
         blocks = answers[page].get("blocks") or []
         owners = [None] * len(blocks)    # the name of the Proverb Entry each Block joins
+        page_confirmed = confirmed.get(page, ())
         for b, block in enumerate(blocks):
+            judged = b in page_confirmed
             kind, text = block.get("kind"), unicodedata.normalize("NFC", block.get("text") or "").strip()
             if kind == LETTER:
                 heading = text.upper()
                 order = ALPHABET.index(heading) if heading in ALPHABET else -1
                 latest = max((x for x in (last_heading, letter) if x in ALPHABET), key=ALPHABET.index, default=None)
-                if order < 0:
+                if judged:
+                    pass
+                elif order < 0:
                     warnings.append(warning(LETTER_ORDER, f"p{page}-{heading}", f'letter heading "{text}" is not a '
                                             f"letter of the book's alphabet", page))
                 elif latest is not None and order <= ALPHABET.index(latest):
@@ -210,7 +220,9 @@ def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=No
                 name = entry["name"]
                 # The model often puts the Citation lines on the proverb's own Block, not a Citations Block after it
                 entry["citations"] += cite(block.get("citations") or "", page, name)
-                if name in seen:
+                if judged:
+                    pass
+                elif name in seen:
                     warnings.append(warning(NUMBER_DUPLICATE, f"p{page}-{name}", f"{name} appears again, first on "
                                             f"PDF page {seen[name]['pdf_pages'][0]}", page))
                 elif headed and number != 1:
@@ -226,7 +238,8 @@ def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=No
                 current, previous, headed = entry, entry, False
                 continue
             if current is None:
-                unowned_kinds.append(kind)
+                if not judged:
+                    unowned_kinds.append(kind)
                 continue
             _on_page(current, page, book_page, b)
             owners[b] = current["name"]
@@ -248,13 +261,13 @@ def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=No
                 current["see_also"] += see_also_names(text)
         page_flagged = flagged.get(page) if flagged else None
         if readings and page in readings:
-            warnings += _diacritic_warnings(page, blocks, readings[page], owners, page_flagged)
+            warnings += _diacritic_warnings(page, blocks, readings[page], owners, page_confirmed, page_flagged)
         if page_flagged:
-            warnings += _model_edit_warnings(page, blocks, page_flagged, owners)
+            warnings += _model_edit_warnings(page, blocks, page_flagged, owners, page_confirmed)
         if unowned_kinds:
             warnings.append(warning(NO_OWNER, f"p{page}", f"PDF page {page} has {len(unowned_kinds)} Block(s) "
                                     f"({', '.join(unowned_kinds)}) with no Proverb Entry to join: {unowned}", page))
         pages.append({"pdf": page, "book_page": book_page, "printed_page": answers[page].get("printed_page", ""),
-                      "answer_sha1": answer_sha1(answers[page]), "entries": names})
+                      "entries": names})
     return entries, _unique_ids(warnings), pages
 

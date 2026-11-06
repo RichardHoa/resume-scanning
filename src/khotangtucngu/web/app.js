@@ -1,5 +1,5 @@
 "use strict";
-// The review page of one PDF Part's store: serve.py's docstring gives what it serves, review.py the Fixes it saves
+// The review page of one PDF Part's store: serve.py's docstring gives what it serves, review.py the lines it saves
 const WRITABLE = document.documentElement.dataset.writable === "true";
 const KIND_NAMES = {
   number_gap: "Number gap", number_duplicate: "Duplicate number", letter_order: "Letter out of order",
@@ -8,6 +8,7 @@ const KIND_NAMES = {
   citation_unsplit: "Citation not split", ink_outside: "Ink outside the lines",
   diacritic_disagreement: "Diacritics differ from OCR", model_edit: "Model Edit",
   stable_model_edit: "Priority · Model Edit of a stable read",
+  confirmed_overlap: "Overlaps a Confirmed Span",
 };
 const PRIORITY = "stable_model_edit";
 const BLOCK_NAMES = {
@@ -17,13 +18,12 @@ const BLOCK_NAMES = {
 const ZOOMS = [1, 1.5, 2, 3];
 const ITALIC = /\*([^*]+)\*/g;
 
-let MODEL = null;                   // entries.json: the model's Proverb Entries and pages
-let ANSWERS = {};                   // answers.json: PDF page -> the model's answer
+let MODEL = null;                   // entries.json: each page's images
 let SOURCES = {};                   // sources.json: Source Abbreviation -> its Source
-let VIEW = null;                    // /assembled: the entries rebuilt with the Fixes, and the Fixes
-const PAGES = {};                   // PDF page -> its page of entries.json (the model's answer hash)
-let PAGE_LIST = [];                 // every PDF page with an answer, a Warning or a Fix, in order
-let current = null, zoom = 0, showingEdits = false;
+let VIEW = null;                    // /assembled: the entries rebuilt with the review log, each page's Blocks and spans, every Confirmed Span
+const PAGES = {};                   // PDF page -> its page of entries.json and of /assembled
+let PAGE_LIST = [];                 // every PDF page with an answer, a Warning or a Confirmed Span, in order
+let current = null, zoom = 0, showingConfirmed = false, showAllConfirmed = false;
 let showSpans = true, showNumbered = false;  // the Entry Spans drawn on the scan; the layout image in place of the scan
 
 const $ = sel => document.querySelector(sel);
@@ -61,17 +61,13 @@ async function post(url, body) {
   return r.json();
 }
 
-// -- the Fixes: a page's corrected Blocks, applied unless stale
-function fixOf(p) { return VIEW.fixes[p] || null; }
-function isStale(p) { return VIEW.stale.includes(p); }
-function isApplied(p) { return VIEW.applied.includes(p); }
+// -- a page's spans, each model's or confirmed
+function spansOf(p) { return (PAGES[p] || {}).spans || []; }
+function spanBlocks(p, span) { return PAGES[p].blocks.slice(span.blocks[0], span.blocks[1]); }
 
-// The page's printed number and Blocks as the entries are now built from them: its applied Fix, or the model's
-function pageNow(p) {
-  const fix = isApplied(p) ? fixOf(p) : null;
-  const answer = ANSWERS[p] || {};
-  return {printed_page: fix ? fix.printed_page : String(answer.printed_page ?? ""),
-          blocks: (fix ? fix.blocks : answer.blocks) || []};
+// The spans of page `p` holding any of its Blocks [from, to)
+function spansIn(p, from, to) {
+  return spansOf(p).filter(s => s.blocks[0] < s.blocks[1] && s.blocks[0] < to && s.blocks[1] > from);
 }
 
 function blockKey(b) { return JSON.stringify([b.kind, b.number || 0, b.text || "", b.citations || ""]); }
@@ -106,36 +102,36 @@ function blockDiff(a, b) {
   return ops;
 }
 
-// The model's Blocks of page `p` against its Fix, worked out once per fetch of the store
+// The model's Blocks of an edited span against its Blocks now, worked out once per fetch of the store
 const DIFFS = new Map();
-function pageDiff(p) {
-  if (!DIFFS.has(p)) DIFFS.set(p, blockDiff((ANSWERS[p] || {}).blocks || [], fixOf(p).blocks));
-  return DIFFS.get(p);
+function spanDiff(p, span) {
+  const key = `${p}:${span.band}`;
+  if (!DIFFS.has(key)) DIFFS.set(key, blockDiff(span.model_blocks, spanBlocks(p, span)));
+  return DIFFS.get(key);
 }
 
-// The changes on page `p` that fall in its Blocks [from, to): a deleted Block belongs with the Block before it
-function changesIn(p, from, to) {
-  if (!isApplied(p) || !ANSWERS[p]) return [];
-  let last = -1;
-  return pageDiff(p).filter(o => {
-    const at = o.b ?? last;
+// The changes of `span` that fall in page `p`'s Blocks [from, to): a deleted Block belongs with the Block before it
+function changesIn(p, span, from, to) {
+  let last = 0;
+  return spanDiff(p, span).filter(o => {
+    const at = span.blocks[0] + (o.b ?? last);
     if (o.b != null) last = o.b;
     return at >= from && at < to;
   });
 }
 
-// An entry's changes against the model's transcription, over every page it is printed on, by page
+// An entry's changes against the model's transcription, over every edited span holding it
 function entryChanges(entry) {
   const out = [];
   for (const p of entry.pdf_pages) {
     const [from, to] = entry.blocks[p] || [0, 0];
-    const ops = changesIn(p, from, to);
-    if (ops.some(o => o.op !== "same")) out.push({p, ops});
+    for (const span of spansIn(p, from, to)) {
+      const ops = span.edited ? changesIn(p, span, from, to) : [];
+      if (ops.some(o => o.op !== "same")) out.push({p, span, ops});
+    }
   }
   return out;
 }
-
-function edited(entry) { return entryChanges(entry).length > 0; }
 
 // -- the Proverb Entries, as printed
 function rich(text) {
@@ -228,8 +224,8 @@ function blockText(b) {
   return b.kind === "variant" && b.citations ? `${b.text} ${b.citations}` : b.text;
 }
 
-function diffLines(p, ops) {
-  const before = (ANSWERS[p] || {}).blocks || [], after = fixOf(p).blocks;
+function diffLines(p, span, ops) {
+  const before = span.model_blocks, after = spanBlocks(p, span);
   return ops.map(o => {
     const a = before[o.a], b = after[o.b];
     const kind = h("span", {class: "kindname"}, BLOCK_NAMES[(b || a).kind] || (b || a).kind);
@@ -244,8 +240,8 @@ function diffLines(p, ops) {
 
 function changesBox(changes) {
   return h("details", {class: "changes"}, h("summary", {class: "muted"}, "changes against the transcription"),
-    changes.map(({p, ops}) => [changes.length > 1 ? h("div", {class: "muted small"}, `PDF page ${p}`) : null,
-                               diffLines(p, ops)]));
+    changes.map(({p, span, ops}) => [changes.length > 1 ? h("div", {class: "muted small"}, `PDF page ${p}, L${span.first}`) : null,
+                                     diffLines(p, span, ops)]));
 }
 
 // -- the right side
@@ -265,6 +261,24 @@ function pageLink(p, text) {
   return h("button", {class: "link", onclick: () => showPage(p)}, text);
 }
 
+// A span's tags and what can be done to it, for the card in `card`. `several`: the card has more than one span to tell
+// apart. A span cut across a band has no buttons: its lines are partly the Confirmed Span's
+function spanTools(p, span, card, several) {
+  return h("span", {class: "spantools"},
+    several ? h("span", {class: "muted"}, `L${span.first}–${span.last}`) : null,
+    span.confirmed ? h("span", {class: "tag ok"}, "Confirmed") : null,
+    span.edited ? h("span", {class: "tag ok"}, "Edited") : null,
+    WRITABLE && !span.overlap ? [
+      h("button", {class: "act", title: `Edit the whole Entry Span, Line Numbers ${span.first}-${span.last}`,
+                   onclick: () => openEditor(card, p, span)}, "✎ Edit"),
+      span.confirmed
+        ? h("button", {class: "act", title: "Put the model's Blocks and their Warnings back",
+                       onclick: () => change({type: "unconfirmed", page: p, band: span.band})}, "Undo")
+        : h("button", {class: "act", title: `Confirm the whole Entry Span as it stands, Line Numbers ${span.first}-${span.last}`,
+                       onclick: () => change({type: "confirmed", page: p, band: span.band, blocks: null})}, "✓ Confirm"),
+    ] : null);
+}
+
 function entryCard(entry, warnings) {
   const changes = entryChanges(entry);
   const card = h("article", {class: "entry" + (changes.length ? " edited" : "")});
@@ -272,14 +286,11 @@ function entryCard(entry, warnings) {
   const at = pages.indexOf(current);
   // The book prints a letter heading above the letter's first entry
   if (entry.number === 1 && at === 0) card.append(h("div", {class: "letter"}, entry.letter));
+  const spans = spansIn(current, ...(entry.blocks[current] || [0, 0]));
   const meta = h("div", {class: "meta"}, h("span", {class: "name"}, entry.name),
     at > 0 ? pageLink(pages[at - 1], `◀ begins on p${pages[at - 1]}`) : null,
     at >= 0 && at < pages.length - 1 ? pageLink(pages[at + 1], `continues on p${pages[at + 1]} ▶`) : null,
-    changes.length ? h("span", {class: "tag ok"}, "Edited") : null);
-  if (WRITABLE && ANSWERS[current] && entry.blocks[current]) {
-    meta.append(h("button", {class: "edit", title: `Edit ${entry.name} on this page`,
-                             onclick: () => openEditor(card, current, entry.blocks[current], entry.name)}, "✎ Edit"));
-  }
+    h("span", {class: "holders"}, spans.map(s => spanTools(current, s, card, spans.length > 1))));
   card.append(meta, entryBody(entry));
   for (const w of warnings) card.append(warningLine(w));
   const sources = sourcesList(entry);
@@ -288,88 +299,101 @@ function entryCard(entry, warnings) {
   return card;
 }
 
-function pageInfo(p) {
-  const page = PAGES[p], now = pageNow(p), fix = fixOf(p);
-  const info = h("div", {}, h("b", {}, `PDF page ${p}`),
-    page ? ` · book page ${page.book_page} · printed “${now.printed_page}” · ` : " · no answer for this page",
-    page ? h("a", {href: `requests/p${String(p).padStart(3, "0")}.json`, target: "_blank"}, "saved answer") : null);
-  if (WRITABLE && ANSWERS[p]) {
-    info.append(" ", h("button", {class: "small-btn", title: "Edit every Block of this page and its printed number",
-                                  onclick: () => openEditor($("#entries"), p, null, `PDF page ${p}`)}, "✎ Edit the page"));
-  }
-  if (fix && isApplied(p)) {
-    info.append(h("div", {class: "fixline"}, `This page has a Fix, saved ${fix.time || ""}. `,
-      WRITABLE ? h("button", {class: "small-btn", onclick: () => dropFix(p)}, "Drop the Fix") : null));
-  }
-  return info;
+// A span holding no Proverb Entry's Blocks on this page: a letter heading, Leading Blocks with no owner, or nothing
+function spanCard(p, span) {
+  const card = h("article", {class: "entry" + (span.edited ? " edited" : "")});
+  card.append(h("div", {class: "meta"}, h("span", {class: "name"}, span.label),
+                h("span", {class: "holders"}, spanTools(p, span, card, false))),
+    h("div", {class: "body"}, spanBlocks(p, span).map(b => h("div", {class: "dl"},
+      h("span", {class: "kindname"}, BLOCK_NAMES[b.kind] || b.kind), blockText(b)))));
+  if (span.edited) card.append(changesBox([{p, span, ops: spanDiff(p, span)}]));
+  return card;
 }
 
-function staleBox(p) {
-  const fix = fixOf(p);
-  const ops = ANSWERS[p] ? pageDiff(p).filter(o => o.op !== "same") : [];
-  const before = (ANSWERS[p] || {}).blocks || [];
-  const lines = ops.map(o => {
-    const a = before[o.a], b = fix.blocks[o.b];
-    if (o.op === "add") return h("div", {class: "dl"}, h("ins", {}, blockText(b)));
-    if (o.op === "del") return h("div", {class: "dl"}, h("del", {}, blockText(a)));
-    return h("div", {class: "dl"}, wordDiff(blockText(a), blockText(b)));
-  });
-  return h("div", {class: "stalebox"},
-    h("div", {}, h("b", {}, "Stale Fix: "), `saved ${fix.time || ""} against an earlier answer of this page, which a ` +
-                 "rerun has changed, so it is not applied. Edit the page again from it, or drop it."),
-    h("details", {}, h("summary", {class: "muted"}, "the stale Fix against the current answer"), lines),
-    WRITABLE ? h("div", {class: "tools"},
-      ANSWERS[p] ? h("button", {onclick: () => openEditor($("#entries"), p, null, `PDF page ${p}`, fix)},
-                     "✎ Edit the page from the stale Fix") : null,
-      h("button", {onclick: () => dropFix(p)}, "Drop the Fix")) : null);
+// The printed number with what can be done to it: the developer's number settles the Page number Warning for good
+function printedNumber(p, page) {
+  const box = h("span", {class: "printedline"});
+  const edit = () => {
+    const input = h("input", {class: "printed", value: page.printed_page, title: "The page number printed on the page",
+                              onkeydown: e => { if (e.key === "Enter") save.click(); }});
+    const save = h("button", {class: "small-btn", onclick: () => change({type: "printed_page", page: p,
+                                                                         printed_page: input.value.trim()})}, "Save");
+    box.replaceChildren("printed ", input, " ", save, " ",
+                        h("button", {class: "small-btn", onclick: show}, "Cancel"));
+    input.focus();
+  };
+  const show = () => box.replaceChildren(`printed “${page.printed_page}”`, h("span", {},
+    page.printed_confirmed ? [" ", h("span", {class: "tag ok"}, "Confirmed")] : null,
+    WRITABLE ? [" ", h("button", {class: "small-btn", title: "Edit and confirm the printed number", onclick: edit}, "✎ Edit"), " ",
+      page.printed_confirmed
+        ? h("button", {class: "small-btn", onclick: () => change({type: "printed_page", page: p, printed_page: null})}, "Undo")
+        : h("button", {class: "small-btn", onclick: () => change({type: "printed_page", page: p, printed_page: page.printed_page})}, "✓ Confirm"),
+    ] : null));
+  show();
+  return box;
+}
+
+function pageInfo(p) {
+  const page = PAGES[p];
+  return h("div", {}, h("b", {}, `PDF page ${p}`),
+    page ? [` · book page ${page.book_page} · `, printedNumber(p, page), " · ",
+            h("a", {href: `requests/p${String(p).padStart(3, "0")}.json`, target: "_blank"}, "saved answer")]
+         : " · no answer for this page");
 }
 
 function renderRight() {
   const right = $("#entries");
-  if (showingEdits) {
-    $("#pageinfo").replaceChildren(h("b", {}, "Edits"), " · every page with a Fix · ",
-                                   h("button", {class: "small-btn", onclick: () => toggleEdits(false)}, "Back to the page"));
+  if (showingConfirmed) {
+    $("#pageinfo").replaceChildren(h("b", {}, "Confirmed"), showAllConfirmed ? " · every Confirmed Span · " : " · the spans you edited · ",
+      h("button", {class: "small-btn", onclick: () => { showAllConfirmed = !showAllConfirmed; renderRight(); }},
+        showAllConfirmed ? "Only edited" : "Show all"), " ",
+      h("button", {class: "small-btn", onclick: () => toggleConfirmed(false)}, "Back to the page"));
     $("#warnings").replaceChildren();
-    right.replaceChildren(editsList());
+    right.replaceChildren(confirmedList());
     return;
   }
   $("#pageinfo").replaceChildren(pageInfo(current));
   const entries = VIEW.entries.filter(e => e.pdf_pages.includes(current));
   const warnings = VIEW.warnings.filter(w => w.page === current);
-  const owned = new Set();
+  const owned = new Set(), held = new Set();
   const cards = entries.map(entry => {
     const own = warnings.filter(w => warningOf(w, entry));
     own.forEach(w => owned.add(w));
-    return entryCard(entry, own);
+    const range = entry.blocks[current] || [0, 0];
+    spansIn(current, ...range).forEach(s => held.add(s));
+    return {at: range[0], card: entryCard(entry, own)};
   });
+  for (const span of spansOf(current)) {
+    if (!held.has(span)) cards.push({at: span.blocks[0], card: spanCard(current, span)});
+  }
   // At the top, the page's priority Warnings, also on their entries' cards, then its own, about no entry of it: its
   // number, a missing answer, Blocks with no owner
   $("#warnings").replaceChildren(...warnings.filter(w => isPriority(w) || !owned.has(w)).map(warningLine));
-  right.replaceChildren(...(fixOf(current) && isStale(current) ? [staleBox(current)] : []), ...cards);
+  right.replaceChildren(...cards.sort((a, b) => a.at - b.at).map(c => c.card));
   if (PAGES[current] && !entries.length) right.append(h("p", {class: "muted"}, "No Proverb Entries on this page."));
 }
 
-function editsList() {
-  const pages = Object.keys(VIEW.fixes).map(Number).sort((a, b) => a - b);
-  if (!pages.length) return h("p", {class: "muted"}, "No Fixes yet: edit an entry where you see the model got it wrong.");
-  return h("ul", {class: "edits"}, pages.map(p => {
-    const fix = fixOf(p);
-    const names = VIEW.entries.filter(e => e.pdf_pages.includes(p) && entryChanges(e).some(c => c.p === p))
-                              .map(e => e.name);
-    const changed = isApplied(p) ? pageDiff(p).filter(o => o.op !== "same").length : 0;
-    return h("li", {}, h("button", {class: "link", onclick: () => { toggleEdits(false); showPage(p); }}, pageLabel(p)),
-      isStale(p) ? h("span", {class: "tag stale"}, "stale") : ` · ${changed} Block(s) changed`,
-      names.length ? ` · ${names.join(", ")}` : "", h("span", {class: "muted"}, ` · saved ${fix.time || ""}`));
+function confirmedList() {
+  const rows = VIEW.confirmed.filter(c => showAllConfirmed || c.edited);
+  if (!rows.length) {
+    return h("p", {class: "muted"}, showAllConfirmed ? "Nothing confirmed yet: edit or confirm a span where you choose to."
+                                                     : "No span edited yet.");
+  }
+  return h("ul", {class: "confirmed-list"}, rows.map(c => {
+    const span = spansOf(c.page).find(s => String(s.band) === String(c.band));
+    return h("li", {}, h("button", {class: "link", onclick: () => { toggleConfirmed(false); showPage(c.page); }}, pageLabel(c.page)),
+      ` · L${c.first}–${c.last}`, span ? ` · ${span.label} ` : " ",
+      h("span", {class: "tag ok"}, c.edited ? "Edited" : "Confirmed"), h("span", {class: "muted"}, ` · saved ${c.time || ""}`));
   }));
 }
 
-function toggleEdits(on) {
-  showingEdits = on;
+function toggleConfirmed(on) {
+  showingConfirmed = on;
   render();
   $("#right").scrollTop = 0;
 }
 
-// -- editing: the Blocks [from, to) of page `p` (or all of them, with its printed number), as rows of printed text
+// -- editing: the whole of one Entry Span, as rows of printed text
 function blockRow(block, rows, changed) {
   const kind = h("select", {class: "kind"}, Object.entries(BLOCK_NAMES).map(([k, name]) =>
     h("option", {value: k, selected: k === block.kind}, name)));
@@ -412,35 +436,32 @@ function blockRow(block, rows, changed) {
   return row;
 }
 
-// `range`: [from, to) of the page's current Blocks, or null for the whole page; `from`: a stale Fix to start from
-function openEditor(container, p, range, title, from) {
-  const now = from ? {printed_page: from.printed_page, blocks: from.blocks} : pageNow(p);
-  const [start, end] = range || [0, now.blocks.length];
+// Saving an edit confirms the span, and the preview's Warnings never stop it: the developer is the final judge
+function openEditor(container, p, span) {
+  const start = span.blocks[0];
   const rows = [];
   const list = h("div", {class: "rows"});
-  const printed = h("input", {class: "printed", value: now.printed_page, title: "The page number printed on the page"});
   const problem = h("div", {class: "problem"});
   const preview = h("div", {class: "preview"});
-  const save = h("button", {class: "primary"}, "Save the Fix");
+  const save = h("button", {class: "primary"}, "Save and confirm");
   let timer = null, seq = 0;
-  const blocks = () => now.blocks.slice(0, start).concat(rows.map(r => r.read()), now.blocks.slice(end));
-  const request = () => ({page: p, printed_page: range ? now.printed_page : printed.value.trim(), blocks: blocks()});
+  const request = () => ({page: p, band: span.band, blocks: rows.map(r => r.read())});
   const refresh = async () => {
     const mine = ++seq;
     try {
       const view = await post("preview", request());
       if (mine !== seq) return;
       const to = start + rows.length;
-      const shown = range ? view.entries.filter(e => {
+      const shown = view.entries.filter(e => {
         const [a, b] = e.blocks[p] || [0, 0];
         return a < to && b > start;
-      }) : view.entries;
+      });
       problem.textContent = "";
       save.disabled = false;
       preview.replaceChildren(...shown.map(e => [entryBody(e), ...view.warnings.filter(w => warningOf(w, e)).map(warningLine),
                                                  sourcesList(e)]).flat().filter(Boolean),
                               ...view.warnings.filter(w => !view.entries.some(e => warningOf(w, e))).map(warningLine));
-      if (!shown.length) preview.append(h("p", {class: "muted"}, "No Proverb Entry: saving removes it from the page."));
+      if (!shown.length) preview.append(h("p", {class: "muted"}, "No Proverb Entry in these Blocks."));
     } catch (e) {
       if (mine !== seq) return;
       problem.textContent = e.message;
@@ -453,12 +474,11 @@ function openEditor(container, p, range, title, from) {
     clearTimeout(timer);
     timer = setTimeout(refresh, 250);
   };
-  for (const b of now.blocks.slice(start, end)) rows.push(blockRow(b, rows, changed));
+  for (const b of spanBlocks(p, span)) rows.push(blockRow(b, rows, changed));
   save.addEventListener("click", async () => {
     save.disabled = true;
     try {
-      const {printed_page, blocks} = request();
-      await post("review", {type: "fix", page: p, printed_page, blocks});
+      await post("review", {type: "confirmed", ...request()});
       await reload();
     } catch (e) {
       toast("Not saved: " + e.message);
@@ -466,8 +486,7 @@ function openEditor(container, p, range, title, from) {
     }
   });
   container.replaceChildren(h("div", {class: "editor"},
-    h("div", {class: "muted"}, `Edit ${title}: each Block as printed, italic words between *asterisks*`),
-    range ? null : h("label", {class: "row"}, "Printed page number ", printed),
+    h("div", {class: "muted"}, `Edit the Entry Span of Line Numbers ${span.first}-${span.last}, ${span.label}: each Block as printed, italic words between *asterisks*`),
     list,
     h("div", {class: "row"}, h("button", {onclick: () => {
       rows.push(blockRow({kind: "note", number: 0, text: "", citations: ""}, rows, changed));
@@ -475,14 +494,14 @@ function openEditor(container, p, range, title, from) {
     }}, "+ Add a Block")),
     problem, h("div", {class: "muted small"}, "Preview"), preview,
     h("div", {class: "row"}, save, h("button", {onclick: () => render()}, "Cancel"))));
-  if (!range) printed.addEventListener("input", changed);
   list.replaceChildren(...rows);
   refresh();
 }
 
-async function dropFix(p) {
+// A line for the review log, and the page rebuilt with it
+async function change(line) {
   try {
-    await post("review", {type: "fix", page: p, blocks: null});
+    await post("review", line);
     await reload();
   } catch (e) {
     toast("Not saved: " + e.message);
@@ -500,18 +519,15 @@ function renderPicker() {
   pick.replaceChildren(...PAGE_LIST.map(p => {
     const onPage = VIEW.warnings.filter(w => w.page === p);
     const n = onPage.length, urgent = onPage.filter(isPriority).length;
-    const fix = fixOf(p) ? (isStale(p) ? " · stale Fix" : " · edited") : "";
+    const held = VIEW.confirmed.filter(c => c.page === p).length;
     return h("option", {value: p, selected: p === current},
-             pageLabel(p) + (urgent ? ` ‼${urgent}` : "") + (n ? ` ⚠${n}` : "") + fix);
+             pageLabel(p) + (urgent ? ` ‼${urgent}` : "") + (n ? ` ⚠${n}` : "") + (held ? ` ✓${held}` : ""));
   }));
 }
 
 function renderProgress() {
-  const n = VIEW.entries.filter(edited).length;
-  const pages = Object.keys(VIEW.fixes).length;
-  $("#progress").textContent = `${VIEW.entries.length} entries · ${n} edited on ${pages - VIEW.stale.length} page(s)` +
-    (VIEW.stale.length ? ` · ${VIEW.stale.length} stale Fix(es)` : "");
-  $("#edits").textContent = `Edits (${pages})`;
+  $("#progress").textContent = `${VIEW.confirmed.length} spans confirmed`;
+  $("#confirmed").textContent = `Confirmed (${VIEW.confirmed.length})`;
   $("#next-priority").textContent = `Next priority ‼ (${VIEW.warnings.filter(isPriority).length})`;
 }
 
@@ -520,9 +536,9 @@ function spanLayer(page, share) {
   const pct = x => (x * 100).toFixed(2) + "%";
   return h("div", {class: "spans", style: `width: ${pct(share)}`}, page.spans.map(s => {
     const [left, top, right, bottom] = s.box;
-    return h("div", {class: `span span-${s.kind}`, title: `L${s.start}: ${s.label}`,
+    return h("div", {class: `span span-${s.kind}${s.confirmed ? " span-confirmed" : ""}`, title: `L${s.first}: ${s.label}`,
                      style: `left: ${pct(left)}; top: ${pct(top)}; width: ${pct(right - left)}; height: ${pct(bottom - top)}`},
-             h("span", {class: "tag"}, `L${s.start} · ${s.label}`));
+             h("span", {class: "tag"}, `L${s.first} · ${s.label}`));
   }));
 }
 
@@ -533,10 +549,21 @@ function renderSheet() {
   const img = h("img", {src: numbered ? page.layout_image : page ? page.image : `pages/p${String(current).padStart(3, "0")}.png`,
                         alt: numbered ? `PDF page ${current} with its Line Numbers` : `Scan of PDF page ${current}`});
   img.addEventListener("error", () => sheet.replaceChildren(h("p", {class: "muted noscan"}, "No scan of this page in the store")));
-  sheet.replaceChildren(img, ...(showSpans && page && page.spans ? [spanLayer(page, numbered ? page.layout_page_share : 1)] : []));
+  sheet.replaceChildren(img);
+  renderSpanLayer();
   sheet.style.width = ZOOMS[zoom] * 100 + "%";
   $("#spans").setAttribute("aria-pressed", String(showSpans));
   $("#numbered").setAttribute("aria-pressed", String(showNumbered));
+}
+
+// The spans over the scan alone, so that a confirmation recolours them without loading the scan again
+function renderSpanLayer() {
+  const sheet = $("#sheet");
+  const page = PAGES[current];
+  sheet.querySelector(".spans")?.remove();
+  if (showSpans && page && page.spans) {
+    sheet.append(spanLayer(page, showNumbered && page.layout_image ? page.layout_page_share : 1));
+  }
 }
 
 function render() {
@@ -548,7 +575,7 @@ function render() {
 function showPage(p) {
   if (p == null || !PAGE_LIST.includes(p)) return;
   current = p;
-  showingEdits = false;
+  showingConfirmed = false;
   history.replaceState(null, "", "#p" + p);
   renderSheet();
   $("#left").scrollTop = 0;
@@ -584,8 +611,9 @@ function wire() {
                                                                 "No other page has a priority Warning"));
   $("#next-warn").addEventListener("click", () => nextWhere(p => VIEW.warnings.some(w => w.page === p),
                                                             "No other page has Warnings"));
-  $("#next-edit").addEventListener("click", () => nextWhere(p => !!fixOf(p), "No other page has a Fix"));
-  $("#edits").addEventListener("click", () => toggleEdits(!showingEdits));
+  $("#next-edit").addEventListener("click", () => nextWhere(p => VIEW.confirmed.some(c => c.page === p && c.edited),
+                                                            "No other page has an edited span"));
+  $("#confirmed").addEventListener("click", () => toggleConfirmed(!showingConfirmed));
   $("#smaller").addEventListener("click", () => setZoom(zoom - 1));
   $("#larger").addEventListener("click", () => setZoom(zoom + 1));
   $("#spans").addEventListener("click", () => { showSpans = !showSpans; renderSheet(); });
@@ -605,22 +633,23 @@ function wire() {
 
 function pageList() {
   return [...new Set(MODEL.pages.map(p => p.pdf).concat(VIEW.warnings.map(w => w.page),
-                                                        Object.keys(VIEW.fixes).map(Number)))].sort((a, b) => a - b);
+                                                        VIEW.confirmed.map(c => c.page)))].sort((a, b) => a - b);
 }
 
-// The store read afresh, as a rerun may have rewritten it since the page loaded, and its entries rebuilt with the Fixes
+// The store read afresh, as a rerun may have rewritten it since the page loaded, and its entries rebuilt with the log
 async function fetchStore() {
-  [MODEL, ANSWERS, SOURCES, VIEW] = await Promise.all([getJSON("entries.json"), getJSON("answers.json"),
-                                                       getJSON("sources.json"), getJSON("assembled")]);
+  [MODEL, SOURCES, VIEW] = await Promise.all([getJSON("entries.json"), getJSON("sources.json"), getJSON("assembled")]);
   for (const k of Object.keys(PAGES)) delete PAGES[k];
   for (const page of MODEL.pages) PAGES[page.pdf] = page;
+  for (const page of VIEW.pages) PAGES[page.pdf] = {...PAGES[page.pdf], ...page};
   DIFFS.clear();
   PAGE_LIST = pageList();
 }
 
-// After a save or a drop
+// After a line is saved
 async function reload() {
   await fetchStore();
+  renderSpanLayer();
   render();
 }
 

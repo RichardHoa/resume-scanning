@@ -51,8 +51,8 @@ Task: copy its printed text as Blocks, top to bottom.
 
 An Entry Span usually holds one Proverb Entry: its number ("482.") and the proverb in bold, then, in this order and each
 only if printed, Citations, Variants after "BK", notes in italics, a Correction after "Sửa lại:", a See-also after
-"Xem thêm". It may instead hold a letter heading (a large letter in a shaded box), two Proverb Entries, or the end of
-the page before's last Proverb Entry (those lines with no proverb above them; copy their Blocks as they come).
+"Xem thêm". It may instead hold a letter heading (a large letter in a shaded box), two Proverb Entries, or the end of a
+Proverb Entry begun above it (those lines with no proverb above them; copy their Blocks as they come).
 
 Blocks, by `kind`. `number` is 0 except on `proverb`; `citations` is "" except on `variant`.
 - `letter`: `text` = the heading's letter, as printed.
@@ -105,12 +105,13 @@ def reading_line(n, line_read, page_read):
 
 def span_user_text(page, leading, readings):
     """The user text of an Entry Span of PDF page `page`, with `readings`, the two reads of its lines as
-    [(Line Number, line read, page read)]; a `leading` one is the top of the page, before its first start."""
+    [(Line Number, line read, page read)]; a `leading` one begins at no start the model named: the top of the page, or
+    the lines below a Confirmed Span."""
     lines = "\n".join(reading_line(*reading) for reading in readings)
     ask = f"Copy the Blocks of this Entry Span of PDF page {page}."
     if leading:
-        ask += (" It is the top of the page, so it should only finish the page before's last Proverb Entry. If it "
-                "prints a numbered proverb, copy it as a `proverb` Block.")
+        ask += (" It begins at no Proverb Entry's start, so it should only finish the Proverb Entry above it, on this "
+                "page or the page before. If it prints a numbered proverb, copy it as a `proverb` Block.")
     return f"The two reads of its lines:\n{lines}\n\n{ask}"
 
 
