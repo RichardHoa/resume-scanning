@@ -31,8 +31,15 @@ _TONES = {"̀", "́", "̃", "̉", "̣"}
 NUMBER_GAP, NUMBER_DUPLICATE, LETTER_ORDER = "number_gap", "number_duplicate", "letter_order"
 PAGE_NUMBER, PAGE_MISSING, NO_OWNER = "page_number", "page_missing", "no_owner"
 DIACRITIC, MODEL_EDIT = "diacritic_disagreement", "model_edit"
+# A Model Edit of a Stable syllable: the likeliest to be the model's mistake, so listed and shown before all others
+STABLE_MODEL_EDIT = "stable_model_edit"
 # Raised by cli.py, not here: ink on a page outside every printed line found, which no Entry Span holds
 INK_OUTSIDE = "ink_outside"
+
+
+def priority_first(warnings):
+    """`warnings` with the Stable Model Edits first, each group by PDF page."""
+    return sorted(warnings, key=lambda w: (w["kind"] != STABLE_MODEL_EDIT, w["page"]))
 
 
 def warning(kind, place, reason, page):
@@ -129,9 +136,12 @@ def _model_edit_reason(did, ours, theirs):
 
 
 def _model_edit_warnings(page, blocks, flagged, owners):
-    """A Model Edit Warning for each change of a page's `blocks` to an Agreed Syllable of `flagged`, or word added."""
-    return _counted_warnings(MODEL_EDIT, page, [(b, _model_edit_reason(did, ours, theirs))
-                                                for b, did, ours, theirs in model_edits(blocks, flagged)], owners)
+    """A Model Edit Warning for each change of a page's `blocks` to an Agreed Syllable of `flagged`, or word added: a
+    Stable Model Edit if the syllable is Stable."""
+    edits = model_edits(blocks, flagged)
+    return [w for kind, wanted in ((STABLE_MODEL_EDIT, True), (MODEL_EDIT, False))
+            for w in _counted_warnings(kind, page, [(b, _model_edit_reason(did, ours, theirs))
+                                                    for b, did, ours, theirs, stable in edits if stable == wanted], owners)]
 
 
 def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=None):
@@ -230,7 +240,8 @@ def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=No
             elif kind == NOTE:
                 current["notes"].append(text)
             elif kind == CORRECTION:
-                correction, problems = abbreviations.split_correction(text)
+                cited = current["citations"] + [c for v in current["variants"] for c in v["citations"]]
+                correction, problems = abbreviations.split_correction(text, [c["abbreviation"] for c in cited])
                 current["corrections"].append(correction)
                 report(problems, page, current["name"])
             elif kind == SEE_ALSO:

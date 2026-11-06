@@ -7,7 +7,9 @@ the page, with the two Vision reads of its lines, and answers its Blocks in read
 import json
 
 from src.khotangtucngu.assembly import BLOCK_KINDS
+from src.khotangtucngu.citations import load_abbreviations
 from src.khotangtucngu.diacritics import marked_reading, read_of_line, syllables
+from src.khotangtucngu.settings import FRONT_MATTER
 from src.providers.vlm_requests import sha1
 
 _BOOK = """\
@@ -85,7 +87,10 @@ of the whole page. They are a hint, not the answer, and the brackets below are n
 - A line marked "(one read)" has only one read, so none of its words are marked.
 The reads know nothing of Blocks or italics and garble Source Abbreviations and numbers: which Block a line belongs to,
 the asterisks, the Source Abbreviations and the numbers come from the scan.
-"""
+
+The book's Source Abbreviations are these, spelled letter for letter. A Citation names one of them; a Correction may
+print one without its volume, and is copied so:
+""" + ", ".join(load_abbreviations(FRONT_MATTER)) + "\n"
 
 
 def layout_user_text(page):
