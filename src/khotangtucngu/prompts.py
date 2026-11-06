@@ -13,88 +13,85 @@ from src.khotangtucngu.settings import FRONT_MATTER
 from src.providers.vlm_requests import sha1
 
 _BOOK = """\
-The pages are scans of Kho tàng tục ngữ người Việt (2002), a collection of Vietnamese proverbs ordered by the letter of
-their first word.
+Source: scans of Kho tàng tục ngữ người Việt (2002), Vietnamese proverbs ordered by the letter of their first word.
 """
 
 LAYOUT_SYSTEM_PROMPT = _BOOK + """\
-You get the scan of one whole page, with a white strip added on its right. In the strip, each printed line of the page
-has its Line Number in red ("L1", "L2", ...), with a red tick running from the right end of the line to it. The Line
-Numbers are not printed in the book. Say on which Line Number each Proverb Entry starts, so the page can be cut into
-pieces of one Proverb Entry each.
+Input: the scan of one whole page. A white strip added on its right labels each printed line with a red Line Number
+("L1", "L2", ...), joined to the line's right end by a red tick. Line Numbers are not printed in the book.
 
-What a page prints:
-- The Running Head, at the top above a rule: the page number, and either the first words of a proverb followed by
-  "..." (e.g. "Cha bòn ...") or the book's title "KHO TÀNG TỤC NGỮ NGƯỜI VIỆT". Give the page number in
-  `printed_page` ("" if none is printed). `body_start` is the Line Number of the first line under the Running Head
-  (1 if the page has none).
-- A letter heading: a large letter in a shaded box (e.g. "A"), opening that letter's proverbs.
-- Proverb Entries. Each begins with the line printing its number ("482.") at the left margin and the proverb in bold.
-  Under it come, each only if printed: the Citations (Source Abbreviations with page numbers, e.g. "NASL II 59a"),
-  Variants after "BK", notes in italics, a Correction after "Sửa lại:" and a See-also after "Xem thêm". These belong
-  to the Proverb Entry above them and never start one. A proverb printed over two lines starts on its first.
-- A page may begin by finishing the last Proverb Entry of the page before: Citations, a Variant, a note, a Correction
-  or a See-also with no numbered proverb above them on this page. They start nothing.
+Task: give the Line Number each Proverb Entry and letter heading starts on, so the page can be cut into one piece per
+Proverb Entry. Read each Line Number from the red label on the line's row, following its tick. Never count lines.
 
-`starts` is the Line Number of the first line of each Proverb Entry (the line printing its number) and of each letter
-heading, top to bottom. A letter heading and the first Proverb Entry under it each have their own start. Read each Line
-Number from the red label on the same row as the line, following its tick; never count lines yourself.
+Output:
+- `printed_page`: the page number in the Running Head; "" if none is printed.
+- `body_start`: the Line Number of the first line under the Running Head; 1 if the page has none.
+- `starts`: the Line Number of each start, top to bottom. A letter heading and the first Proverb Entry under it each
+  get their own start.
+
+Starts:
+- Letter heading: a large letter in a shaded box ("A").
+- Proverb Entry: the line printing its number at the left margin ("482.") and the proverb in bold. A proverb printed
+  over two lines starts on its first.
+
+Never starts:
+- Running Head: at the top above a rule, the page number with either a proverb's first words and "..." ("Cha bòn ...")
+  or the title "KHO TÀNG TỤC NGỮ NGƯỜI VIỆT".
+- Lines under a proverb, which belong to its Proverb Entry: Citations (Source Abbreviations with page numbers,
+  "NASL II 59a"), Variants after "BK", notes in italics, a Correction after "Sửa lại:", a See-also after "Xem thêm".
+- The same lines at the top of a page with no numbered proverb above them: they finish the page before's last Proverb
+  Entry.
 """
 
 SPAN_SYSTEM_PROMPT = _BOOK + """\
-You get one Entry Span: a piece cut across the whole width of the scan of one page. It usually holds one Proverb
-Entry. It may instead hold a letter heading, or the lines that finish the last Proverb Entry of the page before, and
-now and then two Proverb Entries. Copy its printed text as Blocks, in reading order, top to bottom.
+Input: one Entry Span, a piece cut across the whole width of one page's scan, and two OCR reads of each of its printed
+lines.
 
-What an Entry Span may print:
-- A letter heading: a large letter in a shaded box (e.g. "A"), opening that letter's proverbs.
-- Proverb Entries. Each begins with its number ("482.") and the proverb in bold. Under it, in this order, each only
-  if printed: the Citations (Source Abbreviations with page numbers, e.g. "NASL II 59a", "TNLG II 7, 25"); Variants
-  after "BK"; notes in italics; a Correction after "Sửa lại:"; a See-also after "Xem thêm".
-- The end of the last Proverb Entry of the page before: Citations, a Variant, a note, a Correction or a See-also with
-  no proverb above them. Copy those Blocks as they come.
+Task: copy its printed text as Blocks, top to bottom.
 
-The Blocks, by `kind`:
-- `letter`: `text` is the letter of a letter heading, as printed.
-- `proverb`: `number` is its printed number; `text` is the proverb, without its number.
-- `citations`: `text` is all of the Citation lines printed under the proverb, as printed, e.g.
+An Entry Span usually holds one Proverb Entry: its number ("482.") and the proverb in bold, then, in this order and each
+only if printed, Citations, Variants after "BK", notes in italics, a Correction after "Sửa lại:", a See-also after
+"Xem thêm". It may instead hold a letter heading (a large letter in a shaded box), two Proverb Entries, or the end of
+the page before's last Proverb Entry (those lines with no proverb above them; copy their Blocks as they come).
+
+Blocks, by `kind`. `number` is 0 except on `proverb`; `citations` is "" except on `variant`.
+- `letter`: `text` = the heading's letter, as printed.
+- `proverb`: `number` = its printed number; `text` = the proverb without its number.
+- `citations`: `text` = all Citation lines under the proverb, as printed:
   "HT 63 NL 7 PNTN 20b TNLG II 7, 25 TNPD I 13 VC I 9 VD 12".
-- `variant`: one Block per Variant. "BK" is followed by one Variant, or by a list of Variants, each line starting
-  "- ". `text` is the Variant's wording only, without "BK" or "- ", with each word printed in italics between
-  asterisks: "Ác *báo ngộ* ác báo.". `citations` is the Citations printed after it, as printed: "NNCC 27".
-- `note`: one Block per paragraph of explanation, as plain text with no asterisks, though it is printed in italics.
-  Keep its first words as printed, such as "VD:" or "Theo VD,".
-- `correction`: the text after "Sửa lại:", as printed: the wrong wording, the Source Abbreviation(s) that printed it,
-  "=", then the corrected wording with each word printed in italics between asterisks:
+- `variant`: one Block per Variant. "BK" precedes one Variant, or a list with each line starting "- ". `text` = the
+  Variant's wording without "BK" or "- ", with words printed in italics between asterisks: "Ác *báo ngộ* ác báo.".
+  `citations` = the Citations printed after it, as printed: "NNCC 27".
+- `note`: one Block per paragraph of explanation. `text` = plain text, no asterisks though printed in italics. Keep its
+  first words as printed ("VD:", "Theo VD,").
+- `correction`: `text` = what follows "Sửa lại:", as printed: the wrong wording, the Source Abbreviation(s) that printed
+  it, "=", the corrected wording with words printed in italics between asterisks:
   "Nằm giữa mất... CCM = Nằm giữa *không* mất...".
-- `see_also`: the names after "Xem thêm", as printed: "M 526 T 65".
-`number` is 0 for every Block but a proverb, and `citations` is "" for every Block but a Variant.
+- `see_also`: `text` = the names after "Xem thêm", as printed: "M 526 T 65".
 
-You copy exactly what the scan prints. You are a copyist, not an editor:
-- Copy letter by letter, diacritic by diacritic, the book's own typos included. Never modernise, correct or reword
-  anything, and never add a word.
-- A Block printed over several lines is one Block: join its lines with a space, so a sentence or a list reads whole.
-- A subscript is written as a Unicode subscript, as printed: VNP₁₁, VNP₂ I.
-- A Source Abbreviation is copied with its spaces as printed: "TNPD I 13", "VC I 9", "NASL II 4b".
+Copying:
+- Copy what the scan prints, letter by letter, diacritic by diacritic, typos included. Never modernise, correct, reword
+  or add a word.
+- Join the lines of a Block printed over several lines with a space.
+- Write a subscript as a Unicode subscript: VNP₁₁, VNP₂ I.
+- Keep the spaces of a Source Abbreviation as printed: "TNPD I 13", "VC I 9", "NASL II 4b".
 
-With the Entry Span come two OCR reads of each of its printed lines, by Line Number: one of the line on its own, one
-of the whole page. They are a hint, not the answer, and the brackets below are never copied:
-- Where the reads are not sure of a word, it is written [line read|page read], e.g. "[mồ|mô]" or "[VC I 10|VC110]", with
-  one side empty if only the other read has it. Look at it on the scan and spell what the scan prints, which may be
-  neither.
-- An unmarked word was read the same both times and is usually right, but both reads can be wrong. Change one only where
-  the scan clearly prints otherwise, never for what a word ought to be. Every such change is shown to the developer.
-- A line marked "(one read)" has only one read, so none of its words are marked.
-The reads know nothing of Blocks or italics and garble Source Abbreviations and numbers: which Block a line belongs to,
-the asterisks, the Source Abbreviations and the numbers come from the scan.
+OCR reads, by Line Number: one of the line alone, one of the whole page. They are hints:
+- [line read|page read] marks a word the reads are unsure of: "[mồ|mô]", "[VC I 10|VC110]"; one side is empty if only
+  the other read has it. Spell what the scan prints, which may be neither. Never copy the brackets.
+- An unmarked word was read the same both times and is usually right. Change it only where the scan clearly prints
+  otherwise, never for what the word ought to be.
+- "(one read)": the line has one read, so no word is marked.
+- "(no read)": the line has no read; copy it from the scan.
+- Take the Blocks, asterisks, Source Abbreviations and numbers from the scan, never from the reads.
 
-The book's Source Abbreviations are these, spelled letter for letter. A Citation names one of them; a Correction may
-print one without its volume, and is copied so:
+Source Abbreviations, spelled letter for letter. A Citation names one of them. A Correction may print one without its
+volume; copy it so:
 """ + ", ".join(load_abbreviations(FRONT_MATTER)) + "\n"
 
 
 def layout_user_text(page):
-    return f"Say on which Line Number each Proverb Entry and letter heading of PDF page {page} starts."
+    return f"Give the starts of PDF page {page}."
 
 
 def reading_line(n, line_read, page_read):
@@ -110,10 +107,10 @@ def span_user_text(page, leading, readings):
     """The user text of an Entry Span of PDF page `page`, with `readings`, the two reads of its lines as
     [(Line Number, line read, page read)]; a `leading` one is the top of the page, before its first start."""
     lines = "\n".join(reading_line(*reading) for reading in readings)
-    ask = f"Copy the Blocks of this Entry Span of PDF page {page}, in reading order."
+    ask = f"Copy the Blocks of this Entry Span of PDF page {page}."
     if leading:
-        ask += (" It is the top of the page, finishing the last Proverb Entry of the page before, so it should hold no "
-                "proverb of its own; if it does print a numbered proverb, copy it as a `proverb` Block.")
+        ask += (" It is the top of the page, so it should only finish the page before's last Proverb Entry. If it "
+                "prints a numbered proverb, copy it as a `proverb` Block.")
     return f"The two reads of its lines:\n{lines}\n\n{ask}"
 
 
