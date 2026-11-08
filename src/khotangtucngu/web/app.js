@@ -4,6 +4,7 @@ const WRITABLE = document.documentElement.dataset.writable === "true";
 const KIND_NAMES = {
   number_gap: "Number gap", number_duplicate: "Duplicate number", letter_order: "Letter out of order",
   page_number: "Page number", page_missing: "Missing page", no_owner: "Leading Block with no owner",
+  unnumbered_proverb: "Proverb with no number",
   unknown_abbreviation: "Unknown Source Abbreviation", citation_no_pages: "Citation with no pages",
   citation_unsplit: "Citation not split", ink_outside: "Ink outside the lines",
   diacritic_disagreement: "Diacritics differ from OCR", model_edit: "Model Edit",

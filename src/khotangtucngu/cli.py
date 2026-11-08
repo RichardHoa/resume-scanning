@@ -18,7 +18,8 @@ line under the Running Head and the Line Number each Proverb Entry and letter he
 those lines into Entry Spans, and each is copied as Blocks in its own request, with the two reads of its lines
 (docs/adr/0002-ocr-readings-of-each-line.md, 0005-two-reads-and-model-edits.md).
 A page's answer is its Entry Spans' Blocks in order, with the layout's printed page number; a page any of whose
-requests failed has none.
+requests failed has none. Each request is tried up to 3 times (vlm_requests.ATTEMPTS), and the run ends by listing
+every page with no answer, why, and each attempt of the request that failed, from its saved result's attempt_log.
 
 The store's review.jsonl (review.py) is read before any request and never written. A Confirmed Span gets no request: it
 owns every line whose centre falls in its band, the page is cut around it, and the lines left below it are read as a
@@ -46,7 +47,8 @@ Writes to the Part's store, vsc-project/khoTangTucNguoiNguoiViet/store/<part>/:
   warnings.json           every Warning, with its kind, reason and PDF page, the Stable Model Edits first: number gaps
                           and duplicates, letter headings out of order, unknown Source Abbreviations, Citations with no
                           pages or that cannot be split, Diacritic Disagreements, Model Edits, page numbers out of step,
-                          failed or missing pages, Leading Blocks with no owner, and ink outside every printed line found
+                          failed or missing pages, Leading Blocks with no owner, proverb Blocks with no number (read as
+                          notes), and ink outside every printed line found
   sources.json            the 63 Sources by Source Abbreviation (as export.py writes them), for the review server
   pages/pNNN.png          each page, for the review server
   serve.py, web/,         the review server, its page, and the code that rebuilds the Proverb Entries with Confirmed
@@ -99,7 +101,7 @@ from src.khotangtucngu.vision_ocr import saved_lines, vision_problem
 from src.providers import vlm_requests
 from src.providers.vlm_requests import (
     Model, Phase, Request, current_answer, data_url, file_sha1, image_messages, page_set, print_token_stats,
-    read_result, sha1, write_json
+    read_json, read_result, sha1, write_json
 )
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -197,22 +199,24 @@ def page_answer(page, found, record, pdf_sha1, layout_dir, layout_base, spans_di
     (answer, None) for a page whose every request is current or needs none. Its answer is the printed page number and
     first line from its layout answer (or its "page_complete" line), the PDF's hash, the page's size, its spans top to
     bottom and their Blocks in order: an Entry Span's from its answer, a Confirmed Span's the model's from its record, so
-    undoing it needs no run. Each span has what review.lay_confirmed names. Else (None, why it has none).
+    undoing it needs no run. Each span has what review.lay_confirmed names. Else (None, why it has none, and the saved
+    result of the request with no current answer, or None).
     """
     if found is None:
-        return None, "never ran"
+        return None, "never ran", None
     if not found["lines"]:
-        return None, "no printed line was found on it"
+        return None, "no printed line was found on it", None
     complete, spans, pieces = complete_line(page, found, log), [], []
     if complete:
         printed, body_start = complete["printed_page"], complete["body_start"]
     else:
         layout, why = current_answer(layout_dir, page_key(page), {**layout_base, **layout_stamp(page, found)})
         if layout is None:
-            return None, why if why == "never ran" else f"layout request {why}"
+            return (None, why if why == "never ran" else f"layout request {why}",
+                    os.path.join(layout_dir, f"{page_key(page)}.json"))
         why = vision_problem(record, found, pdf_sha1)
         if why:
-            return None, f"Vision read {why}"
+            return None, f"Vision read {why}", None
         printed, body_start = layout["printed_page"], layout["body_start"]
         spans = entry_spans(found, layout, bands_of(log, page))
         with_readings(spans, record)
@@ -220,7 +224,8 @@ def page_answer(page, found, record, pdf_sha1, layout_dir, layout_base, spans_di
         key = span_key(page, span["first"])
         answer, why = current_answer(spans_dir, key, {**span_base, **span_stamp(page, span)})
         if answer is None:
-            return None, f"Entry Span {key} (Line Numbers {span['first']}-{span['last']}) {why}"
+            return (None, f"Entry Span {key} (Line Numbers {span['first']}-{span['last']}) {why}",
+                    os.path.join(spans_dir, f"{key}.json"))
         pieces.append((span, answer["blocks"]))
     for held in log["confirmed"].get(page, []):
         pieces.append(({"first": held["first"], "last": held["last"], "leading": held["leading"], "box": held["crop"],
@@ -232,7 +237,22 @@ def page_answer(page, found, record, pdf_sha1, layout_dir, layout_base, spans_di
         span["blocks"] = [len(blocks), len(blocks) + len(span_blocks)]
         blocks += span_blocks
     return {"printed_page": printed, "body_start": body_start, "pdf_sha1": pdf_sha1, "size": found["size"],
-            "blocks": blocks, "spans": [span for span, _ in pieces]}, None
+            "blocks": blocks, "spans": [span for span, _ in pieces]}, None, None
+
+
+def print_missing(missing):
+    """Every page with no answer and why; for a request that ran and failed, each attempt from its saved result."""
+    print(f"[Kho tàng tục ngữ] {len(missing)} page(s) with no answer")
+    for reason, result in missing:
+        print(f"  {reason}")
+        r = read_json(result) if result and os.path.exists(result) else None
+        if r is None or r.get("status") == "ok":
+            continue
+        for a in r.get("attempt_log") or []:
+            print(f"    attempt {a['attempt']}: {a['status']} after {a['elapsed_s']}s, "
+                  f"{a.get('completion_tokens') or 0} token(s), finish_reason {a.get('finish_reason')}: "
+                  f"{a.get('error')}")
+        print(f"    result, with the last reply: {result}")
 
 
 def main():
@@ -317,9 +337,9 @@ def main():
                            usage_file=usage_file)
 
     # -- outputs, rebuilt from every saved answer
-    answers, readings, flagged, missing = {}, {}, {}, []
+    answers, readings, flagged, missing, no_answer = {}, {}, {}, [], []
     for page in range(1, n_pages + 1):
-        answer, why = page_answer(page, found.get(page), records.get(page), pdf_sha1, layout_dir, layout_base,
+        answer, why, result = page_answer(page, found.get(page), records.get(page), pdf_sha1, layout_dir, layout_base,
                                   spans_dir, span_base, log)
         if answer is not None:
             answers[page] = answer
@@ -330,6 +350,7 @@ def main():
         # Mac may have read the whole Part for a job over a small batch
         elif page in only or (why != "never ran" and found[page]["lines"]):
             missing.append(warning(PAGE_MISSING, page_key(page), f"PDF page {page} has no answer: {why}", page))
+            no_answer.append((f"PDF page {page}: {why}", result))
         if (page in only or page in answers) and found[page]["missed"]:
             patches = found[page]["missed"]
             top, bottom = min(m[1] for m in patches), max(m[3] for m in patches)
@@ -379,6 +400,8 @@ def main():
         kinds[w["kind"]] = kinds.get(w["kind"], 0) + 1
     print(f"[Kho tàng tục ngữ] {len(answers)} page(s) with an answer in the store, {len(entries)} Proverb Entries")
     print(f"[Kho tàng tục ngữ] {len(warnings)} Warning(s): {kinds}")
+    if no_answer:
+        print_missing(no_answer)
     print(f"[Kho tàng tục ngữ] Entries in {store}/entries.json, Warnings in {store}/warnings.json")
     print(f"[Kho tàng tục ngữ] To review the Part: cd {store} && python3 serve.py")
     print_token_stats(usage_file)

@@ -7,6 +7,9 @@ Pages are walked in PDF order. A run of consecutive PDF pages with answers is re
 Leading Block joins the last Proverb Entry of the page before, and entry numbers run on. Across a page with no answer
 nothing carries over: the next stretch starts afresh.
 
+Only a proverb Block with a number starts a Proverb Entry, or gives a stretch its letter. One with no number is the
+model's label on a Leading Block, the note finishing the entry above, and joins that entry as a note.
+
 Standard library only, importing only citations.py and diacritics.py, relatively: cli.py copies them, this file and
 review.py into the store, where serve.py rebuilds the entries with the developer's Confirmed Spans.
 """
@@ -28,6 +31,8 @@ _TONES = {"̀", "́", "̃", "̉", "̣"}
 
 NUMBER_GAP, NUMBER_DUPLICATE, LETTER_ORDER = "number_gap", "number_duplicate", "letter_order"
 PAGE_NUMBER, PAGE_MISSING, NO_OWNER = "page_number", "page_missing", "no_owner"
+# A proverb Block with no number, read as a note of the Proverb Entry above
+UNNUMBERED = "unnumbered_proverb"
 DIACRITIC, MODEL_EDIT = "diacritic_disagreement", "model_edit"
 # A Model Edit of a Stable syllable: the likeliest to be the model's mistake, so listed and shown before all others
 STABLE_MODEL_EDIT = "stable_model_edit"
@@ -211,10 +216,14 @@ def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=No
                 letter = heading if order >= 0 else None
                 current, headed, unowned = None, True, "they follow a letter heading"
                 continue
-            if kind == PROVERB:
+            # With no number it is a Leading Block the model labelled a proverb: as an entry it was named "<letter> 0",
+            # and after a page with no answer its first word gave the stretch's letter ("Coi nhẹ đồng tiền.", the
+            # note of a B entry, named B 106-409 C)
+            number = int(block.get("number") or 0) if kind == PROVERB else 0
+            unnumbered = kind == PROVERB and not number
+            if kind == PROVERB and not unnumbered:
                 if letter is None:
                     letter = first_letter(text)
-                number = int(block.get("number") or 0)
                 entry = _new_entry(letter, number, text, page, book_page)
                 _on_page(entry, page, book_page, b)
                 name = entry["name"]
@@ -239,8 +248,15 @@ def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=No
                 continue
             if current is None:
                 if not judged:
-                    unowned_kinds.append(kind)
+                    unowned_kinds.append("proverb with no number" if unnumbered else kind)
                 continue
+            if unnumbered:
+                if not judged:
+                    warnings.append(warning(UNNUMBERED, f"p{page}-{current['name']}",
+                                            f'{current["name"]}: a proverb Block with no number, "{text[:60]}", is '
+                                            f"read as its note", page))
+                current["citations"] += cite(block.get("citations") or "", page, current["name"])
+                kind = NOTE
             _on_page(current, page, book_page, b)
             owners[b] = current["name"]
             if current["name"] not in names:
