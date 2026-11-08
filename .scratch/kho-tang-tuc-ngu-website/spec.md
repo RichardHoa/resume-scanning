@@ -10,7 +10,7 @@ The digitizing website (`digitizing-vietnam-website`) has the page `/vi/research
 
 ## What the developer described
 
-- **Like `tu-dien`, without images.** The page is modelled on `tu-dien`, but has no image of the book page.
+- **Like `tu-dien`, with each proverb's Entry Image.** The page is modelled on `tu-dien`. It shows no whole book page, but each proverb can show its Entry Image (e.g. a "Xem bản in" toggle), so the reader can check the text against the book; how is settled when this card is grilled. The images are the export's `entry_images.zip` (`.scratch/kho-tang-tuc-ngu-entry-images/spec.md`).
 - **Front Matter first.** Before seeing any proverb, the reader sees the whole Front Matter as an introduction to the page, with clear subheadings.
 - **Sources with hover.** Each proverb shows its Sources. Hovering a Source Abbreviation shows the Source's full name and its Source Note from the Front Matter.
 - **General Abbreviations written out.** Every General Abbreviation (Bảng chữ tắt part II) is shown as its full words, not as the abbreviation.

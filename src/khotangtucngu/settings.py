@@ -89,3 +89,12 @@ RETRY_TEMPERATURE = 0.3
 REPETITION_PENALTY = 1.0
 # The review server shows each page about this many px on its long side
 PAGE_IMAGE_LONG_SIDE = 2000
+# The export's Entry Images are cut at this dpi in grayscale: a body line is about 33 px tall, its tone marks and dots
+# under letters still clear, and a 3-line span about 11 KB of PNG against 18 KB at PAGE_DPI. Zipping PNGs saves only
+# about 3%, so this is what sets their storage
+ENTRY_IMAGE_DPI = 200
+# An Entry Image running onto a later page has this many px of white between its pages' crops, with a rule
+# ENTRY_IMAGE_RULE_PX tall in this grey across its middle
+ENTRY_IMAGE_PAGE_GAP_PX = 24
+ENTRY_IMAGE_RULE_PX = 2
+ENTRY_IMAGE_RULE_GREY = 128

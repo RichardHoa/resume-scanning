@@ -1,8 +1,9 @@
 """
 Page images of a PDF Part and the printed lines on them: each page's lines found on the 300 dpi scan, the page with
 their Line Numbers for the layout request, each Entry Span and each of its lines cut from the scan for their own
-requests, and the page smaller for the review server. Places on the page are in px of the 300 dpi scan: a line is [top, bottom, left, right] and a
-crop [left, top, right, bottom], bottom and right exclusive.
+requests, each Proverb Entry's Entry Image for the export, and the page smaller for the review server. Places on the
+page are in px of the 300 dpi scan: a line is [top, bottom, left, right] and a crop [left, top, right, bottom], bottom
+and right exclusive.
 """
 import os
 import unicodedata
@@ -14,8 +15,9 @@ from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
 
 from src.khotangtucngu.settings import (
-    BOOK_DIR, EDGE_PX, LABEL_COLOUR, LABEL_PX, LABEL_STRIP_PX, MISSED_INK, MISSED_JOIN_PX, OCR_ABOVE_GAP_PX, OCR_ABOVE_SHARE,
-    OCR_BELOW_PX, OCR_PAD_PX, PAGE_DPI, PAGE_IMAGE_LONG_SIDE, SPAN_EDGE_GAP_PX, SPAN_MARGIN_PX
+    BOOK_DIR, EDGE_PX, ENTRY_IMAGE_DPI, ENTRY_IMAGE_PAGE_GAP_PX, ENTRY_IMAGE_RULE_GREY, ENTRY_IMAGE_RULE_PX,
+    LABEL_COLOUR, LABEL_PX, LABEL_STRIP_PX, MISSED_INK, MISSED_JOIN_PX, OCR_ABOVE_GAP_PX, OCR_ABOVE_SHARE, OCR_BELOW_PX,
+    OCR_PAD_PX, PAGE_DPI, PAGE_IMAGE_LONG_SIDE, SPAN_EDGE_GAP_PX, SPAN_MARGIN_PX
 )
 from src.providers.page_images import (
     RENDER_LOCK, line_bands, line_ends, page_ink, rule_columns, whole_page, whole_page_at_dpi
@@ -222,15 +224,42 @@ def line_box(found, n, below_px=OCR_BELOW_PX):
             min(h, below)]
 
 
-def span_image(doc, page, box):
-    """The part of PDF page `page` (1-based) under `box`, px of its 300 dpi scan, at PAGE_DPI in grayscale."""
+def _crop(doc, page, box, dpi):
+    """The part of PDF page `page` (1-based) under `box`, px of its 300 dpi scan, at `dpi` in grayscale, as PNG."""
     with RENDER_LOCK:
         p = doc[page - 1]
         r, scale = p.rect, 72 / PAGE_DPI
         left, top, right, bottom = box
         clip = fitz.Rect(r.x0 + left * scale, r.y0 + top * scale, r.x0 + right * scale, r.y0 + bottom * scale)
-        zoom = PAGE_DPI / 72
+        zoom = dpi / 72
         return p.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip, colorspace=fitz.csGRAY).tobytes("png")
+
+
+def span_image(doc, page, box):
+    """The part of PDF page `page` (1-based) under `box`, px of its 300 dpi scan, at PAGE_DPI in grayscale."""
+    return _crop(doc, page, box, PAGE_DPI)
+
+
+def entry_image(doc, crops):
+    """A Proverb Entry's Entry Image, as PNG: `crops`, [(PDF page, box)], one per page in page order, at ENTRY_IMAGE_DPI
+    in grayscale, stacked top to bottom with a rule between pages, each padded with white on its right to the widest."""
+    pngs = [_crop(doc, page, box, ENTRY_IMAGE_DPI) for page, box in crops]
+    if len(pngs) == 1:
+        return pngs[0]
+    images = [Image.open(BytesIO(png)) for png in pngs]
+    width, gap = max(im.width for im in images), ENTRY_IMAGE_PAGE_GAP_PX
+    out = Image.new("L", (width, sum(im.height for im in images) + gap * (len(images) - 1)), 255)
+    draw, y = ImageDraw.Draw(out), 0
+    for k, im in enumerate(images):
+        if k:
+            rule = y + (gap - ENTRY_IMAGE_RULE_PX) // 2
+            draw.rectangle([0, rule, width - 1, rule + ENTRY_IMAGE_RULE_PX - 1], fill=ENTRY_IMAGE_RULE_GREY)
+            y += gap
+        out.paste(im, (0, y))
+        y += im.height
+    buf = BytesIO()
+    out.save(buf, "PNG")
+    return buf.getvalue()
 
 
 def review_image(doc, page):

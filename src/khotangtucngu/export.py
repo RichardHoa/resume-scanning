@@ -13,12 +13,19 @@ Each Part's store/<part>/export/ is emptied and written afresh, and nothing outs
   intro.md                    the Front Matter without HTML comments, ⚠ markers, quick links or the derived table
   expansions.json             every Expansion of a General Abbreviation made, with its entry and the text around it
   unresolved_see_also.json    every Unresolved See-also, for information
+  entry_images.zip            the Entry Image of every Proverb Entry, flat, "<anchor>.png" ("A-200.png"; a repeated
+                              name "A-200_2.png" on), grayscale PNG at settings.ENTRY_IMAGE_DPI, stored, not deflated
+
+An Entry Image is cut from the Part's PDF, which must be in BOOK_DIR: on each page the entry is on, the box around every
+span, model span or Confirmed Span, holding a Block of it, whole, so it may show a letter heading or a neighbouring entry
+too; its pages stacked top to bottom (see pages.entry_image).
 
 The Proverb Entries are rebuilt from the store's answers.json with the Confirmed Spans of its review.jsonl laid over the
 model's Blocks (see review.py); an entry is "fixed" only if a span holding it was edited, not if it was confirmed as it
 stood. A Citation after "bk" is a Variant Citation, marked "variant". Notes, Variants and Corrections are lists of
 spans, {"text"} plus, where it applies: "em" (printed in italics), "strong" (the corrected words of a Correction), "source" (a Source Abbreviation, the key of its Source in
 sources.json) or "general" (a General Abbreviation, whose "text" is its Expansion). The proverb is plain text.
+A record's "image" is its Entry Image's file in entry_images.zip.
 """
 import os
 import sys
@@ -32,10 +39,14 @@ import argparse
 import re
 import shutil
 import unicodedata
+import zipfile
+
+import fitz
 
 from src.khotangtucngu.citations import Abbreviations, clean_citation_text, load_abbreviations
+from src.khotangtucngu.pages import entry_image, part_pdf
 from src.khotangtucngu.review import read_answers, read_log, rebuild
-from src.khotangtucngu.settings import FRONT_MATTER, PARTS, STORE_DIR
+from src.khotangtucngu.settings import BOOK_DIR, FRONT_MATTER, PARTS, STORE_DIR
 from src.providers.vlm_requests import write_json
 
 VARIANT_LABEL = "Bản khác"
@@ -127,10 +138,38 @@ def intro(front_matter):
 # -- the Proverb Entries with the Confirmed Spans
 
 def with_confirmed(store, abbreviations, book_page_offset):
-    """The store's Proverb Entries rebuilt with its Confirmed Spans, and how many of those there are."""
+    """The store's Proverb Entries rebuilt with its Confirmed Spans, the page answers they were laid over (by PDF page),
+    and how many Confirmed Spans there are."""
     log = read_log(store)
-    entries, _, _, _ = rebuild(read_answers(os.path.join(store, "answers.json")), log, abbreviations, book_page_offset)
-    return entries, sum(len(held) for held in log["confirmed"].values())
+    entries, _, _, laid = rebuild(read_answers(os.path.join(store, "answers.json")), log, abbreviations,
+                                  book_page_offset)
+    return entries, laid, sum(len(held) for held in log["confirmed"].values())
+
+
+# -- the Entry Images
+
+def entry_crops(entry, laid):
+    """`entry`'s crops for its Entry Image, [(PDF page, box)] in page order: on each page it is on, the box around every
+    span of `laid` holding a Block of it."""
+    crops = []
+    for page, (first, stop) in sorted(entry["blocks"].items(), key=lambda item: int(item[0])):
+        boxes = [span["box"] for span in laid[int(page)]["spans"]
+                 if span["blocks"][0] < stop and first < span["blocks"][1]]
+        if not boxes:
+            raise ValueError(f"{entry['name']}: its Blocks {first}-{stop - 1} of PDF page {page} lie in no span")
+        crops.append((int(page), [min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes),
+                                  max(b[3] for b in boxes)]))
+    return crops
+
+
+def image_names(entries):
+    """Each entry's Entry Image file, in order: its anchor in NFC with ".png", a repeated name "_2" on."""
+    seen, names = {}, []
+    for entry in entries:
+        base = unicodedata.normalize("NFC", anchor(entry["name"]))
+        seen[base] = seen.get(base, 0) + 1
+        names.append(f"{base}.png" if seen[base] == 1 else f"{base}_{seen[base]}.png")
+    return names
 
 
 # -- text for the reader
@@ -235,8 +274,8 @@ def citations(entry_citations, known):
     return out
 
 
-def record(entry, reader, by_name, dated, unresolved):
-    """One Proverb Entry for the website: its text for the reader and its filter fields."""
+def record(entry, reader, by_name, dated, unresolved, image):
+    """One Proverb Entry for the website: its text for the reader, its filter fields and its Entry Image's file."""
     known = reader.sources
     variants = [{"label": VARIANT_LABEL, "text": italic_spans(_VARIANT_PREFIX.sub("", v.get("text", "")).strip()),
                  "citations": citations(v.get("citations") or [], known)} for v in entry.get("variants") or []]
@@ -267,6 +306,7 @@ def record(entry, reader, by_name, dated, unresolved):
         "earliest_year": min(years) if years else None,
         "book_pages": entry.get("book_pages", []), "pdf_pages": entry.get("pdf_pages", []),
         "fixed": entry["fixed"],
+        "image": image,
     }
 
 
@@ -293,9 +333,20 @@ def main():
               if os.path.exists(os.path.join(STORE_DIR, key, "answers.json"))}
     if not stores:
         sys.exit(f"[Kho tàng tục ngữ] No store in {STORE_DIR} has an answers.json: run src.khotangtucngu.cli first")
-    parts = {}
+    pdfs = {key: part_pdf(PARTS[key].pdf) for key in stores}
+    missing = [key for key, pdf in pdfs.items() if pdf is None]
+    if missing:
+        sys.exit(f"[Kho tàng tục ngữ] No PDF in {BOOK_DIR} for {', '.join(missing)} "
+                 f"({', '.join(repr(PARTS[key].pdf) for key in missing)}): the Entry Images are cut from it")
+    parts, crops = {}, {}
     for key, store in stores.items():
-        entries, confirmed = with_confirmed(store, Abbreviations(abbreviations), PARTS[key].book_page_offset)
+        entries, laid, confirmed = with_confirmed(store, Abbreviations(abbreviations), PARTS[key].book_page_offset)
+        # Every Entry Image's crops before any export/ is emptied, so an entry in no span stops the run with nothing
+        # half written
+        try:
+            crops[key] = [entry_crops(entry, laid) for entry in entries]
+        except ValueError as e:
+            sys.exit(f"[Kho tàng tục ngữ] {key}: {e}")
         parts[key] = entries
         print(f"[Kho tàng tục ngữ] {key}: {len(entries)} Proverb Entries, {confirmed} Confirmed Span(s)")
     # Every Part exported now, so a See-also resolves to an entry of any of them
@@ -307,8 +358,9 @@ def main():
         os.makedirs(os.path.join(out, "letters"))
         reader = Reader(abbreviations, general)
         unresolved, letters = [], {}
-        for entry in entries:
-            letters.setdefault(entry["letter"], []).append(record(entry, reader, by_name, dated, unresolved))
+        names = image_names(entries)
+        for entry, name in zip(entries, names):
+            letters.setdefault(entry["letter"], []).append(record(entry, reader, by_name, dated, unresolved, name))
         for letter, records in letters.items():
             write_json(os.path.join(out, "letters", f"{letter}.json"), records)
         write_json(os.path.join(out, "sources.json"), source_table)
@@ -316,11 +368,16 @@ def main():
             f.write(intro_text)
         write_json(os.path.join(out, "expansions.json"), reader.expansions)
         write_json(os.path.join(out, "unresolved_see_also.json"), unresolved)
+        with fitz.open(pdfs[key]) as doc, \
+                zipfile.ZipFile(os.path.join(out, "entry_images.zip"), "w", zipfile.ZIP_STORED) as images:
+            for its_crops, name in zip(crops[key], names):
+                images.writestr(name, entry_image(doc, its_crops))
         unknown = sorted({c["abbreviation"] for records in letters.values() for r in records
                           for c in r["citations"] + [c for v in r["variants"] for c in v["citations"]]
                           if c.get("unknown")})
         print(f"[Kho tàng tục ngữ] {key}: letters {' '.join(letters)}, {len(reader.expansions)} Expansion(s), "
-              f"{len(unresolved)} Unresolved See-also(s), unknown Source Abbreviations {unknown or 'none'}")
+              f"{len(unresolved)} Unresolved See-also(s), unknown Source Abbreviations {unknown or 'none'}, "
+              f"{len(names)} Entry Image(s)")
         print(f"[Kho tàng tục ngữ] {key}: export in {out}")
 
 

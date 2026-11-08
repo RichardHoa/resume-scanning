@@ -2,11 +2,11 @@
 #SBATCH --job-name=khotangtucngu_vllm
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=50G
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=48G
 #SBATCH --partition=student9696
 #SBATCH --gres=gpu:nvidia_rtx_pro_6000_blackwell_server_edition_4g.96gb:1
-#SBATCH --time=4:00:00
+#SBATCH --time=10:00:00
 #SBATCH --output=logging/slurm_khotangtucngu_%j.out
 #SBATCH --error=logging/slurm_khotangtucngu_%j.err
 
@@ -28,7 +28,7 @@
 # KHOTANGTUCNGU_CONCURRENCY requests in flight (scripts/lib/vision_job.sh).
 # -----------------------------------------------------------------------------
 
-KHOTANGTUCNGU_CONCURRENCY=60    # this job's only: the default profile and the shared default stay at 40
+KHOTANGTUCNGU_CONCURRENCY=50
 MAX_IMAGES_PER_PROMPT=1    # a layout request sends its page, an Entry Span request its crop
 VISION_JOB_PREFLIGHT=--check-reads    # a page of this run with no current Vision read ends the job before its server
 # No whitespace between JSON tokens, where an Entry Span's answer can run to max_tokens of newlines (p042-L02). vLLM takes

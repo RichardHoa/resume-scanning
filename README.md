@@ -357,7 +357,10 @@ python3 -m src.khotangtucngu.export
   - `sources.json`, the 63 Sources with their Source Notes;
   - `intro.md`, the cleaned Front Matter;
   - `expansions.json`, every General Abbreviation it wrote out, to check by eye;
-  - `unresolved_see_also.json`.
+  - `unresolved_see_also.json`;
+  - `entry_images.zip`, the Entry Image of every Proverb Entry (`A-200.png`, grayscale at 200 dpi), cut from the
+    Part's PDF, which must be in `vsc-project/khoTangTucNguoiNguoiViet/`. Each record's `image` names its file. An
+    image holds the whole of every Entry Span its entry is in, so it may show a letter heading or a neighbouring entry.
 - **Into the website:** copy the export folder into `digitizing-vietnam-website` by hand. The card that will read it
   is specced in `.scratch/kho-tang-tuc-ngu-website/spec.md`, which isn't settled yet.
 
