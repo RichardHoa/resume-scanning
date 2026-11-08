@@ -121,8 +121,16 @@ A note attached to an extracted resume about the PDF itself rather than the mode
 _Avoid_: warning (alone)
 
 **Repaired Extraction**:
-An extraction in which the model never gave a complete answer, even after every retry, so its last, cut-off answer was patched into shape. It is kept and marked, so HR is warned on the website that fields may be missing. The extractor consistency check counts it as a failed run.
+An extraction in which the model never gave a complete answer, even after every retry, so its last, cut-off answer was patched into shape. It is kept and marked, so HR is warned on the website that fields may be missing. The Extractor Accuracy Check counts it as a failed run.
 _Avoid_: partial extraction, auto-repair (alone)
+
+**Ground Truth Extraction**:
+A hand-checked extraction of one resume, used as the correct answer the extractor's output is compared against. Its warnings (Fidelity Warnings and PDF Notes) are never compared, since they vary between extractions.
+_Avoid_: gold label, expected output, answer key (collides with Evaluation Order)
+
+**Extractor Accuracy Check**:
+A developer check that extracts each resume that has a Ground Truth Extraction 5 times and measures how often each value matches it. It replaces the extractor consistency check, which compared the runs only with each other: only accuracy matters, not run-to-run stability.
+_Avoid_: extractor consistency check, extraction benchmark
 
 **Repeat Evaluation**:
 One of the 5 full evaluations of the same extraction in the evaluator consistency check, each judged exactly as HR's evaluations are, with its own Category runs. Comparing them shows whether re-evaluating a candidate changes what HR sees.

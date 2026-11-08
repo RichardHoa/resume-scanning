@@ -1,0 +1,83 @@
+{
+  "position_applied": {
+    "title": "C&B Specialist"
+  },
+  "self_evaluation": "",
+  "skills": [
+    "Giao tiếp",
+    "Tư duy phản biện",
+    "Giải quyết vấn đề",
+    "Đàm phán",
+    "Excel",
+    "Word",
+    "Powerpoint",
+    "Project"
+  ],
+  "languages": [
+    {
+      "language": "Tiếng Anh",
+      "proficiency": "",
+      "certificates": []
+    },
+    {
+      "language": "Tiếng Thái",
+      "proficiency": "",
+      "certificates": []
+    }
+  ],
+  "certifications": [],
+  "work_experience": [
+    {
+      "company_name": "Vietravel Airlines",
+      "company_description": "",
+      "position": "Chuyên viên C&B (Specialist) / Chuyên viên C&B (Senior)",
+      "duration": "06/2022 - nay",
+      "responsibilities": "- Đề xuất các kế hoạch, chế độ, chính sách về sức khỏe dành cho người lao động trong và ngoài nước như bảo hiểm sức khỏe, chính sách khen thưởng định kỳ quý / năm, đào tạo tại nước ngoài,......\n- Tư vấn và sửa đổi chính sách tiền lương, tiêu chí đánh giá KPI theo cơ chế 3P.\n- So sánh lương và tổng hợp số liệu bảng lương của các phòng ban, đối chiếu đánh giá, định hình quỹ lương theo khung kế hoạch nhân sự.\n- Công, lương: Tổng hợp bảng công, đối soát dữ liệu, thực hiện tính lương cho 300 nhân viên người Việt Nam và 100 nhân viên người nước ngoài (phi công và tiếp viên).\n- BHXH: Làm các thủ tục liên quan đến chính sách, chế độ hưởng bảo hiểm xã hội, thực hiện báo cáo lao động, tăng - giảm nhân sự, xử lý các vấn đề BHXH phát sinh,....\n- Hợp đồng: Đánh giá thử việc, tái ký HĐLĐ, rà soát, lưu trữ HĐLĐ, HĐĐT,....\n- Chính sách: Thực hiện các văn bản, thông báo liên quan chính sách, thưởng,.....\n- Thuế: Giải quyết các vấn đề liên quan đến thuế TNCN, tổng hợp dữ liệu - thực hiện kê khai tờ khai Quyết toán Thuế, thực hiện xác nhận thu nhập, ủy quyền QTT, trao đổi làm việc với cơ quan Thuế,...\n- Hồ sơ nhân sự: Cập nhật thông tin nhân viên, theo dõi, tổng hợp dữ liệu phép, biểu mẫu đơn từ liên quan đến công tác Nhân sự.\n- Thực hiện thủ tục nghỉ việc: Tiếp nhận hồ sơ nghỉ việc, trao đổi phỏng vấn nghỉ việc, phân tích đánh giá, đề xuất phương án tối ưu giữ chân người tài."
+    },
+    {
+      "company_name": "GHTK",
+      "company_description": "",
+      "position": "Chuyên viên C&B",
+      "duration": "01/2020 - 05/2022",
+      "responsibilities": "- Hỗ trợ Quyết toán thuế TNCN, giải đáp thắc mắc về chính sách thuế cho nhân viên.\n- Giải quyết hồ sơ chế độ BHXH cho 300 nhân viên văn phòng tại VPĐD.\n- Thực hiện hợp đồng và tính lương cho 300 nhân viên văn phòng và 500 lao động phổ thông."
+    },
+    {
+      "company_name": "PHAP DANG LAWFIRM",
+      "company_description": "",
+      "position": "Trợ lý pháp lý",
+      "duration": "01/2019 - 12/2019",
+      "responsibilities": "- Xây dựng, soạn thảo điều chỉnh và ban hành các văn bản pháp luật nội bộ.\n- Thực hiện các thủ tục pháp lý của công ty, làm báo cáo gửi cơ quan nhà nước.\n- Giải quyết các vấn đề liên quan bản quyền, sở hữu trí tuệ, thương hiệu...\n- Hỗ trợ soạn thảo các điều khoản hợp đồng đã ký kết với đối tác, khách hàng trong nước."
+    }
+  ],
+  "basic_information": {
+    "full_name": "HOÀNG TẤN TÀI",
+    "email": "taihtt13@gmail.com",
+    "phone": "0345.47.0913",
+    "location": "68 Phùng Văn Cung, P. 7, Q. Phú Nhuận, Tp. Hồ Chí Minh",
+    "other_info": ""
+  },
+  "education_background": [
+    {
+      "university_name": "Đại học Thủ Dầu Một",
+      "degree": "Cử nhân Luật",
+      "field_of_study": "Ngành Luật Kinh tế",
+      "graduation_year": "2016-2020",
+      "gpa": "Tốt nghiệp loại Khá"
+    }
+  ],
+  "projects": [
+    {
+      "project_name": "Dự án phát triển, xây dựng về Sở hữu trí tuệ",
+      "description": "Tham gia dự án phát triển, xây dựng về Sở hữu trí tuệ",
+      "duration": ""
+    },
+    {
+      "project_name": "Dự án chuẩn hóa hệ thống nhân sự",
+      "description": "Tham gia dự án chuẩn hóa hệ thống nhân sự",
+      "duration": ""
+    }
+  ],
+  "warning": [
+    "Extraction text at 'work_experience[0].company_name' ('Vietravel Airlines') not found in markdown"
+  ]
+}

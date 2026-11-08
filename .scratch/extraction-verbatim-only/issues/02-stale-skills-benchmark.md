@@ -1,6 +1,8 @@
 # 02: Update the extraction benchmark for the verbatim `skills` field
 
-**Status:** needs-triage
+**Status:** wontfix
+
+The benchmark and `src/metrics/` are deleted; the Extractor Accuracy Check (`.scratch/extractor-accuracy/spec.md`) measures extraction accuracy instead.
 
 **What's stale:**
 

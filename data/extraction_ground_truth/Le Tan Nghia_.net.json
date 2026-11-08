@@ -1,0 +1,79 @@
+{
+  "position_applied": {
+    "title": ""
+  },
+  "self_evaluation": "Nearly 5 years of experience in software development in developer role\nGood C# ASP.NET and related frameworks such as ASP.NET (MVC4, MVC5), Entity framework…\nStrong problem-solving and root-cause analytical skills, ability to debug and understand the existing source code",
+  "skills": [
+    "Programming Languages: C# | WINDOWS PHONE 8.1 | JAVASCRIPT | CSS3 | HTML5",
+    "Framework: ASP.NET MVC | Linq | Nunit test | Entity Framework 4 | KendoUI | Limejs | AngularJS",
+    "Database: MS SQL 2005, 2008, MS Access, MySQL",
+    "Process management: Scrum",
+    "Source Code Management Tools: Visual SourceSafe, TortoiseSVN, TFS",
+    "Design Tools: CorelDraw 12, Photoshop CS5"
+  ],
+  "languages": [
+    {
+      "language": "English",
+      "proficiency": "BULATS CEF Level B2",
+      "certificates": [
+        {
+          "name": "BULATS",
+          "score": "CEF Level B2",
+          "issuing_organization": "",
+          "duration": ""
+        }
+      ]
+    }
+  ],
+  "certifications": [],
+  "work_experience": [
+    {
+      "company_name": "FSoft Company",
+      "company_description": "",
+      "position": "Developer",
+      "duration": "8/2014 to present",
+      "responsibilities": "- Role: Developer\n- Customer: US\n- Description: Develop the website that manages the virtual group fitness.\n- Responsibilities: Study requirements, design assigned modules, develop the assigned modules, daily meeting and report to customers.\n- Technologies Used: ASP.NET MVC5(C#), Metro UI Css, HTML5, CSS3, JQuery."
+    },
+    {
+      "company_name": "HarveyNash Company – HCM City",
+      "company_description": "",
+      "position": "Team member (SE)",
+      "duration": "from 3/2011 to 7/2014",
+      "responsibilities": "- Web game project: (1/2014-7/2014)\n  + Role: Team member (SE)\n  + Customer: Philippine Manila\n  + Description: I joined into a. Customer is in Philippines, they wanted to convert from Flash games into HTML5. Technically, beside HTML5 Canvas, JQuery and CSS3, we researched a lot Javacript framework such as: Limejs, AngularJS, NodeJs and Socket.IO.\n- Housing management web project: (2/2013 – 1/2014)\n  + Role: Team member (SE)\n  + Customer: UK\n  + Description: I joined into a. Customer is in UK, they wanted to build a housing management system, tend to manage housing, repair housing and for rent. Technically, we used the Asp.net MVC then connect to MSSQL Server by the FluentNhibernate and AutoMapper. On the front-end, we used the HTML5, CSS3, Jquery, KendoUI, Cassette and Modernizr. We also run Nunit test cover 70 percent code.\n- Internal web project (10/2012-2/2013)\n  + Role: Team member (SE)\n  + Description: I joined into a MVC project in order to build a web blog. Technically: MS SQL Server 2008, Entity Framework 4 Code first, MVC, Nunit test, HTML5, CSS3, Jquery.\n- Financial project (5/2012-10/2012)\n  + Role: Team member (SE)\n  + Description: I joined into Harveynash Internal project to build a financial tool. Technically, MS SQL Server 2008 - Reporting Services.\n- Human resource management web project (3/2011 – 5/2012)\n  + Role: Team member (SE)\n  + Customer: UK\n  + Description: I joined into an ASP.Net web project. Customer was in UK. We developed a human resource management websites base on a CMS framework. Technically, I probably worked with MS Sql server, Reporting services and Asp.Net."
+    },
+    {
+      "company_name": "KingCorp Company – HCM City",
+      "company_description": "",
+      "position": "Software Engineer",
+      "duration": "From 11/2009 to 3/2011",
+      "responsibilities": "- Job description: Develop football betting website, including services connect to Viettel and MobiFone that allow user to bet by SMS.\n- Technical: Asp.Net 3.5 | C# | MS SQL 2005"
+    },
+    {
+      "company_name": "Gets Company - HCMC",
+      "company_description": "",
+      "position": "freelance job",
+      "duration": "From 10/2010 – 10/2011",
+      "responsibilities": "- Job description: Develop simple websites such as personal and shopping.\n- Technical: CMS Drupal and Joomla."
+    }
+  ],
+  "basic_information": {
+    "full_name": "LÊ TẤN NGHĨA",
+    "email": "nghialt.web@gmail.com",
+    "phone": "0984.000.642",
+    "location": "E11-Truong Minh Giang-F1-Go Vap-HCM",
+    "other_info": ""
+  },
+  "education_background": [
+    {
+      "university_name": "University of Sciences, HCMC, Viet Nam",
+      "degree": "Bachelor of Information Technology",
+      "field_of_study": "",
+      "graduation_year": "2005 - 2009",
+      "gpa": ""
+    }
+  ],
+  "projects": [],
+  "warning": [
+    "Weird character: Document contains private use area / unmappable font characters (2 found)."
+  ]
+}

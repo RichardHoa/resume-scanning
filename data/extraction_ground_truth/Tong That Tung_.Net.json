@@ -1,0 +1,95 @@
+{
+  "position_applied": {
+    "title": "Programmer"
+  },
+  "self_evaluation": "",
+  "skills": [],
+  "languages": [
+    {
+      "language": "English",
+      "proficiency": "Average",
+      "certificates": []
+    },
+    {
+      "language": "Japanese",
+      "proficiency": "Average",
+      "certificates": []
+    }
+  ],
+  "certifications": [],
+  "work_experience": [
+    {
+      "company_name": "global links",
+      "company_description": "",
+      "position": "Designer, Programmer",
+      "duration": "3/2010 → 12/2010",
+      "responsibilities": "- my job was to make code the module software for hospitals\n+ Software environment: C#, Crystal Report\n+ Database: Postgress"
+    },
+    {
+      "company_name": "Innotech",
+      "company_description": "",
+      "position": "Programmer",
+      "duration": "1/2011 → 06/2011",
+      "responsibilities": "- my job is to make webservice for system\n+ Software environment: C#,ASP.NET , Web service\n+ Database: SQLServer 2008"
+    },
+    {
+      "company_name": "Xanhbiec",
+      "company_description": "",
+      "position": "Analyst, Designer, Programmer",
+      "duration": "7/2011 → 9/2012",
+      "responsibilities": "- my job is to make coder for system\n+ Software environment: HTML,Javascript,C#, ASP.Net , AJAX, Crystal Report\n+ Database: MS SQL Server 2008"
+    },
+    {
+      "company_name": "Thiết Bị Hệ Thống Việt Nam",
+      "company_description": "",
+      "position": "Designer, Programmer",
+      "duration": "11/2012 → 11/2014",
+      "responsibilities": "- Projects: BigValley Pharse 1, BigValley Pharse 2, CTI, Jteckt, MeetingLook, Smart ebook\n+ Software environment: C#,ASP.NET,MVC4,Ajax,Jquery,SignalR,WCF,Windows XAML,Rest API\n+ OS: Windows 7 , 8.1, Windows server 2003,2008,2012, Exchange server , Lync Server\n+ Database: Cache, Oracle, SQL Server 2012"
+    },
+    {
+      "company_name": "Quodisys",
+      "company_description": "",
+      "position": "Team leader, Back-end",
+      "duration": "12/2014 → 10/2015",
+      "responsibilities": "- Projects: CrewFire, Testimonial, P2B, Viro, MarketPlace\n+ Software environment: C#,ASP.NET,MVC5,Ajax,Jquery,SignalR, Web API , Angular JS ,Linq ,Node JS\n+ OS: Windows server 2012, Ubuntu\n+ Cloud: AWS : EC2 , S3\n+ Database: SQL Server 2012 , MongoDB , Redis"
+    },
+    {
+      "company_name": "HarveyNash",
+      "company_description": "",
+      "position": "",
+      "duration": "12/2015 → Now",
+      "responsibilities": "- Project: HVN OTT"
+    }
+  ],
+  "basic_information": {
+    "full_name": "Tôn Thất Tùng",
+    "email": "tc_tonthattung@yahoo.com.vn",
+    "phone": "0908234003",
+    "location": "9A le lieu street, tan phu ward,Tan Binh district",
+    "other_info": "Skype: live:tc_tonthattung"
+  },
+  "education_background": [
+    {
+      "university_name": "FPT-APTECH HCM 2",
+      "degree": "DISM(Diploma in Information System Management)",
+      "field_of_study": "",
+      "graduation_year": "Oct2007 – Jan 2009",
+      "gpa": ""
+    },
+    {
+      "university_name": "FPT-APTECH HCM 2",
+      "degree": "HDSE(High Diploma in Software Engineering)",
+      "field_of_study": "",
+      "graduation_year": "Feb 2009 – Jan 2010",
+      "gpa": ""
+    }
+  ],
+  "projects": [],
+  "warning": [
+    "Extraction text at 'work_experience[0].responsibilities' ('- my job was to make code the module software for hospitals\n+ Software environment: C#, Crystal Report\n+ Database: Postgress') not found in markdown",
+    "Extraction text at 'work_experience[3].responsibilities' ('- Projects: BigValley Pharse 1, BigValley Pharse 2, CTI, Jteckt, MeetingLook, Smart ebook\n+ Software environment: C#,ASP.NET,MVC4,Ajax,Jquery,SignalR,WCF,Windows XAML,Rest API\n+ OS: Windows 7 , 8.1, Windows server 2003,2008,2012, Exchange server , Lync Server\n+ Database: Cache, Oracle, SQL Server 2012') not found in markdown",
+    "Extraction text at 'work_experience[4].responsibilities' ('- Projects: CrewFire, Testimonial, P2B, Viro, MarketPlace\n+ Software environment: C#,ASP.NET,MVC5,Ajax,Jquery,SignalR, Web API , Angular JS ,Linq ,Node JS\n+ OS: Windows server 2012, Ubuntu\n+ Cloud: AWS : EC2 , S3\n+ Database: SQL Server 2012 , MongoDB , Redis') not found in markdown",
+    "Extraction text at 'work_experience[5].responsibilities' ('- Project: HVN OTT') not found in markdown",
+    "Weird character: Document contains private use area / unmappable font characters (15 found)."
+  ]
+}

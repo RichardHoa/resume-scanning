@@ -1,0 +1,84 @@
+{
+  "position_applied": {
+    "title": ""
+  },
+  "self_evaluation": "3+ years experience in software development.\n3+ years working with Java programming, JSP, HTML, JavaScript and CSS.\n2 NodeJS, ExpressJS\n5+ month working with Android project.\nExperience in AWS , Hibernate, Struts, .NET Framework, jQuery\nStrong experience in using development tools such as NetBeans, Eclipse, SpringSource Tool Suite.\nHard working and high responsibility to assigned tasks. Could work overtime upon request.\nAbility to work as individual as well as good team worker.\nStrong in communication.\nSkillful in English (writing, reading, listening).",
+  "skills": [
+    "Databases: MS SQL server, MS Access and MySQL, MongoDB, Oracle , SQLite",
+    "Programming Languages: Java, X/HTML, JavaScript, CSS, and SQL, Jquery, XML,C# , NodeJS",
+    "Programming Tools: Eclipse IDE for Java EE Developers ,Visual Studio 2008, 2010 , Netbeans IDE, Spring Tool Suite, Webstorm, Android Studio",
+    "App server / Middleware: Microsoft IIS, Tomcat Apache,GlassFish",
+    "Framework: Hibernate, Struts (version 1, 2), JSF,Spring, ExpressJS, Yii, Zend",
+    "Browsers: IE 8+, Firefox 10+, Chrome 10+",
+    "OOP: Object Oriented Programming (OOP), Unified Modeling Language (UML)",
+    "Microsoft Windows XP, Vista, Windows 7, Linux",
+    "Windows Server 2003, 2008."
+  ],
+  "languages": [
+    {
+      "language": "English",
+      "proficiency": "Skillful (writing, reading, listening)",
+      "certificates": []
+    }
+  ],
+  "certifications": [
+    {
+      "name": "CCNA",
+      "issuing_organization": "",
+      "duration": ""
+    }
+  ],
+  "work_experience": [
+    {
+      "company_name": "Dzuii, JSC",
+      "company_description": "",
+      "position": "System Engineer and Developer",
+      "duration": "May 2013 – April 2014",
+      "responsibilities": "- System\n- Coding"
+    },
+    {
+      "company_name": "FPT Softwave",
+      "company_description": "",
+      "position": "Developer",
+      "duration": "April 2014 – Now",
+      "responsibilities": "- Coding"
+    }
+  ],
+  "basic_information": {
+    "full_name": "NGUYEN TRONG LAM",
+    "email": "lamnt12@fsoft.com.vn",
+    "phone": "(+84) 983.896.629",
+    "location": "",
+    "other_info": ""
+  },
+  "education_background": [
+    {
+      "university_name": "PTIT: Posts and Telecommunications Institute of Technology",
+      "degree": "",
+      "field_of_study": "Electronics Telecommunication Engineering",
+      "graduation_year": "2008 –2013",
+      "gpa": ""
+    }
+  ],
+  "projects": [
+    {
+      "project_name": "Hunhu HealthCare",
+      "description": "Position: Developer\nEnvironmemt: Android\nProject Description: Hunhu is a application in Android with purpose health care for patient at Mayo Hospital, USA\nCustomer: Hunhu\nTeam size: 5 people",
+      "duration": "March, 2015 – August,2015"
+    },
+    {
+      "project_name": "Repli",
+      "description": "Position: Backend\nEnvironment: Node.js, Express, Socket.IO, MongoDB, Websocket, AWS SES/S3/Elastic Beanstalk\nResponsibility:\nDesign architecture, solution.\nDesign data structure and web service API.\nSet up and configure development & testing environment on Amazon EC2 server.\nCoding template module, component.\nReview code, manage team member\nCommunicate with customer to discuss solution and issuse\nDeployment, Monitoring and optimizing performance\nProject Description:\n- Audio photo (Repli) is a application in Android and IOS with back-end using nodeJS server. Server build in Amazon cloud. We send A-P to user used App or through email and phone. We can share video or call other user.\n- Create the following new features/capabilities\n  + Log in, out.\n  + Management account.\n  + Camera.\n  + Chat gallery.\n  + Share without commentary.\n  + Recoding.\n  + Share.\n  + Recent.\n  + Inbox\n  + Playback\nCharacteristic:\nMobile application on Android/IOS with a asynchronous Node.js backend on AWS\nObjective:\nBuild highly scalable & extensible service-oriented multimedia messaging system.\nCustomer: Repli Inc.\nSize: >100 person-month\nTeam Size: 10 people",
+      "duration": "June, 2014 – March, 2015"
+    },
+    {
+      "project_name": "Dream Idol",
+      "description": "Position: Developer\nEnvironment:\nCore System :\nOS : Microsoft Windows 7\nBrowser : Microsoft Internet Explorer 9\nCustomer portal\nOS : Microsoft Windows 7\nBrowser : Intenet Explorer, Firefox, Google Chrome\nProject Description: Dream Idol is projects Selection of training aimed idol idol has a passion to become a model, actress of Japan.\nProject Scope:\n- Design\n- Coding\n- Unit Test\n- Integration Test\nResponsibility:\n- Requirement analysis\n- Detail Design\n- Code\n- Unit test\n- Integration Test\nTechnologies Used:\n- Java 1.6\n- Framework: Struts2, Spring, Hibernate\n- MySQL\n- WebServer: Apache\n- ApplicationServer: JBOSS\n- ToolReport: Apache POI, jodconverter, LibreOffice\nCustomer: Cargo-Vtrac and AT&T\nTeam Size: 30 people",
+      "duration": "May, 2013 – June, 2014"
+    }
+  ],
+  "warning": [
+    "Extraction text at 'languages[0].proficiency' ('Skillful (writing, reading, listening)') not found in markdown",
+    "Weird character: Document contains private use area / unmappable font characters (3 found)."
+  ]
+}

@@ -1,6 +1,8 @@
 # Extractor consistency check
 
-Status: ready-for-agent
+Status: wontfix
+
+Replaced by the Extractor Accuracy Check (`.scratch/extractor-accuracy/spec.md`); the scripts are deleted.
 
 Replaces the outdated evaluator consistency check (`scripts/run_consistency.py`, `scripts/check_evaluator_consistency.sh`, the 20-round evaluator score CSV). This check is about extraction only: does extracting the same resume again give the same JSON, and does the extractor make errors.
 

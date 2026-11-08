@@ -40,17 +40,17 @@ in `scripts/lib/model_profiles.sh`; every job takes a profile key (or a raw Hugg
 
 ```
 src/
-  cli/            command-line entry points (extract, evaluate, backfill_feedback, benchmark, proofread, audio, ...)
+  cli/            command-line entry points (extract, evaluate, backfill_feedback, proofread, audio, ...)
   pipelines/      extractor, evaluator, scoring, review_panel, ground_truth, proofreader
   prompts/        every LLM prompt
   providers/      vLLM client, HR RAG store (rag_engine)
   api/ + server.py, templates/, static/   the FastAPI web workbench
   core/           config (paths, defaults), run folders, logging, Reference Date, Evaluation Order
   bias/           the Bias Check suites
-  step_1_extractor.py, step_2_evaluate.py, evaluate.py, ground_truth.py   thin entry-point shims
+  step_1_extractor.py, step_2_evaluate.py, ground_truth.py   thin entry-point shims
 scripts/
   pipeline/       SLURM jobs: extract_evaluate.sh, extract.sh, evaluate.sh, feedback.sh
-  checks/         consistency and bias checks, token_stats.py
+  checks/         extractor accuracy, evaluator consistency and bias checks, token_stats.py
   lib/            shared shell helpers: config.sh, model_profiles.sh, vllm_utils.sh
   server.sh       starts and stops vLLM + the website
   proofread/, audio/, dspy/   side tools (see below)
@@ -58,7 +58,7 @@ schemas/          the extraction JSON schema
 Vietnamese-dataset/CnB, Vietnamese-dataset/Tech   the two resume sets (not in git)
 rag/              the stored HR RAG (not in git)
 runs/             every output, one run folder per job (not in git)
-approved_jsons/   verified ground-truth extractions (not in git)
+approved_jsons/   HR-approved extractions, from src/ground_truth.py (not in git)
 docs/adr/, GLOSSARY.md, .scratch/   decisions, vocabulary, specs and issues
 ```
 
@@ -74,7 +74,8 @@ Every output lives in one run folder under `runs/` (ADR 0004):
 | `batch-cnb`, `batch-tech` | the pipeline jobs (`--cnb` / `--tech`, one is required) | at the start of each job (`evaluate.sh`: only the evaluations) |
 | `web-cnb`, `web-tech` | the website started with `--cnb` / `--tech` | never |
 | `web` | the website started with neither flag (no dataset: no Evaluation Order, no pipeline results) | never |
-| `extractor-consistency-{cnb,tech}`, `evaluator-consistency-{cnb,tech}` | the consistency checks | at the start of each check |
+| `extractor-accuracy` | the Extractor Accuracy Check | at the start of the check |
+| `evaluator-consistency-{cnb,tech}` | the evaluator consistency check | at the start of the check |
 | `bias-cnb` | the Bias Check | at the start of each check |
 
 Each holds `logs/` (job, vLLM and extractor/evaluator logs, `token_usage.jsonl`), `prompt_logs/<resume>/<category>/`,
@@ -142,7 +143,7 @@ requirements). `[model]` defaults to the default profile.
 
 | Job | What it does | Report |
 | --- | --- | --- |
-| `sbatch scripts/checks/extractor_consistency.sh [model]` | Extracts every resume of both sets 5 times and reports what changes, with every Fidelity Warning and failed run | `runs/extractor-consistency-{cnb,tech}/consistency_report.md` |
+| `sbatch scripts/checks/extractor_accuracy.sh [model]` | Extracts every resume with a Ground Truth Extraction (`data/extraction_ground_truth/`) 5 times and reports how often each value matches it | `runs/extractor-accuracy/accuracy_report.md` |
 | `sbatch scripts/checks/evaluator_consistency.sh [model] --cnb\|--tech` | Extracts one set once, then runs 5 Repeat Evaluations and reports what flips (needs the HR RAG) | `runs/evaluator-consistency-*/evaluator_consistency_report.md` |
 | `sbatch scripts/checks/evaluator_bias.sh [--<category>]` | The Bias Check on one fixed CnB resume, default model only (needs the CnB HR RAG) | `runs/bias-cnb/report.html` |
 
@@ -161,12 +162,13 @@ python3 src/step_2_evaluate.py --dir runs/batch-cnb/extraction_json --output run
 Review Panel) and `--reference-date YYYY-MM-DD`. Both scripts, and `src/server.py`, take `--mock` to run without a
 model. The run folder comes from the `RUN_DIR` environment variable (default `runs/batch-cnb`).
 
-### Extraction accuracy
+### Approving extractions
 
 ```bash
-python3 src/evaluate.py --gt-dir approved_jsons --pred-dir runs/batch-cnb/extraction_json
-python3 src/ground_truth.py   # review and approve ground-truth extractions at http://localhost:8000
+python3 src/ground_truth.py   # review and approve extractions into approved_jsons/ at http://localhost:8000
 ```
+
+Extraction accuracy is measured by the Extractor Accuracy Check (`sbatch scripts/checks/extractor_accuracy.sh`).
 
 ---
 

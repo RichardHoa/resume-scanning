@@ -27,14 +27,15 @@ DEFAULT_RUN_FOLDER = "batch-cnb"
 WEB_NO_SET_RUN_FOLDER = "web"
 # Each website run folder and the pipeline run folder of the same resume set, which the website also reads, read-only
 WEB_TO_PIPELINE_RUN_FOLDER = {"web-cnb": "batch-cnb", "web-tech": "batch-tech"}
-# The extractor and evaluator consistency checks' folders, one per check and resume set; the website never reads them
-CONSISTENCY_RUN_FOLDERS = (
-    "extractor-consistency-cnb", "extractor-consistency-tech", "evaluator-consistency-cnb", "evaluator-consistency-tech"
-)
+# The evaluator consistency check's folders, one per resume set; the website never reads them
+CONSISTENCY_RUN_FOLDERS = ("evaluator-consistency-cnb", "evaluator-consistency-tech")
+# The Extractor Accuracy Check's folder, for both resume sets; the website never reads it
+ACCURACY_RUN_FOLDER = "extractor-accuracy"
 # The Bias Check's folder: it only ever tests one CnB resume; the website never reads it
 BIAS_RUN_FOLDER = "bias-cnb"
 RUN_FOLDER_NAMES = (
-    "batch-cnb", "batch-tech", WEB_NO_SET_RUN_FOLDER, *WEB_TO_PIPELINE_RUN_FOLDER, *CONSISTENCY_RUN_FOLDERS, BIAS_RUN_FOLDER
+    "batch-cnb", "batch-tech", WEB_NO_SET_RUN_FOLDER, *WEB_TO_PIPELINE_RUN_FOLDER, *CONSISTENCY_RUN_FOLDERS, ACCURACY_RUN_FOLDER,
+    BIAS_RUN_FOLDER
 )
 
 LOGS_SUBDIR = "logs"

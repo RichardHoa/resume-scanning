@@ -49,9 +49,15 @@ use_pipeline_run_dir() {
 }
 
 # A consistency check's run folder: runs/<check>-consistency-cnb, or -tech for the Tech resume set. Exports the same
-# variables as use_pipeline_run_dir. Call with the check, "extractor" or "evaluator", and the dataset
+# variables as use_pipeline_run_dir. Call with the check, "evaluator", and the dataset
 use_consistency_run_dir() {
   _use_run_dir "$1-consistency" "$2"
+}
+
+# The Extractor Accuracy Check's run folder, runs/extractor-accuracy, for both resume sets. Exports the same
+# variables as use_pipeline_run_dir
+use_accuracy_run_dir() {
+  _export_run_dir "$PROJECT_ROOT/runs/extractor-accuracy"
 }
 
 # The Bias Check's run folder, runs/bias-cnb: it only ever tests one CnB resume
@@ -62,26 +68,31 @@ use_bias_run_dir() {
 # Exports RUN_DIR as runs/<prefix>-cnb or runs/<prefix>-tech, and its subfolders
 _use_run_dir() {
   if [ "$2" = "Tech" ]; then
-    export RUN_DIR="$PROJECT_ROOT/runs/$1-tech"
+    _export_run_dir "$PROJECT_ROOT/runs/$1-tech"
   else
-    export RUN_DIR="$PROJECT_ROOT/runs/$1-cnb"
+    _export_run_dir "$PROJECT_ROOT/runs/$1-cnb"
   fi
+}
+
+# Exports RUN_DIR as the given folder, and its subfolders
+_export_run_dir() {
+  export RUN_DIR="$1"
   RUN_LOGS_DIR="$RUN_DIR/logs"
   PROMPT_LOGS_DIR="$RUN_DIR/prompt_logs"
   EXTRACTION_JSON_DIR="$RUN_DIR/extraction_json"
   EVALUATION_JSON_DIR="$RUN_DIR/evaluation_json"
 }
 
-# Refuses any folder but the pipeline, consistency and Bias Check run folders, so a wrong or empty RUN_DIR never
-# reaches rm -rf
+# Refuses any folder but the pipeline, consistency, accuracy and Bias Check run folders, so a wrong or empty RUN_DIR
+# never reaches rm -rf
 _require_pipeline_run_dir() {
   case "$RUN_DIR" in
     "$PROJECT_ROOT/runs/batch-cnb"|"$PROJECT_ROOT/runs/batch-tech") return 0 ;;
-    "$PROJECT_ROOT/runs/extractor-consistency-cnb"|"$PROJECT_ROOT/runs/extractor-consistency-tech") return 0 ;;
+    "$PROJECT_ROOT/runs/extractor-accuracy") return 0 ;;
     "$PROJECT_ROOT/runs/evaluator-consistency-cnb"|"$PROJECT_ROOT/runs/evaluator-consistency-tech") return 0 ;;
     "$PROJECT_ROOT/runs/bias-cnb") return 0 ;;
   esac
-  echo "[CRITICAL ERROR] Refusing to wipe '$RUN_DIR': not a runs/batch-*, runs/*-consistency-* or runs/bias-cnb folder under $PROJECT_ROOT." >&2
+  echo "[CRITICAL ERROR] Refusing to wipe '$RUN_DIR': not a runs/batch-*, runs/*-consistency-*, runs/extractor-accuracy or runs/bias-cnb folder under $PROJECT_ROOT." >&2
   return 1
 }
 

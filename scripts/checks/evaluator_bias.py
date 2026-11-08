@@ -50,7 +50,7 @@ from src.bias import (
     log_data_provenance_report,
     run_single_category_bias_test
 )
-from extractor_consistency import is_scanned_pdf, extraction_error
+from extraction_runs import is_scanned_pdf, extraction_error
 
 # The one resume the Bias Check tests. It never changes, and it is a CnB resume, so the CnB HR RAG must be stored
 BIAS_RESUME_NAME = "CnB - Nguyen Ho Mi Sa"

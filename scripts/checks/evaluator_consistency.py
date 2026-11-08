@@ -31,7 +31,7 @@ from src.core.reference_date import set_reference_date, get_reference_date
 from src.pipelines.extractor import ResumeExtractor
 from src.pipelines.evaluator import ResumeEvaluator
 from src.cli.evaluate import load_hr_rag_requirements
-from extractor_consistency import is_scanned_pdf, extraction_error
+from extraction_runs import is_scanned_pdf, extraction_error
 
 REPEAT_EVALUATIONS = 5
 MISSING = "(missing)"

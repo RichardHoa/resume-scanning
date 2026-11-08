@@ -1,0 +1,154 @@
+{
+  "position_applied": {
+    "title": ""
+  },
+  "self_evaluation": "- 2 years experiences working on Android Application development.\n- 2 years experiences working on .NET Application development.\n- Onsite 3 months in Japan.\n- Attaching importance to the team work, would love to debate and discuss in groups to solve problems.\n- Suitable for the challenging job requires the ability to explore and solve problems. Dig deep and find out all the issues carefully.\n- Seeking a position in a professional work environment to receptive and improve programming skills.",
+  "skills": [
+    "Programming Languages: Android, Java, C++, C#, WPF.",
+    "Frameworks/ Platforms: Android, ASP.NET",
+    "Database Management Systems: SQL SERVER",
+    "IDEs: Microsoft Visual Studio 2008, 2010, Eclipse, Android Studio.",
+    "Operating Systems: Android OS, Win8, Win7.",
+    "Foreign Languages: Japanese, English.",
+    "Management Skills: Team Lead",
+    "Soft Skills:",
+    "Ability to work independently as well as team.",
+    "Ability to learn quickly, adapt to new working environment quickly.",
+    "Ready to developing the knowledge and skills to work related.",
+    "Have high responsibility for the job, try to complete the work assigned.",
+    "Others: (optional)"
+  ],
+  "languages": [
+    {
+      "language": "English",
+      "proficiency": "Proficient (read, write, listen, spoken)",
+      "certificates": []
+    },
+    {
+      "language": "Japanese",
+      "proficiency": "Learning 6 years",
+      "certificates": [
+        {
+          "name": "N3 Certificate Japanese Language Proficiency",
+          "score": "",
+          "issuing_organization": "",
+          "duration": ""
+        }
+      ]
+    }
+  ],
+  "certifications": [],
+  "work_experience": [
+    {
+      "company_name": "",
+      "company_description": "",
+      "position": "",
+      "duration": "Present",
+      "responsibilities": "- Project Description:\n  o The Buffalo Wild Wings Loyalty Program will provide guests with a structured way to get recognized and rewarded when engaging with Buffalo Wild Wings. Guests will enroll in the program, provide profile and preference information, and allow Buffalo Wild Wings to track their visits, spend, and select brand interactions. In exchange, Buffalo Wild Wings will reward guests with member’s only offers, promotions, events, and more.\n- Team Size: 2\n- Technologies Used:\n  o Restfull Service (WEB API)\n  o RX Java\n  o Gson Volley\n  o Dagger – Butter Knife\n  o SQLite\n  o Android 5.0\n  o Advanced RestClient Application\n  o GoogleMap API\n  o SourceTree\n  o Slack\n- Responsibilities:\n  o Work with WEB API: Classes for getting data from WEB API.\n  o Create project framework:\n    - GSonRequest Framework.\n    - SQLite DataManager Framework.\n    - RX Java Framework\n  o Design graphic user interface for tablet/phone.\n  o Support team handling issues.\n  o Teamwork, collaborate with other developers.\n  o Communicate directly with Customer .\n  o Assign Task to members.\n  o Analyze API calls from Customer’s Server.\n- Accomplishments:\n  o Fulfilled the needs of Team Leader within the defined scope of work."
+    },
+    {
+      "company_name": "",
+      "company_description": "",
+      "position": "",
+      "duration": "12/2014 – 06/2015",
+      "responsibilities": "- Project Description:\n  These are the DirectTV company’s prototype projects.\n  The DIRECTV app allow user:\n  - Watch thousands of favorite movies and shows, live or on Demand.\n  - Start watching on one device, pause, then continue watching on any other device.\n  - Use mobile device to integrate digital box as remote to pause, play, and rewind or search the program that will be played on TV.\n  App Store:\n  https://play.google.com/store/apps/details?id=com.directv.dvrscheduler\n  https://play.google.com/store/apps/details?id=com.directv.navigator\n- Team Size: 5\n- Technologies Used:\n  o RxJava\n  o GsSonVolley\n  o Restfull Service (WEB API)\n  o Dagger, Butter Knife\n  o Linux command Line\n  o SourceTree\n  o Advanced RestClient Application\n- Responsibilities:\n  o Create project framework:\n    - GSonVolley Request Framework.\n    - SQLite DataManager Framework.\n    - RX Java Framework\n  o Create Unit Test.\n  o Design graphic user interface for phone and tablet.\n  o Support team handling issues.\n  o Teamwork, collaborate with other developers."
+    },
+    {
+      "company_name": "",
+      "company_description": "",
+      "position": "",
+      "duration": "06/2014 – 11/2015",
+      "responsibilities": "- Project Description:\n  o Create the dynamic Layout Framework for providers on the android phone and Tablet. Providers can change or update new Layout automatic for their application that applied this framework. Users can subscribe/unsubscribe channels. For each app’s version, provider can change automatically the design or layout.\n- Team Size: 5\n- Technologies Used:\n  o Android 4.0\n  o Servlet\n  o SQLite\n- Responsibilities:\n  o Classes for getting list of layout’s information from Server.\n  o Create and manage Service on Server(Java Servlet).\n  o Design graphic user interface for tablet.\n  o Support team handling issues.\n  o Teamwork, collaborate with other developers."
+    },
+    {
+      "company_name": "",
+      "company_description": "",
+      "position": "",
+      "duration": "02/2014 - 05/2014",
+      "responsibilities": "- Description:\n  o An android application that allows user to share their location and photos that they capture from their location. Beside that User can chat, meet new friends.\n  o This application is prototype app work with FireBase Realtime Database.\n  o All of clients share one Firebase database and automatically receive updates with the newest data.\n  o Authenticate user by Server’s token and FireBase Authentication.\n- Team Size: 2\n- Technologies Used:\n  o FireBase\n  o Rx Java\n  o Dagger\n  o SQLite\n  o Restfull Service (WEB API)\n  o Google Map API\n- Responsibilities:\n  o Developer, perform configuration management tasks.\n- Teamwork, collaborate with other developers.\n- Accomplishments:\n  o More knowledge about web connection in android.\n- Technologies: Java, Android 4.0, SQLite, XML"
+    },
+    {
+      "company_name": "",
+      "company_description": "",
+      "position": "",
+      "duration": "04/2013 –01/2014",
+      "responsibilities": "- Project Description\n  A CRM (contact relationship management) app on Android that allow user to manage every aspect of a contact such as: phone calls and SMS, budget and event. With friendly and intuitive design, informative charts, users can quickly have a grasp of how their relationships with other contacts are going.\n- Responsibilities\n  > Support team handling issues.\n  > Participate to develop concepts, design patterns for applications.\n  > Support team handling animations and graphics.\n- Technologies\n  Java, Android SDK, SQLite, XML"
+    },
+    {
+      "company_name": "",
+      "company_description": "",
+      "position": "",
+      "duration": "10/2012 – 03/2013",
+      "responsibilities": "- Project Description:\n  o Create the Note application that allow user to note and organize their information with schedule and alarm function. Beside that User can share and storage their note to Server.\n- Team Size: 2\n- Technologies Used:\n  o Android 4.0\n  o Restfull Service\n  o SQLite\n- Responsibilities:\n  o Classes for getting list of layout’s information from Server.\n  o Create and manage Service on Server(Java Servlet).\n  o Design graphic user interface for tablet.\n  o Support team handling issues.\n  o Teamwork, collaborate with other developers.\n- Accomplishments: Fulfilled the needs of Team Leader within the defined scope of work."
+    },
+    {
+      "company_name": "",
+      "company_description": "",
+      "position": "Team Lead",
+      "duration": "04/2012 – 09/2012",
+      "responsibilities": "- Build GIOS II SYSTEM Management.\n- Lead Sub Team to finish phase 1.\n- Responsibilities:\n  - Reception customer’s requirement\n  - Analysis specification documents.\n  - Evaluate the complexity of the task.\n  - Assign tasks to members.\n  - Asses the capacity of members.\n  - Organization and division of roles of members.\n  - Manage the schedule of progress.\n  - Final Test before delivery to customer.\n  - Communicate directly with customer to solve problems.\n- Accomplishments: Accomplished 500 WPF Form.\n- Technologies: Using WPF, C#, Web service."
+    },
+    {
+      "company_name": "",
+      "company_description": "",
+      "position": "Developer – Onsite in Japan",
+      "duration": "12/2011 – 03/2012",
+      "responsibilities": "- Build GIOS I SYSTEM Management.\n- Responsibilities:\n  - Programming and Create Report of Gas System\n- Accomplishments: Accomplished 200 Window Form and 100 Report.\n- Technologies: Using WPF, C#, Web service, Active Report, List Creator."
+    },
+    {
+      "company_name": "",
+      "company_description": "",
+      "position": "Developer",
+      "duration": "06/2011 – 11/2011",
+      "responsibilities": "- Build GIOS I SYSTEM Management.\n- Responsibilities:\n  - Programming and Create Report of Gas System\n- Accomplishments: Accomplished Project.\n- Technologies: Using WPF, C#, Web service, Active Report, BIP"
+    },
+    {
+      "company_name": "",
+      "company_description": "",
+      "position": "Developer",
+      "duration": "01/2011 – 05/2011",
+      "responsibilities": "- Project Description: Hotel Management Website\n  Build Hotel Management Website.\n- Responsibilities:\n  Develop Hotel Management Website.\n- Accomplishments: Accomplished Project.\n- Technologies: C#, Active Report, BIP Report, ASP.NET."
+    }
+  ],
+  "basic_information": {
+    "full_name": "Nguyen Hoang Nhut",
+    "email": "nhutnh411@gmail.com",
+    "phone": "01267876232",
+    "location": "453/25KH Le Van Sy Street, Ward 12, District 3, HCM City",
+    "other_info": ""
+  },
+  "education_background": [
+    {
+      "university_name": "HCMC University of Foreign Languages",
+      "degree": "Bachelor",
+      "field_of_study": "Information Technology",
+      "graduation_year": "2007- 2011",
+      "gpa": ""
+    },
+    {
+      "university_name": "Dong Du Japanese School",
+      "degree": "",
+      "field_of_study": "",
+      "graduation_year": "2008-2011",
+      "gpa": ""
+    },
+    {
+      "university_name": "SLS Japanese School",
+      "degree": "",
+      "field_of_study": "",
+      "graduation_year": "2011-2012",
+      "gpa": ""
+    },
+    {
+      "university_name": "Sakura Japanese School",
+      "degree": "",
+      "field_of_study": "",
+      "graduation_year": "2013-2014",
+      "gpa": ""
+    }
+  ],
+  "projects": [],
+  "warning": [
+    "Weird character: Document contains private use area / unmappable font characters (34 found)."
+  ]
+}

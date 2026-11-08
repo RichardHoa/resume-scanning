@@ -1,0 +1,86 @@
+{
+  "position_applied": {
+    "title": "PHP Developer (Joomla, Wordpress, Prestashop, CodeIgniter,Yii … ) SEO Leader/ Ecommerce / Web Design / HTML / Social Media / Copywriting / Creative Writing …"
+  },
+  "self_evaluation": "",
+  "skills": [
+    "Good command of written, spoken English, presentation skills ( Intermediate level ).",
+    "Being passionate of new technologies and ability to work under pressure.",
+    "Being good at problem - solving skill, teamwork skill as well as ability to work independently.",
+    "PHP ( CodeIgniter, Wordpress, Prestashop, Vitger CRM, SEO Technology, SEM ) – RDBMS ( SQL Server, MySQL, Oracle, SQLite ) – Java ( JSP,Struts ).",
+    "Web technology ( HTML/XHTML,HTML5,CSS,CSS3, Javascript, jQuery, jQueryUI, jQueryMobile, Responsive Mobile, Ajax ).",
+    "Revolutions Slider, Layer Slider, Cube Slider, Page Builder Theme . ( Wordpress ).",
+    "Using, customize professional plugin such as: Wocommerce, Jet Pack, Logo Slider,Zopim chat …",
+    "Using, customize professional theme such as: World Wide, Udesign , Sahafa ,Circle, Legatuts …"
+  ],
+  "languages": [
+    {
+      "language": "English",
+      "proficiency": "Intermediate level",
+      "certificates": []
+    }
+  ],
+  "certifications": [],
+  "work_experience": [
+    {
+      "company_name": "Freelancer – IT Software at School",
+      "company_description": "",
+      "position": "Freelancer",
+      "duration": "08/2008 – 03/2012",
+      "responsibilities": "- 08/2008 – 08/2009:\n+ Project: Graph algorithms ( C# 2005 ) – Data Structures and Algorithms.\n+ Project: Round robin scheduling ( C# 2005 ) – Computer Concepts.\n+ Project: Manager Hotel, Football ( C# 2005 ) – DS Database, Programming in DBMS.\n- 08/2009 – 08/2010:\n+ Project: Manager Hospital, AI Chess ( C# 2005 ) – Programming in Database, KBS.\n+ Project: Laptop Rental Software (OOAD, UML Diagrams – VB.NET, ADO.NET,3-layer).\n+ Project: Turnshop Online bookstore ( HTML, CSS, Javascript, jQuery, XML).\n+ Project: Books Online, Laptop Store ( Java, Swing, JSP, Struts, EJB ). 4rum 5 giay – JSF with ajax.\n- 08/2010 – 08/2011:\n+ Project: Genetic Algorithms, SVM Algorithms - Distributed Database, Data Mining.\n+ Project: Books Company– JSP Coding,PHP Coding.\n+ Project: UIT Muzik, Travel Project – PHP Coding."
+    },
+    {
+      "company_name": "TMA Solutions",
+      "company_description": "Website: http://tmasolutions.com",
+      "position": "Intership and Dev Android Developer ( Object Java )",
+      "duration": "05/03/2012 – 18/09/2012",
+      "responsibilities": "- Built MobileLog Project and Dev any project in java object.\n- In this time I have join short core Java Programming at NIIT To Hien Thanh, 10 Dist order to developed your mind about jsp dev, jsf and ejb and then I make success web BookStore with JSP Technology .\n- Project: MobileLog – Android. ( design, implementation ). TMA Solutions.\n- Project : Freelance creating Japanese HTML websites for SEO projects at GSOFT."
+    },
+    {
+      "company_name": "Nam Long Software",
+      "company_description": "Website: http://namlongsoft.com",
+      "position": "PHP Developer ( CodeIgniter, Yii, HTML/CSS Dev )",
+      "duration": "20/09/2012 – 08/06/2013",
+      "responsibilities": "- Built out source with customer USA, website company ( electronicpenny.com, pesahome.bernsoft.com, goindietv.com, tamthong.vn …) from back-end to front-end. Using CodeIgniter 1.7 MVC, JavaScript, Jquery, JqueryUI, HTML5, CSS.\n- In this time I already make thesis with high GPA ( 8.5 ) in project vecom ecommerce with CodeIgniter Framework Technology )"
+    },
+    {
+      "company_name": "Indebrandstar Company",
+      "company_description": "Website: http://indebrandstar.com",
+      "position": "PHP Developer ( Wordpress, CodeIgniter, iOS Supporter )",
+      "duration": "08/06/2013 – 08/11/2013",
+      "responsibilities": "- Built website ( lanbienxanh.com. lanbienxanh.vn, indebrandstar.com, saigonicom.vn, thewebpartner.net,bientoiyeu.com, bacsi.com, viausrubber.com.vn, bangduong.com, thegioithietbidong.com, anitafashionshouse.com…) from back-end to front-end. Using CodeIgniter 1.7 MVC, Wordpress, Joomla, JavaScript, Jquery, JqueryUI, HTML5, CSS..."
+    },
+    {
+      "company_name": "VINASEO Web",
+      "company_description": "Website: http://cosmeticsurgery.com.vn/",
+      "position": "Senior PHP Developer ( CodeIgniter, Yii, Joomla, Wordpress, SEO Leader/ Ecommerce, Social Media / Copywriting / Creative Writing )",
+      "duration": "06/02/2014 – Present",
+      "responsibilities": "- Built website company ( thammyucchau.vn, kimhospital.com, nangmui.vn, hanquoc.org.vn, hanquoc.com.vn, thammyhanquoc.org, phauthuatthammyhanquoc.com, nangmuisline.com, cangdamat.vn, khuonmatdep.com … ) from back-end to front-end. Using Wordpress, CodeIgniter 1.7, 2.0 MVC, ASP.NET 4.0, MVC 3, WebAPI service , MS.NET Charting 4.0, JavaScript, Jquery, JqueryUI, HTML5, CSS.\n- In this time, I have join team and built web freelance ( sil.vn, fitnessyogaworld.vn, ms.sil.vn, golf.sil.vn ) with SIL.VN, Indebrandstar Company ( Success In Life ) and have experienced about bootstrap 2.3, 3 and web design, mobile development in life circle ."
+    }
+  ],
+  "basic_information": {
+    "full_name": "Pham Van Qua ( Phạm Văn Qua )",
+    "email": "phamvanqua@gmail.com",
+    "phone": "0122.475.2304",
+    "location": "182/35 Bach Dang Street, 24 Ward, Binh Thanh District, HCMC.",
+    "other_info": ""
+  },
+  "education_background": [
+    {
+      "university_name": "University of Information Technology",
+      "degree": "",
+      "field_of_study": "Information Technology",
+      "graduation_year": "Sep,2012",
+      "gpa": ""
+    },
+    {
+      "university_name": "NIIT",
+      "degree": "",
+      "field_of_study": "Software Engineering, Java Programming",
+      "graduation_year": "",
+      "gpa": ""
+    }
+  ],
+  "projects": [],
+  "warning": []
+}
