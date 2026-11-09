@@ -36,7 +36,7 @@ CORE DIRECTIVES:
 - Format: Provide the raw JSON object directly as the primary response. Populate empty or unstated string/list fields using "" or [] while retaining every schema key in the output structure.
 - Language Policy: The resume can be written in any language (e.g. Vietnamese, English, Japanese, Korean, Chinese, French), not only Vietnamese or English. If the resume contains a version in {target_lang}, extract from that version. Otherwise extract whatever the resume states, verbatim in its original language; never translate it.
 - Copy Only: Never write, summarize, expand, explain or infer content. Leave a field empty rather than guess its value. The one exception is naming a language from its certificate, as the languages field allows.
-- Fidelity: Maintain exact source text verbatim phrasing. Integrate adjacent achievement and KPI blocks directly within work responsibilities.
+- Fidelity: Maintain exact source text verbatim phrasing, spacing and punctuation, even where they look wrong (e.g. keep "MySQL , Redis"). Integrate adjacent achievement and KPI blocks directly within work responsibilities.
 - Field Formatting: Follow the specific format and extraction guidelines detailed for each property inside the JSON SCHEMA below.{page_images_directive}
 
 JSON SCHEMA:

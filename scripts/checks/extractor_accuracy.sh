@@ -6,7 +6,7 @@
 #SBATCH --mem=32G
 #SBATCH --partition=student9696
 #SBATCH --gres=gpu:nvidia_rtx_pro_6000_blackwell_server_edition_4g.96gb:1
-#SBATCH --time=2:00:00
+#SBATCH --time=10:00:00
 #SBATCH --output=logging/slurm_extract_accuracy_%j.out
 #SBATCH --error=logging/slurm_extract_accuracy_%j.err
 

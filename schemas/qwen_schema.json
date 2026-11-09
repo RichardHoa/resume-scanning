@@ -9,7 +9,7 @@
   "languages": [
     {
       "language": "Language name. Infer language (e.g. English for TOEIC/IELTS, Japanese for JLPT, Chinese for HSK) when listed as a certificate with implicit language label.",
-      "proficiency": "Proficiency level as written. Empty string when unstated.",
+      "proficiency": "Proficiency level as written, without the period that ends its sentence. Empty string when unstated.",
       "certificates": [
         {
           "name": "Certificate name verbatim (e.g. TOEIC, IELTS, TOEFL, JLPT, HSK). ALWAYS extract foreign language certificates, even if listed under general 'Certificate' section.",
@@ -31,9 +31,9 @@
     {
       "company_name": "Company name as written",
       "company_description": "Company size, industry, client type, etc. as written. Empty string when unstated.",
-      "position": "Job title at this company as written",
+      "position": "Job title at this company as written (e.g. Developer, Team Lead). A project name or project heading is never a job title. Empty string when the entry states no job title.",
       "duration": "Employment period (start month/year - end month/year) as written. Use the image to correctly match dates to each job in multi-column layouts.",
-      "responsibilities": "All duties, responsibilities, accomplishments, and key achievements verbatim (including achievements listed in separate nearby sections like 'Key Achievements' or 'Thành tích nổi bật'). Extract completely in full detail, preserving exact text. Use '- ' for main items, '+ ' for sub-items."
+      "responsibilities": "All duties, responsibilities, accomplishments, and key achievements verbatim (including achievements listed in separate nearby sections like 'Key Achievements' or 'Thành tích nổi bật'). Extract completely in full detail, preserving exact text. Use '- ' for main items, '+ ' for sub-items, and keep every '+ ' marker the resume already has. Leave out the entry's heading line (the project name or title shown beside the dates)."
     }
   ],
   "basic_information": {
@@ -46,9 +46,9 @@
   "education_background": [
     {
       "university_name": "Institution name as written",
-      "degree": "Degree as written",
+      "degree": "Degree or qualification as written in full, e.g. 'BSc(Bachelor of Science in Computer Engineering)' stays whole and is not split into degree and field_of_study. Enrollment words such as 'Student of' are not a degree. Empty string when unstated.",
       "field_of_study": "Field of study as written. Empty string when unstated.",
-      "graduation_year": "Graduation year or status as written",
+      "graduation_year": "Graduation year, study period or status, copied in full as written (e.g. 'Sep2015 – Jun 2019', never only the end date)",
       "gpa": "GPA or classification as written. Empty string when unstated."
     }
   ],

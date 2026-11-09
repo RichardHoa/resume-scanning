@@ -28,7 +28,7 @@ from src.core.reference_date import set_reference_date, TECH_REFERENCE_DATE
 from src.pipelines.extractor import ResumeExtractor
 from extraction_runs import is_scanned_pdf, run_extraction
 
-RUNS_PER_RESUME = 5
+RUNS_PER_RESUME = 20
 GROUND_TRUTH_DIR = os.path.join(_PROJECT_ROOT, "data", "extraction_ground_truth")
 DATASET_DIR = os.path.join(_PROJECT_ROOT, "Vietnamese-dataset")
 # Each resume set and its Reference Date, in run order (CnB: today)
