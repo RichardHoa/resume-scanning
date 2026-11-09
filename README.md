@@ -360,6 +360,9 @@ python3 -m src.khotangtucngu.export
   - `intro.md`, the cleaned Front Matter;
   - `expansions.json`, every General Abbreviation it wrote out, to check by eye;
   - `unresolved_see_also.json`;
+  - `export-warning.txt`, to check by eye: every repeated Entry Image name (`A-200_2.png` on) with both entries, and
+    each letter's count from 1 to its highest number, each missing number listed with the entries either side of it
+    (name, PDF and book page, proverb);
   - `entry_images.zip`, the Entry Image of every Proverb Entry (`A-200.png`, grayscale at 200 dpi), cut from the
     Part's PDF, which must be in `vsc-project/khoTangTucNguoiNguoiViet/`. Each record's `image` names its file. An
     image holds the whole of every Entry Span its entry is in, so it may show a letter heading or a neighbouring entry.

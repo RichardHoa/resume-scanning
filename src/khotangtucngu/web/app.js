@@ -6,7 +6,7 @@ const KIND_NAMES = {
   page_number: "Page number", page_missing: "Missing page", no_owner: "Leading Block with no owner",
   unnumbered_proverb: "Proverb with no number",
   unknown_abbreviation: "Unknown Source Abbreviation", citation_no_pages: "Citation with no pages",
-  citation_unsplit: "Citation not split", ink_outside: "Ink outside the lines",
+  citation_unsplit: "Citation not split", see_also_unsplit: "Xem thêm not split", ink_outside: "Ink outside the lines",
   diacritic_disagreement: "Diacritics differ from OCR", model_edit: "Model Edit",
   stable_model_edit: "Priority · Model Edit of a stable read",
   confirmed_overlap: "Overlaps a Confirmed Span",

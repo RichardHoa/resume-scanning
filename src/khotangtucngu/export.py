@@ -13,6 +13,9 @@ Each Part's store/<part>/export/ is emptied and written afresh, and nothing outs
   intro.md                    the Front Matter without HTML comments, ⚠ markers, quick links or the derived table
   expansions.json             every Expansion of a General Abbreviation made, with its entry and the text around it
   unresolved_see_also.json    every Unresolved See-also, for information
+  export-warning.txt          for checking by eye: every repeated Entry Image name ("_2" on) with both entries, and
+                              each letter's count of numbers from 1 to its highest, with each missing number and the
+                              entries either side of it (see `export_warnings`)
   entry_images.zip            the Entry Image of every Proverb Entry, flat, "<anchor>.png" ("A-200.png"; a repeated
                               name "A-200_2.png" on), grayscale PNG at settings.ENTRY_IMAGE_DPI, stored, not deflated
 
@@ -62,6 +65,8 @@ _ITALIC = re.compile(r"\*([^*]+)\*")
 _VOLUME = re.compile(r" [IVX]+$")
 # "BK" or "- " the model may have left before a Variant's wording
 _VARIANT_PREFIX = re.compile(r"^(?:(?:BK|bk)\b[\s:]*)?(?:-\s+)?")
+# An Entry Image name repeated, "A-200_2.png": its first name's stem and the count
+_REPEATED_IMAGE = re.compile(r"^(.+)_(\d+)\.png$")
 
 
 # -- the Front Matter
@@ -310,6 +315,44 @@ def record(entry, reader, by_name, dated, unresolved, image):
     }
 
 
+# -- the checks
+
+def _where(r):
+    pages = lambda key: ", ".join(map(str, r[key]))
+    return f"{r['name']}, PDF page {pages('pdf_pages')} (book page {pages('book_pages')}): {r['proverb']}"
+
+
+def export_warnings(letters):
+    """The text of export-warning.txt from {letter: its records, in book order}: each repeated Entry Image name with
+    the entry holding the name before it, and each letter's numbers from 1 to its highest, a missing number shown with
+    the entries just before and after it, where its proverb most likely went."""
+    records = [r for rs in letters.values() for r in rs]
+    by_image = {r["image"]: r for r in records}
+    repeated = [r for r in records if _REPEATED_IMAGE.match(r["image"])]
+    lines = [f"== Repeated Entry Image names: {len(repeated)} =="]
+    for r in repeated:
+        first = by_image[_REPEATED_IMAGE.sub(r"\1.png", r["image"])]
+        lines += [r["image"], f"    {first['image']}: {_where(first)}", f"    {r['image']}: {_where(r)}"]
+    lines += ["", "== Numbers per letter =="]
+    missing_count = 0
+    for letter, rs in letters.items():
+        numbers = {}
+        for r in rs:
+            numbers.setdefault(r["number"], []).append(r)
+        top = max(numbers)
+        missing = [n for n in range(1, top + 1) if n not in numbers]
+        missing_count += len(missing)
+        lines.append(f"{letter}: {len(numbers)} of {letter} 1 to {letter} {top}, {len(missing)} missing"
+                     + (f": {', '.join(map(str, missing))}" if missing else ""))
+        for n in missing:
+            lines.append(f"  {letter} {n} is missing, between:")
+            near = [max((k for k in numbers if k < n), default=None), min(k for k in numbers if k > n)]
+            lines += [f"    {_where(r)}" for k in near if k is not None for r in numbers[k]]
+    lines += ["", f"== {len(records)} Proverb Entries, {len(repeated)} repeated Entry Image name(s), "
+                  f"{missing_count} missing number(s) =="]
+    return "\n".join(lines) + "\n"
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Export website data from every transcribed Kho tàng tục ngữ PDF "
                                                  "Part, into each Part's store/<part>/export/")
@@ -368,6 +411,8 @@ def main():
             f.write(intro_text)
         write_json(os.path.join(out, "expansions.json"), reader.expansions)
         write_json(os.path.join(out, "unresolved_see_also.json"), unresolved)
+        with open(os.path.join(out, "export-warning.txt"), "w", encoding="utf-8") as f:
+            f.write(export_warnings(letters))
         with fitz.open(pdfs[key]) as doc, \
                 zipfile.ZipFile(os.path.join(out, "entry_images.zip"), "w", zipfile.ZIP_STORED) as images:
             for its_crops, name in zip(crops[key], names):

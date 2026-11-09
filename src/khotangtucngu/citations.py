@@ -10,6 +10,7 @@ import unicodedata
 
 UNKNOWN_ABBREVIATION = "unknown_abbreviation"
 CITATION_NO_PAGES, CITATION_UNSPLIT = "citation_no_pages", "citation_unsplit"
+SEE_ALSO_UNSPLIT = "see_also_unsplit"
 
 # The model may write the subscripts of VNP₁₁ and VNP₂ as plain digits
 _SUBSCRIPTS = [(re.compile(r"VNP ?11(?!\d)"), "VNP₁₁"), (re.compile(r"VNP ?2(?!\d)"), "VNP₂")]
@@ -21,8 +22,11 @@ _ENDING_ABBREVIATION = re.compile(r"(?:^|(?<=\s))[A-ZĐ][A-ZĐ₀-₉]+(?: [IVX]
 _NEXT_ABBREVIATION = re.compile(r"(?:^|(?<=[\s,;]))[A-ZĐ][A-ZĐ]")
 # The "bk" (bản khác) that makes the Citation after it a Variant Citation, which also ends the pages before it
 _VARIANT_MARK = re.compile(r"(?:^|(?<=[\s,;]))bk(?![^\W\d_])")
-# A See-also name: a letter (Ă and Â are letters of their own) and a number, written "C 534"
-_NAME = re.compile(r"([A-ZĂÂĐÊÔƠƯ])\s*(\d+)")
+# A piece of a See-also between spaces and punctuation: a letter (Ă and Â are letters of their own), a number, or
+# anything else. "C534" is a letter and a number
+_SEE_ALSO_PART = re.compile(r"(?P<letter>[A-ZĂÂĐÊÔƠƯ])(?![^\W\d_])|(?P<number>\d+)|(?P<other>[^\s,;.]+)")
+# The printed label the model may copy before a See-also's names
+_SEE_ALSO_LABEL = re.compile(r"^xem thêm\s*:?\s*", re.I)
 # The fewest letters an abbreviation needs to be taken for a known one a letter away: shorter ones are too alike
 _NEAREST_MIN_LETTERS = 4
 
@@ -169,6 +173,23 @@ class Abbreviations:
 
 
 def see_also_names(raw):
-    """The names a See-also prints, "M 526 T 65" -> ["M 526", "T 65"]; the text whole if it holds none."""
-    names = [f"{letter} {number}" for letter, number in _NAME.findall(raw)]
-    return names or [raw.strip()]
+    """The names a See-also prints, "M 526 T 65" -> ["M 526", "T 65"]; a number printed without its letter is the
+    letter's before it, "Ă 86, 109" -> ["Ă 86", "Ă 109"]. Anything else, or a letter with no number, is a problem.
+    The text whole if it holds no name."""
+    text = _SEE_ALSO_LABEL.sub("", clean_citation_text(raw))
+    names, unread, letter, numbered = [], [], None, True
+    for m in _SEE_ALSO_PART.finditer(text):
+        if m["letter"]:
+            if not numbered:
+                unread.append(letter)
+            letter, numbered = m["letter"], False
+        elif m["number"] and letter:
+            names.append(f"{letter} {int(m['number'])}")
+            numbered = True
+        else:
+            unread.append(m.group())
+    if not numbered:
+        unread.append(letter)
+    problems = [(SEE_ALSO_UNSPLIT, f'cannot read "{piece}" of the See-also "{text}" as a Proverb Entry\'s name')
+                for piece in unread]
+    return names or [text], problems

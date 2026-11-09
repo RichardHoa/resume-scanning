@@ -274,7 +274,9 @@ def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=No
                 current["corrections"].append(correction)
                 report(problems, page, current["name"])
             elif kind == SEE_ALSO:
-                current["see_also"] += see_also_names(text)
+                see_also, problems = see_also_names(text)
+                current["see_also"] += see_also
+                report(problems, page, current["name"])
         page_flagged = flagged.get(page) if flagged else None
         if readings and page in readings:
             warnings += _diacritic_warnings(page, blocks, readings[page], owners, page_confirmed, page_flagged)
