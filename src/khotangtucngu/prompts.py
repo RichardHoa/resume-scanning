@@ -128,9 +128,10 @@ def layout_schema():
 
 
 def span_schema():
-    # The book prints no brackets or braces, so a string may not hold one: else a model that skips its closing quote
-    # can only go on inside it, and p122-L19 ran to max_tokens of "}]}}" after "...CCM = Ăn mắm..." on all 3 attempts
-    printed = {"type": "string", "pattern": r"^[^\[\]{}]*$"}
+    # No `pattern` on a string: with one, job 7357's Entry Span answers held raw '"' and newlines (past
+    # "disable_any_whitespace") and ~3000 attempts ran to max_tokens. Our hypothesis, unchecked on the server's xgrammar
+    # version: it puts the regex between the quotes as it is, so [^...] lets them into the string and it never closes
+    printed = {"type": "string"}
     return {
         "type": "object",
         "properties": {
@@ -144,7 +145,10 @@ def span_schema():
                         "text": printed,
                         "citations": printed,
                     },
-                    "required": ["kind", "number", "text", "citations"],
+                    # `citations` comes after `text` and may be left out. p122-L19 ran to max_tokens of "}]}}" after
+                    # "...CCM = Ăn mắm..." on all 3 attempts; our hypothesis, unchecked against its spiral: a required
+                    # `citations` kept a model that closes its Block after `text` inside the string
+                    "required": ["kind", "number", "text"],
                 },
             },
         },

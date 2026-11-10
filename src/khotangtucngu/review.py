@@ -55,7 +55,7 @@ def blocks_problem(blocks):
         number = block.get("number")
         if not _whole(number) or number < 0:
             return f"Block {i}'s number is not a whole number"
-        if not isinstance(block.get("text"), str) or not isinstance(block.get("citations"), str):
+        if not isinstance(block.get("text"), str) or not isinstance(block.get("citations", ""), str):
             return f"Block {i}'s text and Citations are not text"
     return None
 

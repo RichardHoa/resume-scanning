@@ -95,7 +95,7 @@ from src.khotangtucngu.prompts import (
 from src.khotangtucngu.review import read_log, rebuild
 from src.khotangtucngu.settings import (
     BOOK_DIR, FRONT_MATTER, LABEL_STRIP_PX, LAYOUT_IMAGE, LAYOUT_MAX_TOKENS, PAGE_DPI, PAGE_IMAGE, PARTS,
-    REPETITION_PENALTY, REQUEST_TIMEOUT, RETRY_TEMPERATURE, SPAN_MAX_TOKENS, STORE_DIR
+    REPETITION_PENALTY, REQUEST_TIMEOUT, RETRY_TEMPERATURE, SPAN_MAX_TOKENS, SPAN_STOP, STORE_DIR
 )
 from src.khotangtucngu.vision_ocr import saved_lines, vision_problem
 from src.providers import vlm_requests
@@ -110,7 +110,8 @@ REVIEW_CODE = ("assembly.py", "citations.py", "diacritics.py", "review.py")
 LAYOUT = Phase("layout", step="khotangtucngu_layout", max_tokens=LAYOUT_MAX_TOKENS, thinking=False,
                retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT, repetition_penalty=REPETITION_PENALTY)
 SPAN = Phase("span", step="khotangtucngu_span", max_tokens=SPAN_MAX_TOKENS, thinking=False,
-             retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT, repetition_penalty=REPETITION_PENALTY)
+             retry_temperature=RETRY_TEMPERATURE, timeout=REQUEST_TIMEOUT, repetition_penalty=REPETITION_PENALTY,
+             stop=SPAN_STOP)
 
 
 def parse_args():

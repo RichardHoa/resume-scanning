@@ -35,6 +35,7 @@ class Phase(NamedTuple):
     timeout: int = VLLM_REQUEST_TIMEOUT     # seconds to wait for one attempt's answer
     text: bool = False      # the answer is the model's plain text, not JSON (its requests have no schema)
     repetition_penalty: float = 1.05
+    stop: tuple = ()        # strings an answer ends at, which a valid one never holds
 
 
 class Model(NamedTuple):
@@ -198,15 +199,17 @@ def _log_attempt(key, attempt, outcome, elapsed, completion_tokens, finish_reaso
 
 
 def _save_spiral(key, attempt, messages, reply, temperature, results_dir):
-    """Saves a request that ran to its max_tokens, as sent, into <results_dir>/spirals/<key>-a<attempt>/ with the start
-    and end of its reply, and says so: a spiral's prompt is otherwise lost, as only its answer is saved."""
+    """Saves a request that ran to its max_tokens or to one of its phase's stop strings, as sent, into
+    <results_dir>/spirals/<key>-a<attempt>/ with the start and end of its reply, and says so: a spiral's prompt is
+    otherwise lost, as only its answer is saved."""
     folder = os.path.join(results_dir, "spirals", f"{key}-a{attempt}")
     save_request(messages, folder)
     write_json(os.path.join(folder, "reply.json"), {
         "task": key, "attempt": attempt, "temperature": temperature, "completion_tokens": reply.completion_tokens,
-        "finish_reason": reply.finish_reason, "content_chars": len(reply.content),
+        "finish_reason": reply.finish_reason, "stop_string": reply.stop_string, "content_chars": len(reply.content),
         "content_start": reply.content[:2000], "content_end": reply.content[-300:]})
-    print(f"    [Spiral] {key} attempt {attempt}: ran to {reply.completion_tokens} token(s); prompt saved in {folder}")
+    ran_to = f"stop string {reply.stop_string!r}" if reply.stop_string else f"{reply.completion_tokens} token(s)"
+    print(f"    [Spiral] {key} attempt {attempt}: ran to {ran_to}; prompt saved in {folder}")
 
 
 def run_one(req, out_path, stamp, *, phase, model, request_dir=None, usage_file=None, in_flight=None):
@@ -228,7 +231,8 @@ def run_one(req, out_path, stamp, *, phase, model, request_dir=None, usage_file=
                 temperature=temperature,
                 json_schema=req.schema, max_tokens=phase.max_tokens, step=phase.step,
                 enable_thinking=phase.thinking, timeout=phase.timeout, usage_file=usage_file,
-                text_output=phase.text, repetition_penalty=phase.repetition_penalty, resume_name=req.key
+                text_output=phase.text, repetition_penalty=phase.repetition_penalty, resume_name=req.key,
+                stop=phase.stop
             )
         except RuntimeError as e:
             too_long = "context length" in str(e) or "max_model_len" in str(e)
@@ -236,14 +240,15 @@ def run_one(req, out_path, stamp, *, phase, model, request_dir=None, usage_file=
         else:
             result.update(reasoning=reply.reasoning, finish_reason=reply.finish_reason,
                           completion_tokens=reply.completion_tokens, content=reply.content)
-            if reply.finish_reason == "length":
+            if reply.finish_reason == "length" or reply.stop_string:
                 _save_spiral(req.key, attempt, messages, reply, temperature, os.path.dirname(out_path))
             try:
                 answer = reply.content.strip() if phase.text else json.loads(reply.content)
                 result.update(status="ok", error=None, answer=answer)
             except json.JSONDecodeError as e:
                 result.update(status="failed",
-                              error=f"answer is not JSON ({e}); finish_reason={reply.finish_reason}")
+                              error=f"answer is not JSON ({e}); finish_reason={reply.finish_reason}"
+                                    + (f" at stop string {reply.stop_string!r}" if reply.stop_string else ""))
             else:
                 # A JSON answer cut short doesn't parse; a text one would pass as whole
                 why = "cut short at max_tokens" if phase.text and reply.finish_reason == "length" else None

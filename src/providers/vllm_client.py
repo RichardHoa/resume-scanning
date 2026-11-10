@@ -37,6 +37,8 @@ class ChatResult(NamedTuple):
     # Why generation stopped ("stop", "length", ...) and how many tokens it produced, when the server reports them
     finish_reason: Optional[str]
     completion_tokens: Optional[int]
+    # The stop string the answer ended at, if it was one of the request's `stop`; None at the end of the answer
+    stop_string: Optional[str] = None
 
 
 def _connection_error(vllm_url: str, e: urllib.error.URLError) -> RuntimeError:
@@ -192,7 +194,8 @@ def chat(
     resume_name: Optional[str] = None,
     usage_file: Optional[str] = None,
     text_output: bool = False,
-    repetition_penalty: float = 1.05
+    repetition_penalty: float = 1.05,
+    stop: tuple = ()
 ) -> ChatResult:
     """
     Sends a chat completion constrained to JSON output: to `json_schema` when given, else any JSON object, or with
@@ -214,6 +217,8 @@ def chat(
             "enable_thinking": VLLM_ENABLE_THINKING if enable_thinking is None else enable_thinking
         }
     }
+    if stop:
+        payload["stop"] = list(stop)
     if json_schema is not None:
         # Legacy `guided_json` is silently ignored by current vLLM; `structured_outputs` enforces the schema. Its grammar
         # allows any whitespace between JSON tokens unless the server is started with `disable_any_whitespace`: vLLM
@@ -239,5 +244,7 @@ def chat(
         content=message.get("content") or "",
         reasoning=message.get("reasoning") or "",
         finish_reason=choice.get("finish_reason"),
-        completion_tokens=usage.get("completion_tokens")
+        completion_tokens=usage.get("completion_tokens"),
+        # vLLM's `stop_reason` is the matched stop string, a stop token's id, or None at the end of the answer
+        stop_string=choice.get("stop_reason") if isinstance(choice.get("stop_reason"), str) else None
     )

@@ -51,6 +51,10 @@ LAYOUT_MAX_TOKENS = 512
 # for a long note and stops a runaway answer (p042-L02 ran to it in newlines on all 3 attempts; the server now forbids
 # whitespace between JSON tokens, scripts/khotangtucngu/submit.sh)
 SPAN_MAX_TOKENS = 4096
+# An Entry Span answer ends at the first of these, which its JSON never holds (Blocks hold no object or array, and the
+# book prints no brackets or braces): a runaway of closing brackets ("}]}}", "]]]]") fails in a few tokens, not at
+# SPAN_MAX_TOKENS
+SPAN_STOP = ("}}", "]]")
 # Apple Vision reads every printed line and every whole page on a Mac before the job runs (vision_ocr.py;
 # docs/adr/0004-apple-vision-reads-each-page.md and 0005-two-reads-and-model-edits.md beside the GLOSSARY). Language
 # correction is off, as the book's own spelling is what is copied, and it made no difference in the trial
