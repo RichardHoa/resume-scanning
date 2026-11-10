@@ -128,6 +128,9 @@ def layout_schema():
 
 
 def span_schema():
+    # The book prints no brackets or braces, so a string may not hold one: else a model that skips its closing quote
+    # can only go on inside it, and p122-L19 ran to max_tokens of "}]}}" after "...CCM = Ăn mắm..." on all 3 attempts
+    printed = {"type": "string", "pattern": r"^[^\[\]{}]*$"}
     return {
         "type": "object",
         "properties": {
@@ -138,8 +141,8 @@ def span_schema():
                     "properties": {
                         "kind": {"type": "string", "enum": BLOCK_KINDS},
                         "number": {"type": "integer", "minimum": 0},
-                        "text": {"type": "string"},
-                        "citations": {"type": "string"},
+                        "text": printed,
+                        "citations": printed,
                     },
                     "required": ["kind", "number", "text", "citations"],
                 },
