@@ -18,6 +18,8 @@ _SUBSCRIPTS = [(re.compile(r"VNP ?11(?!\d)"), "VNP₁₁"), (re.compile(r"VNP ?2
 _LIKE_ABBREVIATION = re.compile(r"[A-ZĐ][A-ZĐ₀-₉]+(?: [IVX]+)?(?![^\W\d_])")
 # An abbreviation-shaped word ending a Correction's wrong wording: a Source the 63 don't list
 _ENDING_ABBREVIATION = re.compile(r"(?:^|(?<=\s))[A-ZĐ][A-ZĐ₀-₉]+(?: [IVX]+)?$")
+# The page(s) a Source of a Correction may print after it, ending the wrong wording: "TNCL 23", "NASL II 38b"
+_ENDING_PAGES = re.compile(r"\s+\d+[a-z]?(?:\s*[,;-]\s*\d+[a-z]?)*$")
 # Where the next abbreviation starts, ending the pages before it: two capitals at the start of a word
 _NEXT_ABBREVIATION = re.compile(r"(?:^|(?<=[\s,;]))[A-ZĐ][A-ZĐ]")
 # The "bk" (bản khác) that makes the Citation after it a Variant Citation, which also ends the pages before it
@@ -149,11 +151,13 @@ class Abbreviations:
         left, eq, right = text.partition("=")
         sources, problems, wrong = [], [], left.rstrip(" ,;")
         while True:
+            # A Source may print its page after it, "TNCL 23": the page goes with it, and stays if no Source is before it
+            cut = _ENDING_PAGES.sub("", wrong)
             found = source = next((a for a in self._longest_first
-                                   if wrong.endswith(a) and (len(wrong) == len(a) or not wrong[-len(a) - 1].isalpha())),
+                                   if cut.endswith(a) and (len(cut) == len(a) or not cut[-len(a) - 1].isalpha())),
                                   None)
             if found is None:
-                m = _ENDING_ABBREVIATION.search(wrong)
+                m = _ENDING_ABBREVIATION.search(cut)
                 if m is None:
                     break
                 found = m.group()
@@ -164,7 +168,7 @@ class Abbreviations:
                     source = self.nearest(found) or found
                     problems.append(self.unknown(found, text))
             sources.insert(0, source)
-            wrong = wrong[:-len(found)].rstrip(" ,;")
+            wrong = cut[:-len(found)].rstrip(" ,;")
         correction = {"wrong": wrong, "sources": sources, "right": right.strip()}
         if not eq or not sources or not wrong or not correction["right"]:
             problems.append((CITATION_UNSPLIT, f'cannot split the Correction "{text}" into wrong wording, Source '
