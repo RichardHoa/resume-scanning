@@ -14,11 +14,22 @@ class Part(NamedTuple):
     pdf: str                            # its file name in BOOK_DIR
     proverb_pages: Tuple[int, int]      # the first and last PDF page of its Proverb Entries, past the Front Matter
     book_page_offset: int               # book page = PDF page + this
+    # PDF pages the book misprints, never read or answered even when --pages names them
+    skipped_pages: Tuple[int, ...] = ()
+    # Jumps in the book's own numbering, (letter, number, the next number printed): the numbers between are not
+    # printed, and the export doesn't count them missing
+    number_jumps: Tuple[Tuple[str, int, int], ...] = ()
 
 
-# By the key the CLI takes as a flag (--part-1) and names its store by. Parts 2-4 are added here when they are run
+# By the key the CLI takes as a flag (--part-1) and names its store by. Parts 3-4 are added here when they are run
 PARTS = {
-    "part-1": Part("kho tàng tục ngữ người việt tập 1 - p1.pdf", (36, 865), -1),
+    # PDF page 671 is printed again with C 1841-1846 from an earlier page, so C 1855 on page 670 is followed by the end
+    # of an entry and C 1862 on page 672: C 1856-1861 are lost in the book, not in the pipeline
+    "part-1": Part("kho tàng tục ngữ người việt tập 1 - p1.pdf", (36, 865), -1,
+                   skipped_pages=(671,), number_jumps=(("C", 1855, 1862),)),
+    # Its Front Matter is a title and a credits page: the D heading opens PDF page 5 (book page 865, after Part 1's
+    # 864), and PDF page 818 (book page 1678) is the last before the colophon
+    "part-2": Part("Kho tàng tục ngữ người việt tập 1 - p2.pdf", (5, 818), 860),
 }
 
 # Pages are read at the scan's 300 dpi, in grayscale PNG, so every diacritic and every subscript is readable

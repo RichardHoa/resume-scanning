@@ -5,6 +5,7 @@ CLI Entrypoint for transcribing the Proverb Entries of one Kho tàng tục ngữ
 
 The Part is a key of settings.PARTS, which gives its PDF in vsc-project/khoTangTucNguoiNguoiViet/, its proverb pages
 and its book page offset. With no --pages, every proverb page of the Part (36-865 for Part 1, past the Front Matter).
+A page the Part skips, misprinted in the book (PDF page 671 of Part 1), is never read, answered or warned about.
 
 A Mac reads the pages first (vision_ocr.py): it finds each page's printed lines, and Apple Vision reads each line on its
 own and with the whole page, and those two folders of the store are copied here. This job finds no lines itself: before
@@ -43,7 +44,7 @@ Writes to the Part's store, vsc-project/khoTangTucNguoiNguoiViet/store/<part>/:
                           (diacritics.flagged_reads), which the page's Blocks are checked against for Model Edits
   entries.json            the verbatim Proverb Entries built from every page answer with the Confirmed Spans laid over,
                           each page's book page, entries and Entry Spans (their crops as shares of the page, for the
-                          review server), and the Part's book page offset
+                          review server), and the Part's book page offset and skipped pages
   warnings.json           every Warning, with its kind, reason and PDF page, the Stable Model Edits first: number gaps
                           and duplicates, letter headings out of order, unknown Source Abbreviations, Citations with no
                           pages or that cannot be split, Diacritic Disagreements, Model Edits, page numbers out of step,
@@ -266,6 +267,7 @@ def main():
     n_pages = len(doc)
     first, last = part.proverb_pages
     only = page_set(args.pages, n_pages) if args.pages else list(range(first, min(last, n_pages) + 1))
+    only = [page for page in only if page not in part.skipped_pages]
 
     store = os.path.join(STORE_DIR, args.part)
     lines_dir, vision_dir, layout_dir, spans_dir = (os.path.join(store, d)
@@ -340,6 +342,9 @@ def main():
     # -- outputs, rebuilt from every saved answer
     answers, readings, flagged, missing, no_answer = {}, {}, {}, [], []
     for page in range(1, n_pages + 1):
+        # A skipped page has no answer and is no missing page: nothing carries over it, as across any page with none
+        if page in part.skipped_pages:
+            continue
         answer, why, result = page_answer(page, found.get(page), records.get(page), pdf_sha1, layout_dir, layout_base,
                                   spans_dir, span_base, log)
         if answer is not None:
@@ -358,7 +363,8 @@ def main():
             missing.append(warning(INK_OUTSIDE, page_key(page), f"PDF page {page} has {len(patches)} patch(es) of "
                                    f"ink outside every printed line found ({top}-{bottom} px down the 300 dpi scan), "
                                    f"in no Entry Span", page))
-    entries, warnings, pages, _ = rebuild(answers, log, abbreviations, part.book_page_offset, readings, flagged)
+    entries, warnings, pages, _ = rebuild(answers, log, abbreviations, part.book_page_offset, readings, flagged,
+                                          part.skipped_pages)
     # rebuild's Warning ids are unique, and a missing page's and a page's missed ink are their own
     warnings = priority_first(missing + warnings)
 
@@ -383,6 +389,7 @@ def main():
     write_json(os.path.join(store, "readings.json"), {str(p): readings[p] for p in sorted(readings)})
     write_json(os.path.join(store, "agreed.json"), {str(p): flagged[p] for p in sorted(flagged)})
     write_json(os.path.join(store, "entries.json"), {"part": args.part, "book_page_offset": part.book_page_offset,
+                                                     "skipped_pages": list(part.skipped_pages),
                                                      "pages": pages, "entries": entries})
     write_json(os.path.join(store, "warnings.json"), warnings)
     write_json(os.path.join(store, "sources.json"), source_table)

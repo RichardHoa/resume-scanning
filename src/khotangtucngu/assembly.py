@@ -5,7 +5,8 @@ the italic words of Variants and Corrections between asterisks.
 
 Pages are walked in PDF order. A run of consecutive PDF pages with answers is read as one stretch of the book: a
 Leading Block joins the last Proverb Entry of the page before, and entry numbers run on. Across a page with no answer
-nothing carries over: the next stretch starts afresh.
+nothing carries over: the next stretch starts afresh. After a page the Part skips (settings.Part), misprinted in the
+book, its Leading Blocks are the end of an entry the book lost, and are dropped with no Warning.
 
 Only a proverb Block with a number starts a Proverb Entry, or gives a stretch its letter. One with no number is the
 model's label on a Leading Block, the note finishing the entry above, and joins that entry as a note.
@@ -151,14 +152,16 @@ def _model_edit_warnings(page, blocks, flagged, owners, confirmed):
                                        owners, confirmed)]
 
 
-def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=None, confirmed=None, settled=()):
+def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=None, confirmed=None, settled=(),
+             skipped=()):
     """
     `answers`: {PDF page: its current page answer}; `abbreviations`: citations.Abbreviations; `book_page_offset`: the
     Part's book page minus PDF page; `readings`: {PDF page: its OCR Readings joined}, which a page's Blocks are checked
     against for Diacritic Disagreements (none for a page without); `flagged`: {PDF page: its reads flagged, from
     diacritics.flagged_reads}, which they are checked against for Model Edits (none for a page without); `confirmed`:
     {PDF page: the indexes of its Confirmed Spans' Blocks}, which raise no Warning, though their numbers and letters
-    still feed the checks of other Blocks; `settled`: the pages whose printed number the developer gave. Returns the
+    still feed the checks of other Blocks; `settled`: the pages whose printed number the developer gave; `skipped`: the
+    PDF pages the Part skips, after which Blocks with no entry to join raise no Warning. Returns the
     verbatim Proverb Entries in book order, the Warnings they raise (all but failed or missing pages), and each page's
     {"pdf", "book_page", "printed_page", "entries"}, the names of the entries it holds. An entry's "blocks" is {PDF page
     (a string): [first, last + 1]}, the indexes of its Blocks in that page's answer.
@@ -188,7 +191,8 @@ def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=No
     for page in sorted(answers):
         if last_page is None or page != last_page + 1:
             letter, current, previous, headed = None, None, None, False
-            unowned = f"PDF page {page - 1} has no answer"
+            # None: the book lost their entry, so they raise no Warning
+            unowned = None if page - 1 in skipped else f"PDF page {page - 1} has no answer"
         last_page = page
         book_page = str(page + book_page_offset)
         names, unowned_kinds = [], []
@@ -282,7 +286,7 @@ def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=No
             warnings += _diacritic_warnings(page, blocks, readings[page], owners, page_confirmed, page_flagged)
         if page_flagged:
             warnings += _model_edit_warnings(page, blocks, page_flagged, owners, page_confirmed)
-        if unowned_kinds:
+        if unowned_kinds and unowned is not None:
             warnings.append(warning(NO_OWNER, f"p{page}", f"PDF page {page} has {len(unowned_kinds)} Block(s) "
                                     f"({', '.join(unowned_kinds)}) with no Proverb Entry to join: {unowned}", page))
         pages.append({"pdf": page, "book_page": book_page, "printed_page": answers[page].get("printed_page", ""),

@@ -4,7 +4,7 @@ job (cli.py) uses the reads.
 
     python3 -m src.khotangtucngu.vision_ocr --part-1 [--pages 36-45,420-424]
 
-With no --pages, every proverb page of the Part, as in cli.py. Run it in your own terminal: Vision's default compute
+With no --pages, every proverb page of the Part, as in cli.py; a page the Part skips (settings.Part) never. Run it in your own terminal: Vision's default compute
 device can fail under the Claude Code sandbox (docs/adr/0004-apple-vision-reads-each-page.md beside the GLOSSARY). Its
 dependencies are requirements-macos.txt.
 
@@ -212,9 +212,10 @@ def main():
     n_pages = len(doc)
     first, last = part.proverb_pages
     only = page_set(args.pages, n_pages) if args.pages else list(range(first, min(last, n_pages) + 1))
+    only = [page for page in only if page not in part.skipped_pages]
 
     store = os.path.join(STORE_DIR, args.part)
-    lines_dir, vision_dir = os.path.join(store, "lines"), os.path.join(store, "vision")
+    lines_dir, vision_dir =os.path.join(store, "lines"), os.path.join(store, "vision")
     os.makedirs(lines_dir, exist_ok=True)
     os.makedirs(vision_dir, exist_ok=True)
     pdf_sha1, stamp = file_sha1(pdf), vision_stamp()

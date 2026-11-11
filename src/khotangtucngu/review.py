@@ -184,13 +184,14 @@ def _review_spans(laid, starts):
     return out
 
 
-def rebuild(answers, log, abbreviations, book_page_offset, readings=None, flagged=None):
+def rebuild(answers, log, abbreviations, book_page_offset, readings=None, flagged=None, skipped=()):
     """
     The Proverb Entries, Warnings and pages of assembly.assemble, built from `answers` ({PDF page: its answer}) with `log`
     (`read_log`) laid over them, and the laid answers. A Confirmed Span's Blocks and a number the developer gave raise no
     Warning; `readings` (the pages' OCR Readings) and `flagged` (their reads flagged) still hold its lines, so the other
     spans' Blocks line up against them. An entry is "fixed" when a span holding it was edited. Each page also has its
-    "spans" (`_review_spans`) and "printed_confirmed", whether the developer gave its number.
+    "spans" (`_review_spans`) and "printed_confirmed", whether the developer gave its number. `skipped`: the PDF pages
+    the Part skips (assembly.assemble).
     """
     laid = {}
     for page, answer in answers.items():
@@ -199,7 +200,7 @@ def rebuild(answers, log, abbreviations, book_page_offset, readings=None, flagge
     confirmed = {page: {b for span in view["spans"] if span["confirmed"] for b in range(*span["blocks"])}
                  for page, view in laid.items()}
     entries, warnings, pages = assemble(laid, abbreviations, book_page_offset, readings, flagged, confirmed,
-                                        set(log["printed"]))
+                                        set(log["printed"]), skipped)
     starts = {}
     for entry in entries:
         for page, (first, stop) in entry["blocks"].items():

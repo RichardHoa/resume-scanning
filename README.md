@@ -209,12 +209,13 @@ two Apple Vision reads of every line made on a Mac. It then lets you review them
 exports website data.
 Its terms (PDF Part, Proverb Entry, Citation, Warning, Confirmed Span, ...) are in
 [`vsc-project/khoTangTucNguoiNguoiViet/GLOSSARY.md`](vsc-project/khoTangTucNguoiNguoiViet/GLOSSARY.md). The Parts,
-their proverb pages and book page offsets are in `src/khotangtucngu/settings.py`; only `--part-1` (PDF pages 36–865)
-is set up now.
+their proverb pages and book page offsets are in `src/khotangtucngu/settings.py`: `--part-1` (PDF pages 36–865, PDF page
+671 skipped as the book misprints it) and `--part-2` (PDF pages 5–818) are set up now. The commands below use
+`--part-1`; for Part 2, use `--part-2` and `store/part-2/`.
 
 Everything for one Part lives in its store, `vsc-project/khoTangTucNguoiNguoiViet/store/<part>/`. `vsc-project/` is
 not in git apart from `front-matter.md`, so first copy the Part's PDF there on both the Mac and the cluster
-(`kho tàng tục ngữ người việt tập 1 - p1.pdf`).
+(`kho tàng tục ngữ người việt tập 1 - p1.pdf`, `Kho tàng tục ngữ người việt tập 1 - p2.pdf`).
 
 **1. Read the pages with Apple Vision (Mac, from the repository root, in your own terminal).** Vision runs only on
 macOS, so this step is not part of the job. Install its dependencies first:

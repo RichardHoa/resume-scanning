@@ -131,8 +131,9 @@ def assembled(preview=None):
         line = _span_line(page, answers[page], records, preview)
         log["confirmed"][page] = [r for r in records if r["band"] != line["band"]] + [{**line, "preview": True}]
     abbreviations = Abbreviations(list(_read("sources.json")))
-    offset = _read("entries.json", lambda f: json.load(f)["book_page_offset"])
-    entries, warnings, pages, laid = rebuild(answers, log, abbreviations, offset, _readings(), _flagged())
+    part = _read("entries.json", json.load)
+    entries, warnings, pages, laid = rebuild(answers, log, abbreviations, part["book_page_offset"], _readings(),
+                                             _flagged(), part["skipped_pages"])
     for p in pages:
         p["blocks"] = laid[p["pdf"]]["blocks"]
     # A failed or missing page has no answer, and ink outside the found lines is no Block's, so no Confirmed Span can

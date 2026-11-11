@@ -15,7 +15,8 @@ Each Part's store/<part>/export/ is emptied and written afresh, and nothing outs
   unresolved_see_also.json    every Unresolved See-also, for information
   export-warning.txt          for checking by eye: every repeated Entry Image name ("_2" on) with both entries, and
                               each letter's count of numbers from 1 to its highest, with each missing number and the
-                              entries either side of it (see `export_warnings`)
+                              entries either side of it (see `export_warnings`), apart from the numbers the book itself
+                              skips (settings.Part.number_jumps)
   entry_images.zip            the Entry Image of every Proverb Entry, flat, "<anchor>.png" ("A-200.png"; a repeated
                               name "A-200_2.png" on), grayscale PNG at settings.ENTRY_IMAGE_DPI, stored, not deflated
 
@@ -142,12 +143,12 @@ def intro(front_matter):
 
 # -- the Proverb Entries with the Confirmed Spans
 
-def with_confirmed(store, abbreviations, book_page_offset):
+def with_confirmed(store, abbreviations, book_page_offset, skipped=()):
     """The store's Proverb Entries rebuilt with its Confirmed Spans, the page answers they were laid over (by PDF page),
-    and how many Confirmed Spans there are."""
+    and how many Confirmed Spans there are. `skipped`: the PDF pages the Part skips."""
     log = read_log(store)
     entries, _, _, laid = rebuild(read_answers(os.path.join(store, "answers.json")), log, abbreviations,
-                                  book_page_offset)
+                                  book_page_offset, skipped=skipped)
     return entries, laid, sum(len(held) for held in log["confirmed"].values())
 
 
@@ -322,10 +323,11 @@ def _where(r):
     return f"{r['name']}, PDF page {pages('pdf_pages')} (book page {pages('book_pages')}): {r['proverb']}"
 
 
-def export_warnings(letters):
+def export_warnings(letters, number_jumps=()):
     """The text of export-warning.txt from {letter: its records, in book order}: each repeated Entry Image name with
     the entry holding the name before it, and each letter's numbers from 1 to its highest, a missing number shown with
-    the entries just before and after it, where its proverb most likely went."""
+    the entries just before and after it, where its proverb most likely went. The numbers a jump of `number_jumps`
+    (settings.Part) skips are the book's own and listed apart, not counted missing."""
     records = [r for rs in letters.values() for r in rs]
     by_image = {r["image"]: r for r in records}
     repeated = [r for r in records if _REPEATED_IMAGE.match(r["image"])]
@@ -340,10 +342,13 @@ def export_warnings(letters):
         for r in rs:
             numbers.setdefault(r["number"], []).append(r)
         top = max(numbers)
-        missing = [n for n in range(1, top + 1) if n not in numbers]
+        unprinted = {n for jump, before, after in number_jumps if jump == letter for n in range(before + 1, after)}
+        missing = [n for n in range(1, top + 1) if n not in numbers and n not in unprinted]
         missing_count += len(missing)
         lines.append(f"{letter}: {len(numbers)} of {letter} 1 to {letter} {top}, {len(missing)} missing"
                      + (f": {', '.join(map(str, missing))}" if missing else ""))
+        lines += [f"  {letter} {before + 1}-{after - 1} are not printed in the book: {letter} {before} is followed by "
+                  f"{letter} {after}" for jump, before, after in number_jumps if jump == letter]
         for n in missing:
             lines.append(f"  {letter} {n} is missing, between:")
             near = [max((k for k in numbers if k < n), default=None), min(k for k in numbers if k > n)]
@@ -383,7 +388,8 @@ def main():
                  f"({', '.join(repr(PARTS[key].pdf) for key in missing)}): the Entry Images are cut from it")
     parts, crops = {}, {}
     for key, store in stores.items():
-        entries, laid, confirmed = with_confirmed(store, Abbreviations(abbreviations), PARTS[key].book_page_offset)
+        entries, laid, confirmed = with_confirmed(store, Abbreviations(abbreviations), PARTS[key].book_page_offset,
+                                                    PARTS[key].skipped_pages)
         # Every Entry Image's crops before any export/ is emptied, so an entry in no span stops the run with nothing
         # half written
         try:
@@ -412,7 +418,7 @@ def main():
         write_json(os.path.join(out, "expansions.json"), reader.expansions)
         write_json(os.path.join(out, "unresolved_see_also.json"), unresolved)
         with open(os.path.join(out, "export-warning.txt"), "w", encoding="utf-8") as f:
-            f.write(export_warnings(letters))
+            f.write(export_warnings(letters, PARTS[key].number_jumps))
         with fitz.open(pdfs[key]) as doc, \
                 zipfile.ZipFile(os.path.join(out, "entry_images.zip"), "w", zipfile.ZIP_STORED) as images:
             for its_crops, name in zip(crops[key], names):
