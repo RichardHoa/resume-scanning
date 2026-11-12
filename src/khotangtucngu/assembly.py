@@ -6,7 +6,8 @@ the italic words of Variants and Corrections between asterisks.
 Pages are walked in PDF order. A run of consecutive PDF pages with answers is read as one stretch of the book: a
 Leading Block joins the last Proverb Entry of the page before, and entry numbers run on. Across a page with no answer
 nothing carries over: the next stretch starts afresh. After a page the Part skips (settings.Part), misprinted in the
-book, its Leading Blocks are the end of an entry the book lost, and are dropped with no Warning.
+book, its Leading Blocks are the end of an entry the book lost, and are dropped with no Warning. The same holds on the
+page a scan gap ends at (settings.Part.scan_gaps), even with the page before it answered: the scan lost the entry.
 
 Only a proverb Block with a number starts a Proverb Entry, or gives a stretch its letter. One with no number is the
 model's label on a Leading Block, the note finishing the entry above, and joins that entry as a note.
@@ -63,16 +64,21 @@ def first_letter(text):
     return ""
 
 
-def _page_number_warnings(answers, book_page_offset, settled):
+def book_page_of(page, book_page_offset, gaps=()):
+    """The book page of PDF page `page`, by its Part's `book_page_offset` and scan_gaps (settings.Part)."""
+    return page + book_page_offset + sum(lost for resumes, lost in gaps if page >= resumes)
+
+
+def _page_number_warnings(answers, book_page_offset, settled, gaps):
     """A Warning for each page whose printed number isn't the book page its PDF page makes it (PDF page +
-    `book_page_offset`), or that prints none though it opens no letter: only a letter's first page prints none. Pages in
-    `settled` have a number the developer gave."""
+    `book_page_offset`, + the pages of `gaps` before it), or that prints none though it opens no letter: only a letter's
+    first page prints none. Pages in `settled` have a number the developer gave."""
     warnings = []
     for p in sorted(answers):
         if p in settled:
             continue
         printed = unicodedata.normalize("NFC", str(answers[p].get("printed_page", ""))).strip()
-        expected = p + book_page_offset
+        expected = book_page_of(p, book_page_offset, gaps)
         if not printed:
             if not any(b.get("kind") == LETTER for b in answers[p].get("blocks") or []):
                 warnings.append(warning(PAGE_NUMBER, f"p{p}", f"PDF page {p} prints no page number, though it opens "
@@ -153,7 +159,7 @@ def _model_edit_warnings(page, blocks, flagged, owners, confirmed):
 
 
 def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=None, confirmed=None, settled=(),
-             skipped=()):
+             skipped=(), gaps=()):
     """
     `answers`: {PDF page: its current page answer}; `abbreviations`: citations.Abbreviations; `book_page_offset`: the
     Part's book page minus PDF page; `readings`: {PDF page: its OCR Readings joined}, which a page's Blocks are checked
@@ -161,12 +167,14 @@ def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=No
     diacritics.flagged_reads}, which they are checked against for Model Edits (none for a page without); `confirmed`:
     {PDF page: the indexes of its Confirmed Spans' Blocks}, which raise no Warning, though their numbers and letters
     still feed the checks of other Blocks; `settled`: the pages whose printed number the developer gave; `skipped`: the
-    PDF pages the Part skips, after which Blocks with no entry to join raise no Warning. Returns the
+    PDF pages the Part skips, after which Blocks with no entry to join raise no Warning; `gaps`: the Part's scan_gaps
+    (settings.Part), which add to the book page offset, and before which the same holds as for a skipped page. Returns the
     verbatim Proverb Entries in book order, the Warnings they raise (all but failed or missing pages), and each page's
     {"pdf", "book_page", "printed_page", "entries"}, the names of the entries it holds. An entry's "blocks" is {PDF page
     (a string): [first, last + 1]}, the indexes of its Blocks in that page's answer.
     """
-    entries, warnings, pages = [], _page_number_warnings(answers, book_page_offset, settled), []
+    entries, warnings, pages = [], _page_number_warnings(answers, book_page_offset, settled, gaps), []
+    resumes = {page for page, _ in gaps}
     confirmed = confirmed or {}
     judged = False          # the Block being read is a Confirmed Span's
     seen = {}               # entry name -> its entry, for duplicates
@@ -189,12 +197,12 @@ def assemble(answers, abbreviations, book_page_offset, readings=None, flagged=No
         return citations
 
     for page in sorted(answers):
-        if last_page is None or page != last_page + 1:
+        if last_page is None or page != last_page + 1 or page in resumes:
             letter, current, previous, headed = None, None, None, False
-            # None: the book lost their entry, so they raise no Warning
-            unowned = None if page - 1 in skipped else f"PDF page {page - 1} has no answer"
+            # None: the book or its scan lost their entry, so they raise no Warning
+            unowned = None if page - 1 in skipped or page in resumes else f"PDF page {page - 1} has no answer"
         last_page = page
-        book_page = str(page + book_page_offset)
+        book_page = str(book_page_of(page, book_page_offset, gaps))
         names, unowned_kinds = [], []
         blocks = answers[page].get("blocks") or []
         owners = [None] * len(blocks)    # the name of the Proverb Entry each Block joins

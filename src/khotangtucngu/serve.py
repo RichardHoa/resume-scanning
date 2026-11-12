@@ -133,7 +133,7 @@ def assembled(preview=None):
     abbreviations = Abbreviations(list(_read("sources.json")))
     part = _read("entries.json", json.load)
     entries, warnings, pages, laid = rebuild(answers, log, abbreviations, part["book_page_offset"], _readings(),
-                                             _flagged(), part["skipped_pages"])
+                                             _flagged(), part["skipped_pages"], part["scan_gaps"])
     for p in pages:
         p["blocks"] = laid[p["pdf"]]["blocks"]
     # A failed or missing page has no answer, and ink outside the found lines is no Block's, so no Confirmed Span can

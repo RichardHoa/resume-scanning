@@ -16,12 +16,15 @@ class Part(NamedTuple):
     book_page_offset: int               # book page = PDF page + this
     # PDF pages the book misprints, never read or answered even when --pages names them
     skipped_pages: Tuple[int, ...] = ()
-    # Jumps in the book's own numbering, (letter, number, the next number printed): the numbers between are not
-    # printed, and the export doesn't count them missing
+    # Jumps in the numbering the PDF holds, (letter, number, the next number in it): the numbers between are lost in
+    # the book or its scan, and the export doesn't count them missing
     number_jumps: Tuple[Tuple[str, int, int], ...] = ()
+    # Book pages the scan lost, (the PDF page it resumes on, how many book pages it lost before it): the book page
+    # offset grows by them from that PDF page on, and nothing carries over to it, as after a skipped page
+    scan_gaps: Tuple[Tuple[int, int], ...] = ()
 
 
-# By the key the CLI takes as a flag (--part-1) and names its store by. Parts 3-4 are added here when they are run
+# By the key the CLI takes as a flag (--part-1) and names its store by
 PARTS = {
     # PDF page 671 is printed again with C 1841-1846 from an earlier page, so C 1855 on page 670 is followed by the end
     # of an entry and C 1862 on page 672: C 1856-1861 are lost in the book, not in the pipeline
@@ -30,6 +33,14 @@ PARTS = {
     # Its Front Matter is a title and a credits page: the D heading opens PDF page 5 (book page 865, after Part 1's
     # 864), and PDF page 818 (book page 1678) is the last before the colophon
     "part-2": Part("Kho tàng tục ngữ người việt tập 1 - p2.pdf", (5, 818), 860),
+    # Tập 2 opens with the M heading on PDF page 5 (book page 1679, after Part 2's 1678). The scan lost book pages
+    # 1707-1722: PDF page 32 (book page 1706) ends with M 140, and PDF page 33 (book page 1723) opens with the end of
+    # M 237's note, then M 238. Its last proverb page is PDF page 736 (book page 2426)
+    "part-3": Part("kho tàng tục ngư người việt tập 2  - p1.pdf", (5, 736), 1674,
+                   number_jumps=(("M", 140, 238),), scan_gaps=((33, 16),)),
+    # The T heading opens PDF page 5 (book page 2427), and PDF page 542 (book page 2964) is the last before the
+    # Hệ thống tra cứu theo chủ đề and the other indexes
+    "part-4": Part("kho tàng tục ngữ người việt tập 2 - p2.pdf", (5, 542), 2422),
 }
 
 # Pages are read at the scan's 300 dpi, in grayscale PNG, so every diacritic and every subscript is readable

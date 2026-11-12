@@ -44,7 +44,7 @@ Writes to the Part's store, vsc-project/khoTangTucNguoiNguoiViet/store/<part>/:
                           (diacritics.flagged_reads), which the page's Blocks are checked against for Model Edits
   entries.json            the verbatim Proverb Entries built from every page answer with the Confirmed Spans laid over,
                           each page's book page, entries and Entry Spans (their crops as shares of the page, for the
-                          review server), and the Part's book page offset and skipped pages
+                          review server), and the Part's book page offset, skipped pages and scan gaps
   warnings.json           every Warning, with its kind, reason and PDF page, the Stable Model Edits first: number gaps
                           and duplicates, letter headings out of order, unknown Source Abbreviations, Citations with no
                           pages or that cannot be split, Diacritic Disagreements, Model Edits, page numbers out of step,
@@ -364,7 +364,7 @@ def main():
                                    f"ink outside every printed line found ({top}-{bottom} px down the 300 dpi scan), "
                                    f"in no Entry Span", page))
     entries, warnings, pages, _ = rebuild(answers, log, abbreviations, part.book_page_offset, readings, flagged,
-                                          part.skipped_pages)
+                                          part.skipped_pages, part.scan_gaps)
     # rebuild's Warning ids are unique, and a missing page's and a page's missed ink are their own
     warnings = priority_first(missing + warnings)
 
@@ -390,6 +390,7 @@ def main():
     write_json(os.path.join(store, "agreed.json"), {str(p): flagged[p] for p in sorted(flagged)})
     write_json(os.path.join(store, "entries.json"), {"part": args.part, "book_page_offset": part.book_page_offset,
                                                      "skipped_pages": list(part.skipped_pages),
+                                                     "scan_gaps": [list(gap) for gap in part.scan_gaps],
                                                      "pages": pages, "entries": entries})
     write_json(os.path.join(store, "warnings.json"), warnings)
     write_json(os.path.join(store, "sources.json"), source_table)
