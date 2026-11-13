@@ -204,173 +204,30 @@ python3 scripts/proofread/compare_ocr_hint.py vsc-project/ai-pass/<with-hint> vs
 
 ### Kho tàng tục ngữ người Việt (scanned proverb collection)
 
-`src/khotangtucngu` transcribes the Proverb Entries of one PDF Part of the book with the default vision model, using
-two Apple Vision reads of every line made on a Mac. It then lets you review them page by page against the scan and
-exports website data.
-Its terms (PDF Part, Proverb Entry, Citation, Warning, Confirmed Span, ...) are in
-[`vsc-project/khoTangTucNguoiNguoiViet/GLOSSARY.md`](vsc-project/khoTangTucNguoiNguoiViet/GLOSSARY.md). The Parts,
-their proverb pages and book page offsets are in `src/khotangtucngu/settings.py`: `--part-1` (PDF pages 36–865, PDF page
-671 skipped as the book misprints it), `--part-2` (PDF pages 5–818), `--part-3` (Tập 2, PDF pages 5–736; its scan
-lost book pages 1707–1722, M 141–237) and `--part-4` (PDF pages 5–542) are set up now. The commands below use
-`--part-1`; for another Part, use its flag and store (`--part-2` and `store/part-2/`, ...).
-
-Everything for one Part lives in its store, `vsc-project/khoTangTucNguoiNguoiViet/store/<part>/`. `vsc-project/` is
-not in git apart from `front-matter.md`, so first copy the Part's PDF there on both the Mac and the cluster
-(`kho tàng tục ngữ người việt tập 1 - p1.pdf`, `Kho tàng tục ngữ người việt tập 1 - p2.pdf`,
-`kho tàng tục ngư người việt tập 2  - p1.pdf`, `kho tàng tục ngữ người việt tập 2 - p2.pdf`).
-
-**1. Read the pages with Apple Vision (Mac, from the repository root, in your own terminal).** Vision runs only on
-macOS, so this step is not part of the job. Install its dependencies first:
-`pip install -r requirements-macos.txt`. Compiling its reader needs Apple's Command Line Tools.
+Apple Vision reads each page of one PDF Part on a Mac, the vision model on the cluster turns those reads into Proverb
+Entries, you review and fix them page by page against the scan, then export that Part's website data. Put the Part's PDF
+in `vsc-project/khoTangTucNguoiNguoiViet/` first; everything for a Part lives in its `store/<part>/`. The examples use
+`--part-1`; swap in `--part-2`, `--part-3` or `--part-4` (and `store/part-N/`) for the others.
 
 ```bash
-python3 -m src.khotangtucngu.vision_ocr --part-1 --pages 36-45,420-424   # a first batch
-python3 -m src.khotangtucngu.vision_ocr --part-1                         # every proverb page, about 18 minutes
+STORE=vsc-project/khoTangTucNguoiNguoiViet/store/part-1
+
+# 1. Read the pages with Apple Vision (Mac; pip install -r requirements-macos.txt)
+python3 -m src.khotangtucngu.vision_ocr --part-1
+rsync -a $STORE/lines $STORE/vision <user>@<login node>:<repo>/$STORE/
+
+# 2. Transcribe (cluster)
+bash scripts/khotangtucngu/submit.sh --part-1 --dry-run      # token counts, sends nothing
+sbatch scripts/khotangtucngu/submit.sh --part-1              # add --pages 36-45,420 to (re)do only those pages
+
+# 3. Review (laptop) at http://127.0.0.1:8000/
+rsync -a --exclude review.jsonl <user>@<login node>:<repo>/$STORE/ $STORE/
+(cd $STORE && python3 serve.py)
+rsync -a $STORE/review.jsonl <user>@<login node>:<repo>/$STORE/   # before the next cluster run
+
+# 4. Export this Part to store/part-1/export/ (laptop)
+python3 -m src.khotangtucngu.export --part-1
 ```
-
-- Runs over different pages add up, and a rerun skips pages with a current read. A page Vision fails on is saved as
-  failed and read again next time. A new macOS version reads every page again.
-- A changed line finder doesn't count as out of date: delete `store/<part>/lines/` to read the pages again with it.
-- It ends by printing pages read, pages failed, the share of Disputed Syllables, and the line that copies its output to
-  the cluster. It transfers nothing itself. That line copies only these two folders, never `review.jsonl`:
-
-```bash
-rsync -a vsc-project/khoTangTucNguoiNguoiViet/store/part-1/lines vsc-project/khoTangTucNguoiNguoiViet/store/part-1/vision \
-      <user>@<login node>:<repo>/vsc-project/khoTangTucNguoiNguoiViet/store/part-1/
-```
-
-| File | What it holds |
-| --- | --- |
-| `lines/pNNN.json` | each page's printed lines found on the scan, and ink outside them |
-| `vision/pNNN.json` | each page's Vision record: the PDF's hash, the stamp of how it was read, its status, each Line Number's box and two reads, and the observations matching no line |
-
-**2. Transcribe (cluster, from the repository root).** Copy the reads across first, then use the same `--pages`.
-
-```bash
-bash scripts/khotangtucngu/submit.sh --part-1 --dry-run            # login node: token counts, sends nothing
-sbatch scripts/khotangtucngu/submit.sh --part-1 --pages 36-45,420-424   # a first batch, with an entry over a page break
-sbatch scripts/khotangtucngu/submit.sh --part-1                    # every proverb page of the Part
-sbatch scripts/khotangtucngu/submit.sh --part-1 --pages 420        # redo the pages you name (ranges and single pages)
-```
-
-- Before any request, including with `--dry-run`, the job exits naming any page of this run whose lines or Vision read
-  are missing, failed or made from another PDF, before its server starts. A job with `--pages` needs reads for those
-  pages only.
-- Each answer is saved as soon as it arrives. A rerun only redoes requests that failed, never ran, or were made
-  under a different prompt, image setting, read or PDF. If the full run hits the job's 4-hour limit, submit the same
-  command again and it carries on.
-- The job runs 60 requests at a time, its own setting in `scripts/khotangtucngu/submit.sh`. Make the first job at 60 a
-  small batch of pages, to show whether the KV cache still fits its GPU memory share of 0.85.
-- **Confirmed Spans:** the job reads `review.jsonl` if the store has one, and never writes it. A Confirmed Span gets no
-  request, however the layout is read later. A partly confirmed page gets its layout request (reused as usual) and
-  requests for its other spans, and lines left below a Confirmed Span are read as a continuation of the entry above. A
-  fully confirmed page gets no request at all until one of its spans is undone. If a Confirmed Span was made from
-  another PDF, the job stops before any request, naming the pages.
-- Runs over different pages add up in the store. The outputs are rebuilt from every saved answer each time.
-- `--dry-run` writes its per-request counts to `store/<part>/dry_run_tokens.jsonl`.
-- Logs: `logging/slurm_khotangtucngu_<job>.out`, plus `logs/vllm_khotangtucngu.log` for the server.
-
-A run writes into the store:
-
-| File | What it holds |
-| --- | --- |
-| `layout/pNNN.json`, `layout/pNNN.png` | each PDF page's layout answer, and the page with its Line Numbers as that request saw it |
-| `spans/pNNN-LMM.json` | each Entry Span's answer, named by its page and the Line Number it starts on |
-| `answers.json` | every current page answer with the model's Blocks and its spans (Block range, band, crop, Line Numbers, whether Leading, reads), for the review server to lay Confirmed Spans over |
-| `readings.json` | each page's OCR Readings joined, which its Blocks are checked against for Diacritic Disagreements |
-| `agreed.json` | the same readings with their Agreed Syllables flagged, which its Blocks are checked against for Model Edits |
-| `entries.json` | the verbatim Proverb Entries with the Confirmed Spans laid over, plus each page's book page, entries and spans |
-| `warnings.json` | every Warning, with its kind, reason and PDF page |
-| `sources.json` | the 63 Sources, for the review server to write Citations out |
-| `pages/pNNN.png` | each page's scan, for the review server |
-| `serve.py`, `web/`, `khotangtucngu/` | the review server, its page, and the code that rebuilds the entries with Confirmed Spans |
-| `review.jsonl` | the review log: each Confirmed Span in full, undos, printed page numbers. Append-only, written only by `serve.py`, never by a run |
-| `token_usage.jsonl` | one line per request sent |
-
-Warnings flag:
-- number gaps and duplicates within a letter;
-- letter headings out of order;
-- unknown Source Abbreviations;
-- Citations with no pages or that can't be split;
-- Diacritic Disagreements;
-- Model Edits: where the model's Blocks differ from an Agreed Syllable or add a word no read has. The model's text is
-  kept and the Warning names both spellings;
-- page numbers out of step with the PDF page;
-- failed or missing pages;
-- Leading Blocks with no Proverb Entry to join;
-- ink outside every printed line found;
-- a model span only partly overlapping a Confirmed Span, after a run without the latest log.
-
-A Confirmed Span's Blocks raise no Warning, but its numbers still feed other spans' checks: an unconfirmed A 16 still
-warns that it follows A 14, and a second A 4 keeps its duplicate Warning. Confirming A 14 does hide "A 14 follows A 12"
-for good, even if A 13 really is missing, until you undo it. Missing page and Ink outside the lines Warnings always stay.
-
-**3. Review (any machine, nothing to install).** Copy the store to the laptop, into the same path in your clone of
-this repository, then start the server in it:
-
-```bash
-rsync -a --exclude review.jsonl <user>@<login node>:<repo>/vsc-project/khoTangTucNguoiNguoiViet/store/part-1/ \
-      vsc-project/khoTangTucNguoiNguoiViet/store/part-1/
-cd vsc-project/khoTangTucNguoiNguoiViet/store/part-1 && python3 serve.py   # http://127.0.0.1:8000/, --port to change
-```
-
-- **The page:** each page's scan is on the left, and its Proverb Entries on the right laid out as printed, with
-  italics shown. Each Warning sits on the entry it concerns; the page's own (page number, missing page, Blocks with
-  no owner) sit above. Under each entry, its Citations are written out with the Source each matches among the 63, or
-  in red if it matches none.
-- **Moving around:** ◀ ▶ (or ← →) step through the pages. "Next with Warnings" (`w`) and "Next edited" (`e`) jump
-  ahead, and lead only to what is unsettled or changed. The header counts the spans confirmed, with no total: nobody
-  confirms every entry. "Confirmed" lists the spans you edited, and every Confirmed Span with its toggle.
-- **Confirming and editing:** on an entry's card, "✓ Confirm" and "✎ Edit" (on hover) act on the Entry Span holding that
-  entry's Blocks on this page. Either way it becomes a Confirmed Span straight away, with no run: its Warnings go, and
-  its rectangle on the scan changes colour. Two entries in one span share its confirmation, and an entry running onto
-  the next page is confirmed separately on each page. A letter heading, or Leading Blocks with no owner, has a card of
-  its own.
-- **The editor:** it opens the whole span as printed text, one row per Block: change, add, delete or reorder them. A live
-  preview shows the entries and the Warnings the Blocks would raise, which never stop you saving. You can edit a
-  Confirmed Span again, and the latest save wins. An edited span is tagged, with its changes against the model's Blocks.
-- **Undo:** puts the model's Blocks and their Warnings back straight away. The next run reads the span again if its saved
-  answer is no longer current.
-- **The printed page number:** the line above the entries edits, confirms and undoes it. Doing either settles its Page
-  number Warning for good.
-- **Overlaps:** a run without your latest log can cut a span that only partly overlaps a Confirmed Span. It stays, with
-  a Warning and no buttons, until a run with the log cuts the page again.
-- **Your review log is the master copy:** `review.jsonl` is written where you review, on the laptop. Before a run, push
-  it to the same path on the cluster yourself. A run without your latest log loses nothing, and only wastes requests
-  on spans you have since confirmed. Keep `--exclude review.jsonl` when you pull a rerun's store, so the cluster's
-  older copy never overwrites yours:
-
-```bash
-rsync -a vsc-project/khoTangTucNguoiNguoiViet/store/part-1/review.jsonl \
-      <user>@<login node>:<repo>/vsc-project/khoTangTucNguoiNguoiViet/store/part-1/
-```
-
-- **Redoing the model's reading:** to redo pages, rerun them on the cluster with `--pages` and pull the store again.
-  Confirmed Spans keep their Blocks and their place whatever the new answers say.
-
-**4. Export (laptop, no GPU).**
-
-```bash
-python3 -m src.khotangtucngu.export
-```
-
-- **Which Parts:** it exports every Part whose store has an `answers.json`, so a See-also resolves across Parts.
-- **Confirmed Spans:** the entries are rebuilt with them laid over the model's Blocks. An entry's `fixed` is true only
-  if a span holding it was edited, not if it was confirmed as it stood.
-- **Output:** it empties and rewrites each `store/<part>/export/` and writes nothing outside it:
-  - `letters/<letter>.json`, one record per Proverb Entry;
-  - `sources.json`, the 63 Sources with their Source Notes;
-  - `intro.md`, the cleaned Front Matter;
-  - `expansions.json`, every General Abbreviation it wrote out, to check by eye;
-  - `unresolved_see_also.json`;
-  - `export-warning.txt`, to check by eye: every repeated Entry Image name (`A-200_2.png` on) with both entries, and
-    each letter's count from 1 to its highest number, each missing number listed with the entries either side of it
-    (name, PDF and book page, proverb);
-  - `entry_images.zip`, the Entry Image of every Proverb Entry (`A-200.png`, grayscale at 200 dpi), cut from the
-    Part's PDF, which must be in `vsc-project/khoTangTucNguoiNguoiViet/`. Each record's `image` names its file. An
-    image holds the whole of every Entry Span its entry is in, so it may show a letter heading or a neighbouring entry.
-- **Into the website:** copy the export folder into `digitizing-vietnam-website` by hand. The card that will read it
-  is specced in `.scratch/kho-tang-tuc-ngu-website/spec.md`, which isn't settled yet.
 
 ### Audio transcription
 

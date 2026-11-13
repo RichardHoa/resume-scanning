@@ -1,11 +1,12 @@
 """
-Export: website-ready data from the verbatim Proverb Entries of every transcribed PDF Part, run locally with no GPU.
+Export: website-ready data from the verbatim Proverb Entries of one transcribed PDF Part, run locally with no GPU.
 
-    python3 -m src.khotangtucngu.export
+    python3 -m src.khotangtucngu.export --part-1
 
-Exports each Part in settings.PARTS whose store has an answers.json, in one go, so a See-also names an entry of any
-of them: an Unresolved See-also of Part 1 resolves by itself once Part 2 is transcribed and the export is run again.
-Each Part's store/<part>/export/ is emptied and written afresh, and nothing outside it is touched:
+Exports the Part named, whose store must have an answers.json. A See-also still resolves to an entry of any Part whose
+store has an answers.json, whose entries are rebuilt for that but not exported: an Unresolved See-also of Part 1
+resolves by itself once Part 2 is transcribed and Part 1 is exported again. The Part's store/<part>/export/ is emptied
+and written afresh, and nothing outside it is touched:
 
   letters/<letter>.json       one record per Proverb Entry of the letter, in book order (see `record`)
   sources.json                the 63 Sources by Source Abbreviation, in printed order: title, author, kind, year where
@@ -45,10 +46,8 @@ import shutil
 import unicodedata
 import zipfile
 
-import fitz
-
 from src.khotangtucngu.citations import Abbreviations, clean_citation_text, load_abbreviations
-from src.khotangtucngu.pages import entry_image, part_pdf
+from src.khotangtucngu.pages import entry_image, open_pdf, part_pdf
 from src.khotangtucngu.review import read_answers, read_log, rebuild
 from src.khotangtucngu.settings import BOOK_DIR, FRONT_MATTER, PARTS, STORE_DIR
 from src.providers.vlm_requests import write_json
@@ -359,13 +358,16 @@ def export_warnings(letters, number_jumps=()):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Export website data from every transcribed Kho tàng tục ngữ PDF "
-                                                 "Part, into each Part's store/<part>/export/")
+    parser = argparse.ArgumentParser(description="Export website data from one transcribed Kho tàng tục ngữ PDF "
+                                                 "Part, into its store/<part>/export/")
+    which = parser.add_mutually_exclusive_group(required=True)
+    for key, part in PARTS.items():
+        which.add_argument(f"--{key}", dest="part", action="store_const", const=key, help=part.pdf)
     return parser.parse_args()
 
 
 def main():
-    parse_args()
+    part = parse_args().part
     with open(FRONT_MATTER, encoding="utf-8") as f:
         front_matter = f.read()
     abbreviations = load_abbreviations(FRONT_MATTER)
@@ -379,57 +381,57 @@ def main():
 
     stores = {key: os.path.join(STORE_DIR, key) for key in PARTS
               if os.path.exists(os.path.join(STORE_DIR, key, "answers.json"))}
-    if not stores:
-        sys.exit(f"[Kho tàng tục ngữ] No store in {STORE_DIR} has an answers.json: run src.khotangtucngu.cli first")
-    pdfs = {key: part_pdf(PARTS[key].pdf) for key in stores}
-    missing = [key for key, pdf in pdfs.items() if pdf is None]
-    if missing:
-        sys.exit(f"[Kho tàng tục ngữ] No PDF in {BOOK_DIR} for {', '.join(missing)} "
-                 f"({', '.join(repr(PARTS[key].pdf) for key in missing)}): the Entry Images are cut from it")
-    parts, crops = {}, {}
+    if part not in stores:
+        sys.exit(f"[Kho tàng tục ngữ] {os.path.join(STORE_DIR, part)} has no answers.json: "
+                 f"run src.khotangtucngu.cli --{part} first")
+    pdf = part_pdf(PARTS[part].pdf)
+    if pdf is None:
+        sys.exit(f"[Kho tàng tục ngữ] No PDF in {BOOK_DIR} for {part} ({PARTS[part].pdf!r}): "
+                 f"the Entry Images are cut from it")
+    parts = {}
     for key, store in stores.items():
         entries, laid, confirmed = with_confirmed(store, Abbreviations(abbreviations), PARTS[key].book_page_offset,
                                                     PARTS[key].skipped_pages, PARTS[key].scan_gaps)
-        # Every Entry Image's crops before any export/ is emptied, so an entry in no span stops the run with nothing
-        # half written
-        try:
-            crops[key] = [entry_crops(entry, laid) for entry in entries]
-        except ValueError as e:
-            sys.exit(f"[Kho tàng tục ngữ] {key}: {e}")
+        if key == part:
+            # Every Entry Image's crops before export/ is emptied, so an entry in no span stops the run with nothing
+            # half written
+            try:
+                crops = [entry_crops(entry, laid) for entry in entries]
+            except ValueError as e:
+                sys.exit(f"[Kho tàng tục ngữ] {key}: {e}")
+            print(f"[Kho tàng tục ngữ] {key}: {len(entries)} Proverb Entries, {confirmed} Confirmed Span(s)")
         parts[key] = entries
-        print(f"[Kho tàng tục ngữ] {key}: {len(entries)} Proverb Entries, {confirmed} Confirmed Span(s)")
-    # Every Part exported now, so a See-also resolves to an entry of any of them
+    # Every transcribed Part's entries, so a See-also resolves to an entry of any of them
     by_name = {e["name"]: e for entries in parts.values() for e in entries}
 
-    for key, entries in parts.items():
-        out = os.path.join(stores[key], "export")
-        shutil.rmtree(out, ignore_errors=True)
-        os.makedirs(os.path.join(out, "letters"))
-        reader = Reader(abbreviations, general)
-        unresolved, letters = [], {}
-        names = image_names(entries)
-        for entry, name in zip(entries, names):
-            letters.setdefault(entry["letter"], []).append(record(entry, reader, by_name, dated, unresolved, name))
-        for letter, records in letters.items():
-            write_json(os.path.join(out, "letters", f"{letter}.json"), records)
-        write_json(os.path.join(out, "sources.json"), source_table)
-        with open(os.path.join(out, "intro.md"), "w", encoding="utf-8") as f:
-            f.write(intro_text)
-        write_json(os.path.join(out, "expansions.json"), reader.expansions)
-        write_json(os.path.join(out, "unresolved_see_also.json"), unresolved)
-        with open(os.path.join(out, "export-warning.txt"), "w", encoding="utf-8") as f:
-            f.write(export_warnings(letters, PARTS[key].number_jumps))
-        with fitz.open(pdfs[key]) as doc, \
-                zipfile.ZipFile(os.path.join(out, "entry_images.zip"), "w", zipfile.ZIP_STORED) as images:
-            for its_crops, name in zip(crops[key], names):
-                images.writestr(name, entry_image(doc, its_crops))
-        unknown = sorted({c["abbreviation"] for records in letters.values() for r in records
-                          for c in r["citations"] + [c for v in r["variants"] for c in v["citations"]]
-                          if c.get("unknown")})
-        print(f"[Kho tàng tục ngữ] {key}: letters {' '.join(letters)}, {len(reader.expansions)} Expansion(s), "
-              f"{len(unresolved)} Unresolved See-also(s), unknown Source Abbreviations {unknown or 'none'}, "
-              f"{len(names)} Entry Image(s)")
-        print(f"[Kho tàng tục ngữ] {key}: export in {out}")
+    out = os.path.join(stores[part], "export")
+    shutil.rmtree(out, ignore_errors=True)
+    os.makedirs(os.path.join(out, "letters"))
+    reader = Reader(abbreviations, general)
+    unresolved, letters = [], {}
+    names = image_names(parts[part])
+    for entry, name in zip(parts[part], names):
+        letters.setdefault(entry["letter"], []).append(record(entry, reader, by_name, dated, unresolved, name))
+    for letter, records in letters.items():
+        write_json(os.path.join(out, "letters", f"{letter}.json"), records)
+    write_json(os.path.join(out, "sources.json"), source_table)
+    with open(os.path.join(out, "intro.md"), "w", encoding="utf-8") as f:
+        f.write(intro_text)
+    write_json(os.path.join(out, "expansions.json"), reader.expansions)
+    write_json(os.path.join(out, "unresolved_see_also.json"), unresolved)
+    with open(os.path.join(out, "export-warning.txt"), "w", encoding="utf-8") as f:
+        f.write(export_warnings(letters, PARTS[part].number_jumps))
+    with open_pdf(pdf, PARTS[part]) as doc, \
+            zipfile.ZipFile(os.path.join(out, "entry_images.zip"), "w", zipfile.ZIP_STORED) as images:
+        for its_crops, name in zip(crops, names):
+            images.writestr(name, entry_image(doc, its_crops))
+    unknown = sorted({c["abbreviation"] for records in letters.values() for r in records
+                      for c in r["citations"] + [c for v in r["variants"] for c in v["citations"]]
+                      if c.get("unknown")})
+    print(f"[Kho tàng tục ngữ] {part}: letters {' '.join(letters)}, {len(reader.expansions)} Expansion(s), "
+          f"{len(unresolved)} Unresolved See-also(s), unknown Source Abbreviations {unknown or 'none'}, "
+          f"{len(names)} Entry Image(s)")
+    print(f"[Kho tàng tục ngữ] {part}: export in {out}")
 
 
 if __name__ == "__main__":

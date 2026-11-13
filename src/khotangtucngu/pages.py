@@ -34,6 +34,22 @@ def part_pdf(name):
     return None
 
 
+def open_pdf(pdf, part):
+    """The PDF at `pdf`, of `part` (a settings.Part), with each of its turned_pages turned back straight about its
+    centre: its scan is drawn turned, so every image of the page, from its lines to its Entry Images, is of it
+    straight."""
+    doc = fitz.open(pdf)
+    for page, degrees in part.turned_pages:
+        p = doc[page - 1]
+        box = p.mediabox
+        cx, cy = (box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2
+        m = fitz.Matrix(1, 0, 0, 1, -cx, -cy) * fitz.Matrix(degrees) * fitz.Matrix(1, 0, 0, 1, cx, cy)
+        contents, xref = p.read_contents(), p.get_contents()[0]
+        doc.update_stream(xref, f"q {m.a:f} {m.b:f} {m.c:f} {m.d:f} {m.e:f} {m.f:f} cm\n".encode() + contents + b"\nQ")
+        p.set_contents(xref)
+    return doc
+
+
 def page_key(page):
     """A PDF page's name in the store: its requests and its page images."""
     return f"p{page:03d}"

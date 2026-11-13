@@ -78,15 +78,13 @@ import argparse
 import json
 import shutil
 
-import fitz
-
 from src.core.config import DEFAULT_LLM_MODEL, DEFAULT_VLLM_URL
 from src.khotangtucngu.assembly import INK_OUTSIDE, PAGE_MISSING, priority_first, warning
 from src.khotangtucngu.citations import Abbreviations, load_abbreviations
 from src.khotangtucngu.diacritics import flagged_reads, read_of_line
 from src.khotangtucngu.export import dated_sources, sources
 from src.khotangtucngu.pages import (
-    entry_spans, in_band, layout_image, layout_problem, page_key, part_pdf, review_image, review_layout_image,
+    entry_spans, in_band, layout_image, layout_problem, open_pdf, page_key, part_pdf, review_image, review_layout_image,
     span_image, span_key
 )
 from src.khotangtucngu.prompts import (
@@ -263,7 +261,7 @@ def main():
     pdf = part_pdf(part.pdf)
     if pdf is None:
         sys.exit(f"[Kho tàng tục ngữ] No PDF '{part.pdf}' in {BOOK_DIR} for --{args.part}")
-    doc = fitz.open(pdf)
+    doc = open_pdf(pdf, part)
     n_pages = len(doc)
     first, last = part.proverb_pages
     only = page_set(args.pages, n_pages) if args.pages else list(range(first, min(last, n_pages) + 1))
@@ -291,7 +289,7 @@ def main():
     # -- the Mac's printed lines and Vision reads, of every page saved from this PDF: this run's must all be current
     found, records, unread = {}, {}, []
     for page in range(1, n_pages + 1):
-        lines = saved_lines(lines_dir, page, pdf_sha1)
+        lines = saved_lines(lines_dir, page, pdf_sha1, dict(part.turned_pages).get(page, 0))
         if lines is not None:
             found[page], records[page] = lines, read_result(vision_dir, page_key(page))
     for page in only:

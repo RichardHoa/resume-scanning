@@ -33,11 +33,10 @@ import tempfile
 import time
 from io import BytesIO
 
-import fitz
 from PIL import Image
 
 from src.khotangtucngu.diacritics import flagged_reads, syllables
-from src.khotangtucngu.pages import find_lines, line_box, page_key, part_pdf, span_image
+from src.khotangtucngu.pages import find_lines, line_box, open_pdf, page_key, part_pdf, span_image
 from src.khotangtucngu.settings import (
     PAGE_DPI, PARTS, STORE_DIR, VISION_LANGUAGE, VISION_LANGUAGE_CORRECTION, VISION_LINE_PAD_PX, VISION_PAGE_DPI,
     VISION_READ_TIMEOUT, VISION_REVISION, VISION_STABILITY_CROPS
@@ -58,13 +57,14 @@ def parse_args():
     return parser.parse_args()
 
 
-def saved_lines(lines_dir, page, pdf_sha1):
-    """A page's printed lines as saved in `lines_dir` from this PDF (pages.find_lines), or None."""
+def saved_lines(lines_dir, page, pdf_sha1, turned):
+    """A page's printed lines as saved in `lines_dir` from this PDF (pages.find_lines) turned by `turned` degrees (its
+    Part's turned_pages), or None."""
     path = os.path.join(lines_dir, f"{page_key(page)}.json")
     if not os.path.exists(path):
         return None
     saved = read_json(path)
-    if saved.get("pdf_sha1") != pdf_sha1:
+    if saved.get("pdf_sha1") != pdf_sha1 or saved.get("turned", 0) != turned:
         return None
     return {k: saved[k] for k in ("size", "lines", "ocr_tops", "missed")}
 
@@ -208,7 +208,7 @@ def main():
     pdf = part_pdf(part.pdf)
     if pdf is None:
         sys.exit(f"[Kho tàng tục ngữ] No PDF '{part.pdf}' for --{args.part}: copy it into the book's folder first")
-    doc = fitz.open(pdf)
+    doc, turned = open_pdf(pdf, part), dict(part.turned_pages)
     n_pages = len(doc)
     first, last = part.proverb_pages
     only = page_set(args.pages, n_pages) if args.pages else list(range(first, min(last, n_pages) + 1))
@@ -223,7 +223,7 @@ def main():
           f"({'--pages ' + args.pages if args.pages else f'proverb pages {first}-{last}'}); store {store}")
 
     def is_current(page):
-        found = saved_lines(lines_dir, page, pdf_sha1)
+        found = saved_lines(lines_dir, page, pdf_sha1, turned.get(page, 0))
         record = read_result(vision_dir, page_key(page))
         return (found is not None and vision_problem(record, found, pdf_sha1) is None
                 and record.get("stamp") == stamp)
@@ -241,7 +241,8 @@ def main():
                     result = {"task": key, "phase": "vision", "pdf_sha1": pdf_sha1, "stamp": stamp}
                     try:
                         found = find_lines(doc, page)
-                        write_json(os.path.join(lines_dir, f"{key}.json"), {"pdf_sha1": pdf_sha1, **found})
+                        write_json(os.path.join(lines_dir, f"{key}.json"),
+                                   {"pdf_sha1": pdf_sha1, "turned": turned.get(page, 0), **found})
                         result.update(status="ok", error=None, **read_page(reader, doc, page, found, folder))
                     except Exception as e:
                         result.update(status="failed", error=f"{type(e).__name__}: {e}", lines=[], unmatched=[])

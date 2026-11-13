@@ -22,6 +22,10 @@ class Part(NamedTuple):
     # Book pages the scan lost, (the PDF page it resumes on, how many book pages it lost before it): the book page
     # offset grows by them from that PDF page on, and nothing carries over to it, as after a skipped page
     scan_gaps: Tuple[Tuple[int, int], ...] = ()
+    # PDF pages scanned askew, (PDF page, degrees anticlockwise): each is turned back by its angle whenever the PDF is
+    # opened (pages.open_pdf), so its lines are found and everything is cut from it straight. Askew, a page's lines
+    # overlap in their rows and the line finder takes several as one
+    turned_pages: Tuple[Tuple[int, float], ...] = ()
 
 
 # By the key the CLI takes as a flag (--part-1) and names its store by
@@ -35,9 +39,10 @@ PARTS = {
     "part-2": Part("Kho tàng tục ngữ người việt tập 1 - p2.pdf", (5, 818), 860),
     # Tập 2 opens with the M heading on PDF page 5 (book page 1679, after Part 2's 1678). The scan lost book pages
     # 1707-1722: PDF page 32 (book page 1706) ends with M 140, and PDF page 33 (book page 1723) opens with the end of
-    # M 237's note, then M 238. Its last proverb page is PDF page 736 (book page 2426)
+    # M 237's note, then M 238. Its last proverb page is PDF page 736 (book page 2426). PDF page 612 is scanned 1.6°
+    # clockwise: as scanned, its 29 printed lines were found as 18, and entry 13's first line was in none of them
     "part-3": Part("kho tàng tục ngư người việt tập 2  - p1.pdf", (5, 736), 1674,
-                   number_jumps=(("M", 140, 238),), scan_gaps=((33, 16),)),
+                   number_jumps=(("M", 140, 238),), scan_gaps=((33, 16),), turned_pages=((612, 1.6),)),
     # The T heading opens PDF page 5 (book page 2427), and PDF page 542 (book page 2964) is the last before the
     # Hệ thống tra cứu theo chủ đề and the other indexes
     "part-4": Part("kho tàng tục ngữ người việt tập 2 - p2.pdf", (5, 542), 2422),
