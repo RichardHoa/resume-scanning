@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="vi" data-writable="__WRITABLE__"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Topic Index review</title>
+<link rel="stylesheet" href="web/style.css">
+</head><body>
+<header>
+  <h1 id="title">Loading…</h1>
+  <span id="progress"></span>
+  <span id="readonly" hidden>Read-only: this store can't be written, so nothing can be confirmed</span>
+</header>
+<nav id="pagebar">
+  <button id="prev" title="Previous page (←)">◀</button>
+  <select id="pick"></select>
+  <button id="next" title="Next page (→)">▶</button>
+  <button id="next-open" title="Next line with an open Warning (n; N for the one before)">Next open ⚠</button>
+  <button id="list" aria-pressed="false" title="Every Warning, grouped by kind (w)">Warnings</button>
+  <span class="keys muted">↑↓ line · c confirm · e edit · u undo</span>
+  <span class="zoom">
+    <button id="smaller" title="Smaller">−</button>
+    <button id="larger" title="Larger">+</button>
+  </span>
+</nav>
+<main>
+  <section id="left"><div id="sheet"></div></section>
+  <section id="right">
+    <div id="panel"></div>
+    <div id="pageinfo"></div>
+    <div id="index"></div>
+  </section>
+</main>
+<div id="toast" hidden></div>
+<script src="web/app.js"></script>
+</body></html>

@@ -2,11 +2,12 @@
 The prompts and output schemas of a page's two kinds of request (vocabulary: vsc-project/khoTangTucNguoiNguoiViet/
 GLOSSARY.md): the layout request sees the whole page with its Line Numbers and answers the printed book page number and
 the Line Number each Proverb Entry and letter heading starts on; each Entry Span request sees one Entry Span cut from
-the page, with the two Vision reads of its lines, and answers its Blocks in reading order.
+the page, with the two Vision reads of its lines, and answers its Blocks in reading order. The Topic Index's requests
+(topic_index.py) each see one Index Line: a number line's with no Vision read, a heading line's with its two reads.
 """
 import json
 
-from src.khotangtucngu.assembly import BLOCK_KINDS
+from src.khotangtucngu.assembly import ALPHABET, BLOCK_KINDS
 from src.khotangtucngu.citations import load_abbreviations
 from src.khotangtucngu.diacritics import marked_reading, read_of_line, syllables
 from src.khotangtucngu.settings import FRONT_MATTER
@@ -88,6 +89,86 @@ OCR reads, by Line Number: one of the line alone, one of the whole page. They ar
 Source Abbreviations, spelled letter for letter. A Citation names one of them. A Correction may print one without its
 volume; copy it so:
 """ + ", ".join(load_abbreviations(FRONT_MATTER)) + "\n"
+
+
+_INDEX = """\
+Input: one printed line cut from a page of the book's topic index (Hệ thống tra cứu theo chủ đề). The index files the
+book's Proverb Entries under four chủ đề (I-IV) and their numbered tiểu chủ đề, naming each only by its letter and
+number.
+"""
+
+INDEX_NUMBERS_SYSTEM_PROMPT = _BOOK + _INDEX + """\
+Task: copy the entry numbers the line prints.
+
+The line is either:
+- a row's first line: a large letter at its left, then numbers separated by commas: "C 93, 262, 303, 389,";
+- a row's later line: numbers only, separated by commas: "1191, 1201, 1385, 1386,".
+
+Output:
+- `letter`: the large letter at the line's left, as printed ("C", "Đ", "Â"); "" if the line begins with a number.
+- `numbers`: every number the line prints, left to right, each once, as printed.
+
+Copy only what this line prints, number by number. Never add a number it doesn't print, never continue or complete a
+run of numbers, never drop one. Dots, dashes and specks between the numbers are scan noise: one comma separates every
+two numbers.
+"""
+
+INDEX_HEADING_SYSTEM_PROMPT = _BOOK + _INDEX + """\
+Task: copy the line's text as printed.
+
+The line is usually one of the index's headings, or part of one:
+- a chủ đề's roman numeral, alone and centred: "II";
+- a chủ đề's title, in capitals, perhaps over two lines: "GIỚI TỰ NHIÊN. QUAN HỆ CỦA CON NGƯỜI";
+- a tiểu chủ đề, its number then its title in bold: "17. Tiền bạc, của cải, vay mượn, nợ nần";
+- the rest of a title wrapped onto this line: "tằm, săn bắn, thả cá, đánh bắt cá,...".
+
+Output: `text`: the line as printed, a tiểu chủ đề's number and its full stop included.
+
+Copying:
+- Copy what the scan prints, letter by letter, diacritic by diacritic, capitals as capitals, typos included. Never
+  modernise, correct, reword or add a word.
+
+OCR reads of the line: one of the line alone, one of the whole page. They are hints:
+- [line read|page read] marks a word the reads are unsure of: "[mồ|mô]"; one side is empty if only the other read has
+  it. Spell what the scan prints, which may be neither. Never copy the brackets.
+- An unmarked word was read the same both times and is usually right. Change it only where the scan clearly prints
+  otherwise.
+- "(one read)": the line has one read, so no word is marked.
+"""
+
+
+def index_numbers_user_text(page, n):
+    """A number line's user text: no read of the line, so the model's read is independent of Vision's
+    (docs/adr/0007-number-lines-read-without-a-hint.md beside the GLOSSARY)."""
+    return f"Copy the entry numbers of this line, line {n} of PDF page {page}."
+
+
+def index_heading_user_text(page, n, line_read, page_read):
+    return f"The two reads of the line:\n{reading_line(n, line_read, page_read)}\n\nCopy the text of this line, line " \
+           f"{n} of PDF page {page}."
+
+
+def index_numbers_schema():
+    return {
+        "type": "object",
+        "properties": {
+            "letter": {"type": "string", "enum": [""] + ALPHABET},
+            "numbers": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+        },
+        "required": ["letter", "numbers"],
+    }
+
+
+def index_heading_schema():
+    return {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
+
+
+def index_numbers_prompt_sha1():
+    return sha1(INDEX_NUMBERS_SYSTEM_PROMPT + json.dumps(index_numbers_schema(), sort_keys=True))
+
+
+def index_heading_prompt_sha1():
+    return sha1(INDEX_HEADING_SYSTEM_PROMPT + json.dumps(index_heading_schema(), sort_keys=True))
 
 
 def layout_user_text(page):

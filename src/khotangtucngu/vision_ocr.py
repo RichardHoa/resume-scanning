@@ -3,10 +3,12 @@ The Mac's step of transcribing a Kho tàng tục ngữ người Việt PDF Part:
 job (cli.py) uses the reads.
 
     python3 -m src.khotangtucngu.vision_ocr --part-1 [--pages 36-45,420-424]
+    python3 -m src.khotangtucngu.vision_ocr --part-4-final-section [--pages 547-556]
 
-With no --pages, every proverb page of the Part, as in cli.py; a page the Part skips (settings.Part) never. Run it in your own terminal: Vision's default compute
-device can fail under the Claude Code sandbox (docs/adr/0004-apple-vision-reads-each-page.md beside the GLOSSARY). Its
-dependencies are requirements-macos.txt.
+With no --pages, every proverb page of the Part, as in cli.py; a page the Part skips (settings.Part) never. A key of
+settings.SECTIONS is read the same way, every page of the section, into its own store. Run it in your own terminal:
+Vision's default compute device can fail under the Claude Code sandbox (docs/adr/0004-apple-vision-reads-each-page.md
+beside the GLOSSARY). Its dependencies are requirements-macos.txt.
 
 Each page's printed lines are found on the scan, and each is read twice (docs/adr/0005-two-reads-and-model-edits.md):
 on its own from its crop at PAGE_DPI on white padding, and with the whole page at VISION_PAGE_DPI, each observation of
@@ -38,8 +40,8 @@ from PIL import Image
 from src.khotangtucngu.diacritics import flagged_reads, syllables
 from src.khotangtucngu.pages import find_lines, line_box, open_pdf, page_key, part_pdf, span_image
 from src.khotangtucngu.settings import (
-    PAGE_DPI, PARTS, STORE_DIR, VISION_LANGUAGE, VISION_LANGUAGE_CORRECTION, VISION_LINE_PAD_PX, VISION_PAGE_DPI,
-    VISION_READ_TIMEOUT, VISION_REVISION, VISION_STABILITY_CROPS
+    PAGE_DPI, PARTS, SECTIONS, STORE_DIR, VISION_LANGUAGE, VISION_LANGUAGE_CORRECTION, VISION_LINE_PAD_PX,
+    VISION_PAGE_DPI, VISION_READ_TIMEOUT, VISION_REVISION, VISION_STABILITY_CROPS
 )
 from src.providers.page_images import whole_page_at_dpi
 from src.providers.vlm_requests import file_sha1, page_set, read_json, read_result, write_json
@@ -53,7 +55,11 @@ def parse_args():
     for key, part in PARTS.items():
         which.add_argument(f"--{key}", dest="part", action="store_const", const=key,
                            help=f"{part.pdf}, proverb pages {part.proverb_pages[0]}-{part.proverb_pages[1]}")
-    parser.add_argument("--pages", help="Only these PDF pages, e.g. 36-45,420-424 (default: the Part's proverb pages)")
+    for key, section in SECTIONS.items():
+        which.add_argument(f"--{key}", dest="part", action="store_const", const=key,
+                           help=f"{section.pdf}, PDF pages {section.proverb_pages[0]}-{section.proverb_pages[1]}")
+    parser.add_argument("--pages", help="Only these PDF pages, e.g. 36-45,420-424 (default: the Part's proverb pages, "
+                                        "or the section's pages)")
     return parser.parse_args()
 
 
@@ -204,7 +210,7 @@ def main():
     args = parse_args()
     if sys.platform != "darwin":
         sys.exit(f"[Kho tàng tục ngữ] Apple Vision runs only on macOS, and this is {sys.platform}: run this on the Mac")
-    part = PARTS[args.part]
+    part = PARTS.get(args.part) or SECTIONS[args.part]
     pdf = part_pdf(part.pdf)
     if pdf is None:
         sys.exit(f"[Kho tàng tục ngữ] No PDF '{part.pdf}' for --{args.part}: copy it into the book's folder first")

@@ -240,6 +240,20 @@ def line_box(found, n, below_px=OCR_BELOW_PX):
             min(h, below)]
 
 
+def index_line_box(found, n):
+    """The crop of Line Number `n` of a Topic Index page (`found`, from `find_lines`) for its own request, cut as an
+    Entry Span's: across the page's lines and SPAN_MARGIN_PX beyond, and down from its ink's top (its ocr_top) or half
+    a margin above its band to half a margin below it, never nearer its neighbours' ink than SPAN_EDGE_GAP_PX, so it
+    holds no number of another line."""
+    lines, (w, h) = found["lines"], found["size"]
+    top, bottom = lines[n - 1][:2]
+    left, right = _sides(lines, w)
+    half = SPAN_MARGIN_PX // 2
+    up = top - half if n == 1 else max(lines[n - 2][1] + SPAN_EDGE_GAP_PX, top - half)
+    down = bottom + half if n == len(lines) else min(lines[n][0] - SPAN_EDGE_GAP_PX, bottom + half)
+    return [left, max(0, min(up, found["ocr_tops"][n - 1])), right, min(h, max(down, bottom))]
+
+
 def _crop(doc, page, box, dpi):
     """The part of PDF page `page` (1-based) under `box`, px of its 300 dpi scan, at `dpi` in grayscale, as PNG."""
     with RENDER_LOCK:

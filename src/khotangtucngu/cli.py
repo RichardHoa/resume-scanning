@@ -3,6 +3,9 @@ CLI Entrypoint for transcribing the Proverb Entries of one Kho tàng tục ngữ
 
     python3 -m src.khotangtucngu.cli --part-1 [--pages 36-45,420-421] [--dry-run]
 
+A key of settings.SECTIONS (--part-4-final-section, the Topic Index) is handed to topic_index.py, which reads the
+section's printed lines one by one; everything below is a Part's.
+
 The Part is a key of settings.PARTS, which gives its PDF in vsc-project/khoTangTucNguoiNguoiViet/, its proverb pages
 and its book page offset. With no --pages, every proverb page of the Part (36-865 for Part 1, past the Front Matter).
 A page the Part skips, misprinted in the book (PDF page 671 of Part 1), is never read, answered or warned about.
@@ -94,8 +97,9 @@ from src.khotangtucngu.prompts import (
 from src.khotangtucngu.review import read_log, rebuild
 from src.khotangtucngu.settings import (
     BOOK_DIR, FRONT_MATTER, LABEL_STRIP_PX, LAYOUT_IMAGE, LAYOUT_MAX_TOKENS, PAGE_DPI, PAGE_IMAGE, PARTS,
-    REPETITION_PENALTY, REQUEST_TIMEOUT, RETRY_TEMPERATURE, SPAN_MAX_TOKENS, SPAN_STOP, STORE_DIR
+    REPETITION_PENALTY, REQUEST_TIMEOUT, RETRY_TEMPERATURE, SECTIONS, SPAN_MAX_TOKENS, SPAN_STOP, STORE_DIR
 )
+from src.khotangtucngu import topic_index
 from src.khotangtucngu.vision_ocr import saved_lines, vision_problem
 from src.providers import vlm_requests
 from src.providers.vlm_requests import (
@@ -119,7 +123,11 @@ def parse_args():
     for key, part in PARTS.items():
         which.add_argument(f"--{key}", dest="part", action="store_const", const=key,
                            help=f"{part.pdf}, proverb pages {part.proverb_pages[0]}-{part.proverb_pages[1]}")
-    parser.add_argument("--pages", help="Only these PDF pages, e.g. 36-45,420-421 (default: the Part's proverb pages)")
+    for key, section in SECTIONS.items():
+        which.add_argument(f"--{key}", dest="part", action="store_const", const=key,
+                           help=f"{section.pdf}, PDF pages {section.proverb_pages[0]}-{section.proverb_pages[1]}")
+    parser.add_argument("--pages", help="Only these PDF pages, e.g. 36-45,420-421 (default: the Part's proverb pages, "
+                                        "or the section's pages)")
     parser.add_argument("--model-name", default=DEFAULT_LLM_MODEL)
     parser.add_argument("--vllm-url", default=DEFAULT_VLLM_URL)
     parser.add_argument("--dry-run", action="store_true",
@@ -257,6 +265,9 @@ def print_missing(missing):
 
 def main():
     args = parse_args()
+    if args.part in SECTIONS:
+        topic_index.main(args)
+        return
     part = PARTS[args.part]
     pdf = part_pdf(part.pdf)
     if pdf is None:

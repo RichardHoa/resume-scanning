@@ -23,13 +23,16 @@
 #   sbatch scripts/khotangtucngu/submit.sh --part-<n> [--model <key>] [cli.py flags]    # Parts: src/khotangtucngu/settings.py
 #   sbatch scripts/khotangtucngu/submit.sh --part-1 --pages 36-45,420-421   # a trial; with no --pages, every proverb page
 #   bash scripts/khotangtucngu/submit.sh --part-1 --dry-run                 # on the login node: token counts, no GPU
+#   sbatch scripts/khotangtucngu/submit.sh --part-4-final-section [--pages 547-556,595-600]
+#       the Topic Index (src/khotangtucngu/topic_index.py): each printed line read on its own, a number line with no
+#       Vision read in its prompt; --pages, --dry-run and the Vision check work as for a Part
 #
 # The model profile is served with vision on for this job only (profiles serve text only), and with at most
 # KHOTANGTUCNGU_CONCURRENCY requests in flight (scripts/lib/vision_job.sh).
 # -----------------------------------------------------------------------------
 
 KHOTANGTUCNGU_CONCURRENCY=50
-MAX_IMAGES_PER_PROMPT=1    # a layout request sends its page, an Entry Span request its crop
+MAX_IMAGES_PER_PROMPT=1    # a layout request sends its page, an Entry Span or Index Line request its crop
 VISION_JOB_PREFLIGHT=--check-reads    # a page of this run with no current Vision read ends the job before its server
 # No whitespace between JSON tokens, where an Entry Span's answer can run to max_tokens of newlines (p042-L02). vLLM takes
 # this from the server only, and only with a named backend: "auto" is refused, and tries xgrammar first anyway

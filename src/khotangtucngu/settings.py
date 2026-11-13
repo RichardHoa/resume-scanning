@@ -6,6 +6,9 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 BOOK_DIR = os.path.join(_PROJECT_ROOT, "vsc-project", "khoTangTucNguoiNguoiViet")
 # The transcribed Front Matter: its Bảng chữ tắt I lists the 63 Source Abbreviations
 FRONT_MATTER = os.path.join(BOOK_DIR, "front-matter.md")
+# The Back Matter transcribed by hand: the Topic Index's title page and Lời dẫn (PDF 543-546 of Part 4's PDF) and the
+# compilers' page (PDF 816), which the pipeline never reads
+BACK_MATTER = os.path.join(BOOK_DIR, "back-matter.md")
 # One store per PDF Part, <STORE_DIR>/<its key>/
 STORE_DIR = os.path.join(BOOK_DIR, "store")
 
@@ -48,6 +51,15 @@ PARTS = {
     "part-4": Part("kho tàng tục ngữ người việt tập 2 - p2.pdf", (5, 542), 2422),
 }
 
+# Sections of a PDF Part that are not Proverb Entries, by the key the CLI takes as a flag (--part-4-final-section) and
+# names its store by, apart from PARTS so that the Parts' export and See-also lookups never take one for a Part. Each is
+# a Part's fields, its proverb_pages being its own pages. The Topic Index (Hệ thống tra cứu theo chủ đề, topics.py)
+# opens with chủ đề I on PDF page 547 of Part 4's PDF and ends on PDF page 674 (book page 3096); its title page and Lời
+# dẫn before it, PDF 543-546, are in BACK_MATTER
+SECTIONS = {
+    "part-4-final-section": Part(PARTS["part-4"].pdf, (547, 674), PARTS["part-4"].book_page_offset),
+}
+
 # Pages are read at the scan's 300 dpi, in grayscale PNG, so every diacritic and every subscript is readable
 # (docs/adr/0001-entry-spans-from-numbered-lines.md beside the GLOSSARY): the layout request sees the whole page with
 # its Line Numbers, and each Entry Span is cut from it
@@ -82,6 +94,9 @@ SPAN_MAX_TOKENS = 4096
 # book prints no brackets or braces): a runaway of closing brackets ("}]}}", "]]]]") fails in a few tokens, not at
 # SPAN_MAX_TOKENS
 SPAN_STOP = ("}}", "]]")
+# An Index Line's answer: a heading's text, or a row letter and about a dozen numbers. The cap stops a runaway run of
+# numbers ("1385, 1386, ...") in a few seconds, as an answer cut short
+INDEX_MAX_TOKENS = 512
 # Apple Vision reads every printed line and every whole page on a Mac before the job runs (vision_ocr.py;
 # docs/adr/0004-apple-vision-reads-each-page.md and 0005-two-reads-and-model-edits.md beside the GLOSSARY). Language
 # correction is off, as the book's own spelling is what is copied, and it made no difference in the trial

@@ -3,6 +3,8 @@ Export: website-ready data from the verbatim Proverb Entries of one transcribed 
 
     python3 -m src.khotangtucngu.export --part-1
 
+A key of settings.SECTIONS (--part-4-final-section, the Topic Index) is exported by topic_export.py instead.
+
 Exports the Part named, whose store must have an answers.json. A See-also still resolves to an entry of any Part whose
 store has an answers.json, whose entries are rebuilt for that but not exported: an Unresolved See-also of Part 1
 resolves by itself once Part 2 is transcribed and Part 1 is exported again. The Part's store/<part>/export/ is emptied
@@ -49,7 +51,8 @@ import zipfile
 from src.khotangtucngu.citations import Abbreviations, clean_citation_text, load_abbreviations
 from src.khotangtucngu.pages import entry_image, open_pdf, part_pdf
 from src.khotangtucngu.review import read_answers, read_log, rebuild
-from src.khotangtucngu.settings import BOOK_DIR, FRONT_MATTER, PARTS, STORE_DIR
+from src.khotangtucngu.settings import BOOK_DIR, FRONT_MATTER, PARTS, SECTIONS, STORE_DIR
+from src.khotangtucngu import topic_export
 from src.providers.vlm_requests import write_json
 
 VARIANT_LABEL = "Bản khác"
@@ -363,11 +366,17 @@ def parse_args():
     which = parser.add_mutually_exclusive_group(required=True)
     for key, part in PARTS.items():
         which.add_argument(f"--{key}", dest="part", action="store_const", const=key, help=part.pdf)
+    for key, section in SECTIONS.items():
+        which.add_argument(f"--{key}", dest="part", action="store_const", const=key,
+                           help=f"{section.pdf}, PDF pages {section.proverb_pages[0]}-{section.proverb_pages[1]}")
     return parser.parse_args()
 
 
 def main():
     part = parse_args().part
+    if part in SECTIONS:
+        topic_export.main(part)
+        return
     with open(FRONT_MATTER, encoding="utf-8") as f:
         front_matter = f.read()
     abbreviations = load_abbreviations(FRONT_MATTER)
