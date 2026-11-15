@@ -7,8 +7,5 @@ output_jsons
 server_state
 resumes_pdf
 
-/vsc-project/**
-!/vsc-project/**/
-!/vsc-project/**/review.jsonl
 /runs
 /export

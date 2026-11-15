@@ -210,7 +210,7 @@ def _collect_must_have_rejection(dimension_results: Dict[str, Any]) -> List[Dict
 def _combine_category(outcome: CategoryOutcome, num_evaluations: int, language: str) -> Dict[str, Any]:
     """
     One Category's result: the crashed-Category entry, the Not Applicable entry, or its runs' Verdicts voted per
-    Criterion (_vote_criteria). median_score is the lower median of the runs' own scores, which the voted score may
+    Criterion (vote_criteria). median_score is the lower median of the runs' own scores, which the voted score may
     differ from.
     """
     is_en = is_english(language)
@@ -246,7 +246,7 @@ def _combine_category(outcome: CategoryOutcome, num_evaluations: int, language: 
     has_category_failure = any(r.get("failed", False) for r in eval_runs)
     scores = [r.get("score", FALLBACK_ERROR_SCORE) for r in eval_runs]
 
-    voted = None if has_category_failure else _vote_criteria(eval_runs, is_en)
+    voted = None if has_category_failure else vote_criteria(eval_runs, is_en)
     if voted is not None:
         cat_res = voted
     else:
@@ -288,7 +288,7 @@ def _no_majority_reasoning(verdicts: List[str], is_en: bool) -> str:
     return f"Các lần đánh giá không thống nhất ({split}), không có đa số, nên tính là Một phần."
 
 
-def _vote_criteria(eval_runs: List[Dict[str, Any]], is_en: bool) -> Optional[Dict[str, Any]]:
+def vote_criteria(eval_runs: List[Dict[str, Any]], is_en: bool) -> Optional[Dict[str, Any]]:
     """
     One result from a Category's runs by voting each Criterion's Verdict across them (_vote_verdict), so no single
     sampled run decides what HR sees. The Category score and Criterion Points are recomputed from each Criterion's
@@ -296,7 +296,7 @@ def _vote_criteria(eval_runs: List[Dict[str, Any]], is_en: bool) -> Optional[Dic
     "verdict_runs" counts the runs per Verdict for the split HR is shown. Each Criterion's reasoning and quotes come
     from a run that gave the voted Verdict, and the free text (strengths, gaps, summary) from the run that agrees
     with the most voted Verdicts, so it can still mention a Verdict the vote overturned. None when a run judged no
-    Criteria.
+    Criteria. The Bias Check combines each ordering's runs with it too, so its scores are production Category Scores.
     """
     per_run = [{c["criterion"]: c for c in r.get("criteria_evaluations") or []} for r in eval_runs]
     if not per_run or not all(per_run):

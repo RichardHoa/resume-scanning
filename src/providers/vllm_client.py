@@ -37,8 +37,6 @@ class ChatResult(NamedTuple):
     # Why generation stopped ("stop", "length", ...) and how many tokens it produced, when the server reports them
     finish_reason: Optional[str]
     completion_tokens: Optional[int]
-    # The stop string the answer ended at, if it was one of the request's `stop`; None at the end of the answer
-    stop_string: Optional[str] = None
 
 
 def _connection_error(vllm_url: str, e: urllib.error.URLError) -> RuntimeError:
@@ -83,15 +81,13 @@ def _with_reasoning_strength(messages: List[Dict[str, str]]) -> List[Dict[str, s
 
 def record_usage(
     step: str, prompt_tokens: Optional[int], completion_tokens: Optional[int], finish_reason: Optional[str], max_tokens: int,
-    resume_name: Optional[str] = None, usage_file: Optional[str] = None, elapsed_s: Optional[float] = None,
-    error: Optional[str] = None
+    resume_name: Optional[str] = None, elapsed_s: Optional[float] = None, error: Optional[str] = None
 ) -> None:
     """
-    Appends one request's token counts to `usage_file` (default TOKEN_USAGE_FILE), with the resume or vision task it was
-    made for (None for calls made for neither), how long it took, and for a request that got no answer, why (its
+    Appends one request's token counts to TOKEN_USAGE_FILE, with the resume it was
+    made for (None if none), how long it took, and for a request that got no answer, why (its
     finish_reason is then "error"). Never fails the request it describes.
     """
-    usage_file = usage_file or TOKEN_USAGE_FILE
     record = {
         "timestamp": datetime.now().isoformat(),
         "step": step,
@@ -104,10 +100,10 @@ def record_usage(
         "error": error
     }
     try:
-        with _usage_lock, open(usage_file, "a", encoding="utf-8") as f:
+        with _usage_lock, open(TOKEN_USAGE_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
     except OSError as e:
-        print(f"[Token Usage] Failed to record usage to {usage_file}: {e}", file=sys.stderr)
+        print(f"[Token Usage] Failed to record usage to {TOKEN_USAGE_FILE}: {e}", file=sys.stderr)
 
 
 def _is_resume_record(record: Any, resume_name: str) -> bool:
@@ -192,16 +188,12 @@ def chat(
     step: str = "unlabeled",
     enable_thinking: Optional[bool] = None,
     resume_name: Optional[str] = None,
-    usage_file: Optional[str] = None,
-    text_output: bool = False,
-    repetition_penalty: float = 1.05,
-    stop: tuple = ()
+    repetition_penalty: float = 1.05
 ) -> ChatResult:
     """
-    Sends a chat completion constrained to JSON output: to `json_schema` when given, else any JSON object, or with
-    `text_output` not at all (an OCR model answers plain text).
+    Sends a chat completion constrained to JSON output: to `json_schema` when given, else any JSON object.
     Reasoning in the result is empty unless the model profile lets the model think. `step` and `resume_name`
-    label the request's token usage record, written to `usage_file` (default TOKEN_USAGE_FILE). `enable_thinking`
+    label the request's token usage record, written to TOKEN_USAGE_FILE. `enable_thinking`
     overrides the model profile's thinking setting for this request. A message's content may be a list of OpenAI
     content parts (text and image_url) for vision models.
     """
@@ -217,21 +209,19 @@ def chat(
             "enable_thinking": VLLM_ENABLE_THINKING if enable_thinking is None else enable_thinking
         }
     }
-    if stop:
-        payload["stop"] = list(stop)
     if json_schema is not None:
         # Legacy `guided_json` is silently ignored by current vLLM; `structured_outputs` enforces the schema. Its grammar
         # allows any whitespace between JSON tokens unless the server is started with `disable_any_whitespace`: vLLM
-        # 0.30 reads that from --structured-outputs-config only and ignores it on a request (scripts/khotangtucngu/submit.sh)
+        # 0.30 reads that from --structured-outputs-config only and ignores it on a request
         payload["structured_outputs"] = {"json": json_schema}
-    elif not text_output:
+    else:
         payload["response_format"] = {"type": "json_object"}
 
     started = time.monotonic()
     try:
         body = _post_chat_completion(vllm_url, payload, timeout)
     except RuntimeError as e:
-        record_usage(step, None, None, "error", max_tokens, resume_name, usage_file,
+        record_usage(step, None, None, "error", max_tokens, resume_name,
                      elapsed_s=round(time.monotonic() - started, 1), error=str(e)[:300])
         raise
     elapsed_s = round(time.monotonic() - started, 1)
@@ -239,12 +229,10 @@ def chat(
     message = choice["message"]
     usage = body.get("usage") or {}
     record_usage(step, usage.get("prompt_tokens"), usage.get("completion_tokens"), choice.get("finish_reason"),
-                 max_tokens, resume_name, usage_file, elapsed_s=elapsed_s)
+                 max_tokens, resume_name, elapsed_s=elapsed_s)
     return ChatResult(
         content=message.get("content") or "",
         reasoning=message.get("reasoning") or "",
         finish_reason=choice.get("finish_reason"),
-        completion_tokens=usage.get("completion_tokens"),
-        # vLLM's `stop_reason` is the matched stop string, a stop token's id, or None at the end of the answer
-        stop_string=choice.get("stop_reason") if isinstance(choice.get("stop_reason"), str) else None
+        completion_tokens=usage.get("completion_tokens")
     )

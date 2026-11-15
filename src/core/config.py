@@ -153,13 +153,7 @@ CATEGORY_EVAL_RETRY_TEMPERATURE = 0.5
 # majority), and a Must-have rejects only on a majority of No Evidence. Every run is greedy, so any disagreement
 # is a Verdict the same input does not reliably reproduce (ADR 0009)
 DEFAULT_NUM_EVALUATIONS = 5
-DSPY_MAX_TOKENS = 4096    # DSPy prompt optimization output token limit
 REQUIREMENTS_DECOMPOSITION_MAX_TOKENS = 4096
-# AI Proofreading Pass (src/cli/proofread.py): a page task rewrites at most one page of text; a note task
-# thinks first. Retries after the first attempt sample, as an identical prompt at temperature 0 fails the same way
-PROOFREAD_PAGE_MAX_TOKENS = 4096
-PROOFREAD_NOTE_MAX_TOKENS = 16384
-PROOFREAD_RETRY_TEMPERATURE = 0.3
 # Combined Extraction, how every resume is extracted: the extractor sees page images next to the PyMuPDF text, for layout only.
 # At most COMBINED_MAX_PAGES pages are shown; keep it equal to COMBINED_MAX_PAGES in scripts/lib/model_profiles.sh,
 # which sets vLLM's per-prompt image limit

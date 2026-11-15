@@ -40,8 +40,8 @@ in `scripts/lib/model_profiles.sh`; every job takes a profile key (or a raw Hugg
 
 ```
 src/
-  cli/            command-line entry points (extract, evaluate, backfill_feedback, proofread, audio, ...)
-  pipelines/      extractor, evaluator, scoring, review_panel, ground_truth, proofreader
+  cli/            command-line entry points (extract, evaluate, backfill_feedback)
+  pipelines/      extractor, evaluator, scoring, review_panel, ground_truth
   prompts/        every LLM prompt
   providers/      vLLM client, HR RAG store (rag_engine)
   api/ + server.py, templates/, static/   the FastAPI web workbench
@@ -53,7 +53,6 @@ scripts/
   checks/         extractor accuracy, evaluator consistency and bias checks, token_stats.py
   lib/            shared shell helpers: config.sh, model_profiles.sh, vllm_utils.sh
   server.sh       starts and stops vLLM + the website
-  proofread/, audio/, dspy/   side tools (see below)
 schemas/          the extraction JSON schema
 Vietnamese-dataset/CnB, Vietnamese-dataset/Tech   the two resume sets (not in git)
 rag/              the stored HR RAG (not in git)
@@ -169,73 +168,3 @@ python3 src/ground_truth.py   # review and approve extractions into approved_jso
 ```
 
 Extraction accuracy is measured by the Extractor Accuracy Check (`sbatch scripts/checks/extractor_accuracy.sh`).
-
----
-
-## 🧰 Side Tools
-
-### AI Proofreading Pass (scanned books)
-
-`scripts/proofread/submit.sh` has a model transcribe every page of a scanned book from its scan, with the OCR
-text as a draft, and joins the pages into a new text of the book.
-
-1. In the vsc repo, run `python -m vsc_ocr prepare-ai <book>` and copy the folder it makes, `data-for-ai/<book>/`,
-   here as `vsc-project/`.
-2. Run the pass:
-
-```bash
-bash scripts/proofread/submit.sh --dry-run              # login node: checks every task fits the context window
-sbatch scripts/proofread/submit.sh --pages 10-40         # a trial slice
-sbatch scripts/proofread/submit.sh --pages 10-40 --no-ocr-hint   # the same slice from the images only
-sbatch scripts/proofread/submit.sh                       # the whole book
-sbatch scripts/proofread/submit.sh --run-dir vsc-project/ai-pass/<time>   # finish a run's failed tasks
-```
-
-3. Copy `book.ai.md`, `ai_corrections.jsonl` and `boxes.jsonl` from the run folder `vsc-project/ai-pass/<time>/`
-   back to `data/books/<book>/ai/` in the vsc repo and review them there with `python -m vsc_ocr review <book> --ai`.
-
-`coverage.jsonl` in the run folder lists, page by page, the OCR lines the model left out (put back, marked
-`⚠ ai-missed?`) and the text it wrote that the OCR didn't see (marked ⚠). To choose between sending the OCR draft
-or not, compare two runs of the same slice against the reviewer's own corrections:
-
-```bash
-python3 scripts/proofread/compare_ocr_hint.py vsc-project/ai-pass/<with-hint> vsc-project/ai-pass/<without>
-```
-
-### Kho tàng tục ngữ người Việt (scanned proverb collection)
-
-Apple Vision reads each page of one PDF Part on a Mac, the vision model on the cluster turns those reads into Proverb
-Entries, you review and fix them page by page against the scan, then export that Part's website data. Put the Part's PDF
-in `vsc-project/khoTangTucNguoiNguoiViet/` first; everything for a Part lives in its `store/<part>/`. The examples use
-`--part-1`; swap in `--part-2`, `--part-3` or `--part-4` (and `store/part-N/`) for the others.
-
-```bash
-STORE=vsc-project/khoTangTucNguoiNguoiViet/store/part-1
-
-# 1. Read the pages with Apple Vision (Mac; pip install -r requirements-macos.txt)
-python3 -m src.khotangtucngu.vision_ocr --part-1
-rsync -a $STORE/lines $STORE/vision <user>@<login node>:<repo>/$STORE/
-
-# 2. Transcribe (cluster)
-bash scripts/khotangtucngu/submit.sh --part-1 --dry-run      # token counts, sends nothing
-sbatch scripts/khotangtucngu/submit.sh --part-1              # add --pages 36-45,420 to (re)do only those pages
-
-# 3. Review (laptop) at http://127.0.0.1:8000/
-rsync -a --exclude review.jsonl <user>@<login node>:<repo>/$STORE/ $STORE/
-(cd $STORE && python3 serve.py)
-rsync -a $STORE/review.jsonl <user>@<login node>:<repo>/$STORE/   # before the next cluster run
-
-# 4. Export this Part to store/part-1/export/ (laptop)
-python3 -m src.khotangtucngu.export --part-1
-```
-
-### Audio transcription
-
-`scripts/audio/transcribe.sh` and `sbatch scripts/audio/submit_transcript.sh` turn an interview recording into a
-timestamped, speaker-labelled transcript, in a separate venv from `requirements-audio.txt`. See
-[`docs/audio-transcribe.md`](docs/audio-transcribe.md).
-
-### DSPy prompt training
-
-`sbatch scripts/dspy/train.sh [model]` optimizes the evaluator prompt with DSPy MIPRO. The optimizer predates the
-current Verdict format and must be updated before it is run again (`src/optimization/dspy_evaluator.py`).
