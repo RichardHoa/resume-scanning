@@ -27,7 +27,7 @@ Voting per Criterion replaced showing the median-scoring run's Verdicts. With ab
 
 ## Consequences
 
-- The bias runner has its own call path at temperature 0, so the bias suite is unaffected.
+- The Bias Check runs each ordering in `DEFAULT_NUM_EVALUATIONS` greedy runs with no retries (a retry samples at 0.5, mixing sampling noise into the ordering effect) and combines them as production does (`vote_criteria`), so its scores are production Category Scores of a reordered prompt.
 - The evaluator consistency check goes through the production code, so it measures only what changes between greedy runs of the same input: vLLM's run-to-run noise, and the near-tie Verdicts it tips.
 - Retries after a failed attempt still sample at 0.5, so a resume that needed a retry can give a different Verdict on a re-evaluation.
 - Most runs will agree, so the vote and the mean will usually just repeat run 1. That is expected, not a reason to sample again.

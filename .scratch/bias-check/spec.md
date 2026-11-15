@@ -7,8 +7,8 @@ fuzzy Criterion matching, unweighted scoring, hand-built candidate slices (so ev
 production prompt), two suites raising `STALE`, old root paths (`output_jsons/`, `bias-result/`, `logging/bias_prompts/`)
 and per-model plumbing.
 
-Decisions 1–18 were implemented on 2026-10-25 (`d280c0f`). Decisions 19–26 (2026-11-15) are open: production now
-combines 5 runs per Category, and the Bias Check still compares single runs.
+Decisions 1–18 were implemented on 2026-10-25 (`d280c0f`). Decisions 19–26 (2026-11-15) were implemented on
+2026-11-15: the Bias Check now combines each ordering's runs as production combines a Category's 5 runs.
 
 ## Decisions
 
@@ -46,8 +46,9 @@ combines 5 runs per Category, and the Bias Check still compares single runs.
 12. **Not Applicable Category** (no Criteria in the HR RAG): skipped with a log line and left out of the summary, never
     tested against a made-up Criterion. A vector store whose Criteria differ from the stored HR RAG fails the category,
     as in production.
-13. **5 repetitions** per category stay (`NUM_TEST_ITERATIONS`), each with its own Baseline: at temperature 0 they show
-    the vLLM nondeterminism floor that ordering effects must beat.
+13. **5 repetitions** per category stay (`NUM_TEST_ITERATIONS`, now set from `DEFAULT_NUM_EVALUATIONS`; decision 19). Each
+    ordering's runs across them are combined into its Category Score (decisions 20, 23), and the 5 single-run Baseline
+    scores are still shown as the vLLM nondeterminism floor.
 14. **Extraction step**: `evaluator_bias.py` extracts itself with `ResumeExtractor`, `is_scanned_pdf` and
     `extraction_error`, as `evaluator_consistency.py`'s `extract_once` does; the `.sh` no longer calls
     `src/step_1_extractor.py`. The PDF is the constant `Vietnamese-dataset/CnB/CnB - Nguyen Ho Mi Sa.pdf` (missing →
@@ -90,8 +91,8 @@ when production would move the score by a fifth of that per run.
     there are no extra LLM calls.
 20. **Each ordering's 5 runs are combined as production combines a Category's runs**: the Criterion Score mean, the
     voted Verdict and the Category Score from the Criterion Scores. This reuses the code in `src/pipelines/scoring.py`
-    and never writes a second copy: make the combining part of `_vote_criteria` public (e.g. `combine_runs(eval_runs)`,
-    returning the voted criteria and the score) and call it from both `_vote_criteria` and the Bias Check. The
+    and never writes a second copy: `_vote_criteria` is made public as `vote_criteria` and the Bias Check calls it
+    (`combine_orderings` in `src/bias/summary.py`). The
     Baseline's 5 runs are combined the same way into the **Combined Baseline**.
 21. **A failed run fails its ordering**: an ordering with any invalid run among its 5 has no combined score. It is
     counted as failed and left out of the percentages, as a failed run fails its Category in production

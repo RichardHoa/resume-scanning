@@ -2,8 +2,9 @@
 Bias Check report page (HTML).
 
 Renders runs/bias-cnb/report.html from the bias_summary.csv and report.txt that src/bias/summary.py
-writes: one bar chart per category showing how many points each shuffle kind moved the score from the Baseline,
-plus the raw report.txt and bias_summary.csv as tabs. The page is self-contained (no network), so it opens offline.
+writes: one bar chart per category showing how many points each shuffle kind moved the combined score from the
+Combined Baseline, plus the raw report.txt and bias_summary.csv as tabs. The page is self-contained (no network), so
+it opens offline.
 
 Rebuild from an existing summary without re-running:
   python3 -m src.bias.report_html runs/bias-cnb
@@ -22,7 +23,7 @@ HTML_FILENAME = "report.html"
 TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_template.html")
 DATA_MARKER = "/*__REPORT_DATA__*/null"
 
-PCT_FIELDS = ["changed_pct", "moved_0_pct", "moved_1_30_pct", "moved_31_60_pct", "moved_61_100_pct", "went_up_pct", "went_down_pct"]
+PCT_FIELDS = ["changed_pct", "verdict_changed_pct", "moved_0_pct", "moved_1_30_pct", "moved_31_60_pct", "moved_61_100_pct", "went_up_pct", "went_down_pct"]
 
 
 def _num(value: str, cast) -> Optional[Any]:
@@ -36,13 +37,14 @@ def load_summary_categories(csv_path: str) -> List[Dict[str, Any]]:
         for raw in csv.DictReader(f):
             row = {
                 "shuffle_kind": raw["shuffle_kind"],
-                "runs": int(raw["runs"]),
+                "orderings": int(raw["orderings"]),
                 "failed": int(raw["failed"]),
                 "biggest_change": _num(raw["biggest_change"], int),
                 **{name: _num(raw[name], float) for name in PCT_FIELDS},
             }
             cat = categories.setdefault(raw["category"], {
                 "category": raw["category"],
+                "combined_baseline": raw["combined_baseline"],
                 "baseline_scores": raw["baseline_scores"],
                 "rows": [],
             })

@@ -2,7 +2,9 @@
 """
 CLI entry point for the Bias Check (.scratch/bias-check/spec.md): whether a Category's score depends on the order its
 prompt content is given in. Extracts the one fixed CnB resume from its PDF with Combined Extraction, then runs each
-category's Baseline and Shuffle Kinds as production Category runs on the default model, 5 Bias Repetitions each.
+category's Baseline and Shuffle Kinds as production Category runs on the default model, one run per Bias Repetition
+(DEFAULT_NUM_EVALUATIONS). Each ordering's runs are combined into a Category Score as production combines them and
+compared against the Combined Baseline.
 
 The stored HR RAG must be the CnB one. Run through scripts/checks/evaluator_bias.sh, which wipes runs/bias-cnb and
 serves the default model with vision on; everything is written to runs/bias-cnb.
@@ -271,6 +273,7 @@ def main():
         print("\n" + "#" * 86, file=sys.stderr)
         print(" 🏆 OVERALL BIAS CHECK MULTI-CATEGORY REPORT", file=sys.stderr)
         print("#" * 86, file=sys.stderr)
+        # Scores are combined per ordering, as production combines a Category's runs; Baseline is the Combined Baseline
         print(f" {'Category':<28s} | {'Runs':<10s} | {'Baseline':<8s} | {'Score Range':<14s} | {'Spread (Δ)':<10s}", file=sys.stderr)
         print("-" * 86, file=sys.stderr)
         for s in overall_summaries:
@@ -282,11 +285,12 @@ def main():
             if s.get("dry_run"):
                 print(f" {cat_name:<28s} | {tot_runs:<10,d} | {'DRY-RUN':<8s} | {'[N/A]':<14s} | {'[DRY-RUN]':<10s}", file=sys.stderr)
             else:
-                base_sc = s.get("baseline_score", 0)
+                base_sc = s.get("baseline_score")
+                base_sc = "failed" if base_sc is None else str(base_sc)
                 min_sc = s.get("min_score", 0)
                 max_sc = s.get("max_score", 0)
                 spread = s.get("total_spread_delta", 0)
-                print(f" {cat_name:<28s} | {tot_runs:<10,d} | {base_sc:<8d} | [{min_sc:3d} - {max_sc:3d}]     | Δ = {spread:2d} pts", file=sys.stderr)
+                print(f" {cat_name:<28s} | {tot_runs:<10,d} | {base_sc:<8s} | [{min_sc:3d} - {max_sc:3d}]     | Δ = {spread:2d} pts", file=sys.stderr)
         for cat_key in failed_categories:
             print(f" {cat_key:<28s} | FAILED (see the error above)", file=sys.stderr)
         print("#" * 86, file=sys.stderr)

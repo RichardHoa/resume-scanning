@@ -19,5 +19,5 @@ The risk that "resumes omit things" sits with HR: a Must-have exists only becaus
 
 ## Consequences
 
-- A Must-have Rejection's Match Recommendation is `MUST_HAVE_REJECTED`, whatever the score, so every consumer of the report (the website, the PDF report, the API job result, the checks, prompt training) sees that the candidate is out. The scores are still computed and stored. The website and the PDF report show "Bị loại – thiếu tiêu chí bắt buộc" with the score greyed out. The status stays `ok`.
-- The bias runner, DSPy and mocks score without an Importance map, so they never apply the gate.
+- A Must-have Rejection's Match Recommendation is `MUST_HAVE_REJECTED`, whatever the score, so every consumer of the report (the website, the PDF report, the API job result, the checks) sees that the candidate is out. The scores are still computed and stored. The website and the PDF report show "Bị loại – thiếu tiêu chí bắt buộc" with the score greyed out. The status stays `ok`.
+- Mock replies score without an Importance map, so they never apply the gate. The Bias Check scores with the HR RAG's Importance map but compares Category Scores, so it never applies the gate either: the gate is decided per candidate (`score_candidate`).

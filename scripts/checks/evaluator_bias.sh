@@ -26,7 +26,8 @@
 #
 # Runs on the default model profile only (DEFAULT_MODEL_KEY in scripts/lib/model_profiles.sh). Extracts the one fixed
 # CnB resume (Vietnamese-dataset/CnB/CnB - Nguyen Ho Mi Sa.pdf) from scratch with Combined Extraction, then runs each
-# category's Baseline and Shuffle Kinds as production Category runs.
+# category's Baseline and Shuffle Kinds as production Category runs, once per Bias Repetition, and compares each
+# ordering's runs, combined as production combines a Category's runs, against the Combined Baseline.
 #
 # The resume is a CnB resume, so set the CnB HR RAG on the website's RAG page before submitting. Wipes runs/bias-cnb
 # first; it holds the extraction JSON, the per-category CSVs, bias_summary.csv / report.txt / report.html, the prompt

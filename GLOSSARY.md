@@ -153,13 +153,17 @@ One way of reordering the same prompt content in the Bias Check (e.g. Macro Perm
 _Avoid_: experiment type, permutation group
 
 **Baseline**:
-The unshuffled evaluation run in each Bias Repetition; every Shuffle Kind run in that Bias Repetition is compared against it.
+The unshuffled ordering in the Bias Check, run once in each Bias Repetition. Its runs combined make the Combined Baseline, which every Shuffle Kind ordering is compared against.
 _Avoid_: control, reference run
 
+**Combined Baseline**:
+The Baseline's runs, one per Bias Repetition, combined into one Category Score as production combines a Category's runs. Every Shuffle Kind ordering's combined score is compared against it.
+_Avoid_: average baseline, mean baseline
+
 **Bias Check**:
-A test of whether a Category's score depends on the order its prompt content is given in: one fixed CnB resume is judged by one production Category run per ordering, the Baseline and every Shuffle Kind, and each is compared against the Baseline. It needs the CnB HR RAG to be stored.
+A test of whether a Category's score depends on the order its prompt content is given in: one fixed CnB resume is judged on every ordering, the Baseline and every Shuffle Kind, by its production Category Score: one greedy run per Bias Repetition, combined as production combines a Category's runs. Each ordering's score is compared against the Combined Baseline. It needs the CnB HR RAG to be stored.
 _Avoid_: bias test, bias suite, positional test
 
 **Bias Repetition**:
-One full pass of the Bias Check for a Category: its Baseline and every Shuffle Kind run, each compared against that pass's own Baseline. The Bias Check makes 5, so the differences between them show how much a score moves with no reordering at all.
+One full pass of the Bias Check for a Category: one greedy run of its Baseline and of every Shuffle Kind ordering. The Bias Check makes `DEFAULT_NUM_EVALUATIONS` (5), one per production evaluation run, and combines each ordering's runs into its Category Score. The differences between the single-run Baselines show how much one run moves with no reordering at all.
 _Avoid_: iteration, Repeat Evaluation (that is the evaluator consistency check's)

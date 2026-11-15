@@ -93,14 +93,14 @@ pre.file { margin: 0; font: 12px/1.45 var(--mono); background: var(--bg); border
   <header>
     <div class="eyebrow" id="path">runs/</div>
     <h1>Evaluator Bias Report · <span class="model" id="model"></span></h1>
-    <p>For each category, each row is one shuffle kind: the same prompt content in a different order. The bar shows how many points the score moved from the Baseline of the same Bias Repetition.</p>
+    <p>For each category, each row is one shuffle kind: the same prompt content in a different order. The bar shows how many points each ordering's combined score moved from the Combined Baseline: each ordering is run once per Bias Repetition and its runs are combined as production combines a Category's runs.</p>
   </header>
 
   <section class="panel">
     <div class="seg" id="views" role="group" aria-label="View"></div>
     <div id="out"></div>
     <div class="note">
-      <div>Percentages are over non-failed runs. A run counts as failed if its own output was invalid, or if the Baseline of its Bias Repetition was invalid, because there is no trusted score to compare against.</div>
+      <div>Percentages are over non-failed orderings. An ordering counts as failed if any of its runs was invalid, as a failed run fails its Category in production, or if the Combined Baseline failed, because there is no trusted score to compare against. "Verdicts" is the share of orderings with at least one voted Verdict different from the Combined Baseline's.</div>
     </div>
   </section>
 </div>
@@ -144,11 +144,11 @@ function bindTips(root) {
 }
 
 function barHtml(r) {
-  const ok = r.runs - r.failed;
-  if (ok === 0) return `<div class="bar"><i style="flex:1;background:var(--grid)" data-tip="${esc(`<b>${esc(r.shuffle_kind)}</b><br>No valid runs to compare`)}"></i></div>`;
+  const ok = r.orderings - r.failed;
+  if (ok === 0) return `<div class="bar"><i style="flex:1;background:var(--grid)" data-tip="${esc(`<b>${esc(r.shuffle_kind)}</b><br>No valid orderings to compare`)}"></i></div>`;
   return `<div class="bar">` + BUCKETS.map(([name, label, color]) => {
     const v = r[name]; if (!v) return "";
-    const t = `<b>${esc(r.shuffle_kind)}</b><br>${label}<br>${v.toFixed(1)}% <span class="muted">of ${fi(ok)} valid runs</span>`;
+    const t = `<b>${esc(r.shuffle_kind)}</b><br>${label}<br>${v.toFixed(1)}% <span class="muted">of ${fi(ok)} valid orderings</span>`;
     return `<i style="flex:${v} 1 0;background:var(${color})" data-tip="${esc(t)}"></i>`;
   }).join("") + `</div>`;
 }
@@ -158,17 +158,17 @@ function renderChart(out) {
   let h = `<div class="legend">${BUCKETS.map(([, label, color]) => `<span><i class="sw" style="background:var(${color})"></i>${label}</span>`).join("")}</div>`;
   for (const c of DATA.categories) {
     const chips = c.baseline_scores.split(" ").filter(Boolean).map(s => `<span class="chip ${s === "failed" ? "fail" : ""}">${esc(s)}</span>`).join("");
-    h += `<div class="cat"><div class="cat-head"><h3>${esc(c.category)}</h3><div class="bases">Baseline per Bias Repetition ${chips || "-"}</div></div><div class="rows">`;
-    h += `<div class="row hdr"><span>Shuffle kind</span><span>Points moved from Baseline</span><span class="num">Changed</span><span class="num">Up / Down</span><span class="num">Biggest</span><span class="num">Runs</span></div>`;
+    h += `<div class="cat"><div class="cat-head"><h3>${esc(c.category)}</h3><div class="bases">Combined Baseline <span class="chip ${c.combined_baseline === "failed" ? "fail" : ""}">${esc(c.combined_baseline)}</span> · single runs ${chips || "-"}</div></div><div class="rows">`;
+    h += `<div class="row hdr"><span>Shuffle kind</span><span>Points moved from Combined Baseline</span><span class="num">Changed</span><span class="num">Up / Down</span><span class="num">Biggest</span><span class="num">Orderings</span></div>`;
     for (const r of c.rows) {
       const failed = r.failed ? `<span class="failtxt">${fi(r.failed)} failed</span>` : `<span class="sub">0 failed</span>`;
       h += `<div class="row ${r.shuffle_kind === "ALL" ? "all" : ""}">
         <span class="kind">${esc(r.shuffle_kind)}</span>
         ${barHtml(r)}
-        <span class="num c-changed">${fp(r.changed_pct)}</span>
+        <span class="num c-changed">${fp(r.changed_pct)}<br><small class="sub">verdicts ${fp(r.verdict_changed_pct)}</small></span>
         <span class="updown">▲ ${fp(r.went_up_pct)} ▼ ${fp(r.went_down_pct)}</span>
         <span class="num c-big">${r.biggest_change ?? "-"}</span>
-        <span class="num c-runs">${fi(r.runs)}<br><small>${failed}</small></span>
+        <span class="num c-runs">${fi(r.orderings)}<br><small>${failed}</small></span>
       </div>`;
     }
     h += `</div></div>`;

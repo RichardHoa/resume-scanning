@@ -29,4 +29,4 @@ To HR, a nice-to-have helps when it is there and costs nothing when it is not. A
 - A Nice-to-have is always worth half a Standard. With one of each, the Nice-to-have is worth +50.
 - A Category whose Criteria are all Nice-to-have has nothing to score against, so the criteria editor refuses to save it, and evaluation stops with an error if it meets one.
 - The evaluator's free-text gaps and the Review Panel's weaknesses may still mention a missing Nice-to-have. Only the points follow the no-penalty rule.
-- Callers that score without an Importance map (the bias runner, DSPy, mocks) treat every Criterion as Standard and keep the static schema.
+- Mock replies score without an Importance map, so every Criterion is Standard.
