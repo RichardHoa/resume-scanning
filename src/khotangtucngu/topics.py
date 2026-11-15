@@ -76,8 +76,22 @@ _AS_DIGIT = str.maketrans({"l": "1", "I": "1", "|": "1", "ı": "1", "O": "0", "o
 # ...and for the I of a chủ đề's numeral
 _AS_ROMAN = str.maketrans({"l": "I", "1": "I", "|": "I", "ı": "I"})
 _RUNNING_HEAD = re.compile(r"kho tàng|tục ngữ|tra cứu|theo chủ")
+# Cyrillic and Greek capitals and small letters Vision reads for the book's Latin ones ("В 1, 228" for "B 1, 228"),
+# mended before anything else: decomposed first, so a Cyrillic Ӑ is mended to Ă
+_HOMOGLYPHS = str.maketrans(dict(zip(
+    "АВСЕНІКМОРТХУЅаеіорсхуΑΒΕΗΙΚΜΝΟΡΤΥΧΖο",
+    "ABCEHIKMOPTXYSaeiopcxyABEHIKMNOPTYXZo")))
+# A letter Vision reads for a row's letter that is no letter of the book's alphabet: its À is the book's Ă
+_AS_LETTER = {"À": "Ă"}
 # A chủ đề's numeral is centred: its middle within this share of the page's width from the middle of the page's lines
 CENTRED_SHARE = 0.1
+# A line Vision has no read of is scan noise or a printed rule, not of the index, if it is thinner than this (px of the
+# 300 dpi scan), or touches the page's edge and is no taller than NOISE_EDGE_PX
+NOISE_PX, NOISE_EDGE_PX = 30, 100
+# ...or is the wide rule under a Running Head, thinner than the index's smallest printed lines
+NUMBER_PX = 35
+# ...and a chủ đề's numeral Vision can't read ("II") if it is centred and no wider than this share of the page's width
+NUMERAL_SHARE = 0.06
 
 
 def _whole(value):
@@ -85,8 +99,10 @@ def _whole(value):
 
 
 def _nfc(text):
-    """`text` in NFC, stripped, with Vision's Icelandic eth (Ð) read as the book's Đ."""
-    return unicodedata.normalize("NFC", text or "").replace("Ð", "Đ").replace("ð", "đ").strip()
+    """`text` in NFC, stripped, with Vision's Icelandic eth (Ð) read as the book's Đ, and its Cyrillic and Greek
+    look-alikes as the book's Latin letters."""
+    text = unicodedata.normalize("NFD", text or "").translate(_HOMOGLYPHS)
+    return unicodedata.normalize("NFC", text).replace("Ð", "Đ").replace("ð", "đ").strip()
 
 
 def _letters(text):
@@ -96,7 +112,8 @@ def _letters(text):
 def parse_number_line(text):
     """
     {"letter", "numbers", "items"} of a read of a number line, or None if it doesn't read as one. Its first word may be
-    a letter of the book's alphabet ("C 93, 262", "C93,"); everything after it is numbers separated by commas (or
+    a letter of the book's alphabet ("C 93, 262", "C93,"), or any other capital, kept as read for the checks to warn
+    of ("F 12"), but Vision's À, the book's Ă; everything after it is numbers separated by commas (or
     semicolons, which Vision reads some commas as), with scan noise between them ("82,·628", "138,-139"). Letters
     Vision reads for digits (l, O) count as digits in a word holding one; a read with letters beyond two such is no
     number line. "items" is how many of its comma-separated pieces hold a digit: the Count check's.
@@ -106,9 +123,10 @@ def parse_number_line(text):
     letter = ""
     if text and text[0].isalpha():
         follows = text[1:2]
-        upper = text[0].upper()
-        if upper in ALPHABET and (not follows or follows.isspace()
-                                  or (follows.isdigit() and text[0].isupper() and upper not in ("I", "O"))):
+        upper = _AS_LETTER.get(text[0].upper(), text[0].upper())
+        if (upper in ALPHABET or text[0].isupper()) and (
+                not follows or follows.isspace()
+                or (follows.isdigit() and text[0].isupper() and upper not in ("I", "O"))):
             letter, text = upper, text[1:]
     words = [w.translate(_AS_DIGIT) if any(ch.isdigit() for ch in w) else w for w in text.split()]
     rest = " ".join(words)
@@ -144,23 +162,29 @@ def _read(line):
     return line_read if any(ch.isalnum() for ch in line_read) else _nfc(line["page_read"])
 
 
-def _kind(line, text, middle, size, heading_open):
-    """The kind of a line read as `text` (see `classify_page`). Numbers are tried before a tiểu chủ đề, so a
-    continuation read "12, l5, 67" is no tiểu chủ đề 12."""
-    _, _, left, right = line["line"]
+def _kind(line, text, middle, size, heading_open, first):
+    """The kind of a line read as `text` (see `classify_page`), `first` if no line above it on the page has a read.
+    Numbers are tried before a tiểu chủ đề, so a continuation read "12, l5, 67" is no tiểu chủ đề 12."""
+    top, bottom, left, right = line["line"]
+    centred = abs((left + right) / 2 - middle) <= CENTRED_SHARE * size[0]
     if not text:
-        return UNREAD
-    if line["n"] == 1 and (_RUNNING_HEAD.search(text.casefold()) or (
+        edge = top <= 0 or left <= 0 or bottom >= size[1] or right >= size[0]
+        if bottom - top < NOISE_PX or (edge and bottom - top <= NOISE_EDGE_PX):
+            return NOT_INDEX
+        return CHU_DE if centred and right - left <= NUMERAL_SHARE * size[0] else UNREAD
+    if first and (_RUNNING_HEAD.search(text.casefold()) or (
             re.search(r"^\d{3,4}\s+\D|\D\s+\d{3,4}$", text) and len(re.findall(r"[^\W\d_]{2,}", text)) >= 2)):
         return NOT_INDEX
-    if heading_number(CHU_DE, text) and abs((left + right) / 2 - middle) <= CENTRED_SHARE * size[0]:
+    if heading_number(CHU_DE, text) and centred:
         return CHU_DE
     parsed = parse_number_line(text)
     if parsed:
         return ROW_START if parsed["letter"] else ROW_CONTINUATION
     if heading_number(TIEU_CHU_DE, text):
         return TIEU_CHU_DE
-    return TITLE if heading_open and _letters(text) else UNCLASSIFIED
+    # A chủ đề's title is in capitals, so it is one even where Vision couldn't read the numeral above it
+    capitals = len(re.findall(r"[^\W\d_]{2,}", text)) >= 2 and text == text.upper() and not re.search(r"\d", text)
+    return TITLE if (heading_open or capitals) and _letters(text) else UNCLASSIFIED
 
 
 def classify_page(lines, size, heading_open=False):
@@ -169,12 +193,15 @@ def classify_page(lines, size, heading_open=False):
     order, from its Vision reads and position, and whether a heading is still open at the page's end, for the next
     page's `heading_open`:
 
-      NOT_INDEX           the first line, if it is a Running Head: words and a page number at one end, or the title
-      CHU_DE              a roman numeral I-IV alone, centred
-      ROW_START           a letter of the book's alphabet, then numbers
+      NOT_INDEX           the first line with a read, if it is a Running Head: words and a page number at one end, or
+                          the title; or a line with no read thinner than NOISE_PX, at the page's edge, or the rule under
+                          a Running Head (noise, rules)
+      CHU_DE              a roman numeral I-IV alone, centred; or a narrow centred line with no read
+      ROW_START           a letter (`parse_number_line`), then numbers
       ROW_CONTINUATION    numbers only, which continue the Topic Row above, on this page or the page before
       TIEU_CHU_DE         "N. words" at the left
-      TITLE               words, while a heading is open: a chủ đề, tiểu chủ đề or title line came last
+      TITLE               words, while a heading is open: a chủ đề, tiểu chủ đề or title line came last; or words all
+                          in capitals
       UNREAD              no read from Vision
       UNCLASSIFIED        anything else
 
@@ -183,12 +210,18 @@ def classify_page(lines, size, heading_open=False):
     if not lines:
         return [], heading_open
     middle = (min(l["line"][2] for l in lines) + max(l["line"][3] for l in lines)) / 2
-    kinds = []
+    kinds, first = [], True
     for line in lines:
-        kind = _kind(line, _read(line), middle, size, heading_open)
+        kind = _kind(line, _read(line), middle, size, heading_open, first)
         # A line read garbled into words is tried again from the page read
         if kind == UNCLASSIFIED and _nfc(line["page_read"]):
-            kind = _kind(line, _nfc(line["page_read"]), middle, size, heading_open)
+            kind = _kind(line, _nfc(line["page_read"]), middle, size, heading_open, first)
+        first = first and not _read(line)
+        # The rule printed under a Running Head
+        top, bottom, left, right = line["line"]
+        if kind == UNREAD and kinds and kinds[-1] == NOT_INDEX and right - left > size[0] / 2 \
+                and bottom - top < NUMBER_PX:
+            kind = NOT_INDEX
         if kind != NOT_INDEX:
             heading_open = kind in HEADING_KINDS
         kinds.append(kind)
@@ -230,10 +263,11 @@ def agreement(kind, vision, vlm):
 
 
 def model_values(line):
-    """An Index Line's values as read: the model's answer, or Vision's where the model has none. An UNREAD line the
-    model read is a ROW_START if it read a letter, else a ROW_CONTINUATION."""
+    """An Index Line's values as read: the model's answer, or Vision's where the model has none. A number line the
+    model read is a ROW_START if it read a letter, else a ROW_CONTINUATION, whatever Vision's read made it: a row's
+    letter is never filed under the row above."""
     kind, read = line["kind"], line["vlm"] or line["vision"] or {}
-    if kind == UNREAD and line["vlm"]:
+    if kind in NUMBER_KINDS and line["vlm"]:
         kind = ROW_START if line["vlm"]["letter"] else ROW_CONTINUATION
     if kind in NUMBER_KINDS:
         return {"kind": kind, "letter": read.get("letter", ""), "numbers": list(read.get("numbers", [])), "text": ""}

@@ -257,8 +257,8 @@ function editor(p, line) {
       problem.textContent = "";
       save.disabled = false;
       preview.replaceChildren(h("div", {class: "muted small"}, "Confirmed with these values:"),
-        raised.length ? raised.map(w => warningLine(w)) : h("div", {class: "small"}, "no new Warnings"),
-        cleared.map(w => warningLine(w, true)));
+        ...(raised.length ? raised.map(w => warningLine(w)) : [h("div", {class: "small"}, "no new Warnings")]),
+        ...cleared.map(w => warningLine(w, true)));
     } catch (e) {
       if (mine !== seq) return;
       problem.textContent = e.message;
@@ -295,19 +295,25 @@ function renderPanel() {
   }
   const page = PAGES[current];
   // An unclassified or unread line has no values to confirm as it stands: its kind is chosen in the editor
-  const acts = WRITABLE && (line.confirmed || line.kind in LINE_KINDS) ? [
+  const acts = WRITABLE ? [
+    line.kind !== "not_index"
+      ? h("button", {title: "Drop the line from the index: confirm it as not of the index, and go to the next open " +
+                            "Warning (d)", onclick: () => deleteLine(current, line)}, "🗑 Delete")
+      : null,
     line.confirmed
       ? h("button", {title: "Put the model's read and its Warnings back (u)", onclick: () => undoLine(current, line)}, "Undo")
-      : h("button", {class: "primary", title: "Confirm the line as it stands, and go to the next open Warning (c)",
-                     onclick: () => confirmLine(current, line)}, "✓ Confirm"),
+      : line.kind in LINE_KINDS
+        ? h("button", {class: "primary", title: "Confirm the line as it stands, and go to the next open Warning (c)",
+                       onclick: () => confirmLine(current, line)}, "✓ Confirm")
+        : null,
   ] : null;
   panel.replaceChildren(
     h("div", {class: "panelhead"}, h("b", {}, `${lineName(line)} · ${kindName(line.kind)}`),
       h("span", {class: `tag ${line.state}`}, STATE_NAMES[line.state]), line.edited ? h("span", {class: "tag edited"}, "Edited") : null,
       h("span", {class: "acts"}, acts)),
     cropView(page, line), readsTable(line),
-    warningsOf(current, line).map(w => warningLine(w)),
-    WRITABLE ? editor(current, line) : null);
+    ...warningsOf(current, line).map(w => warningLine(w)),
+    WRITABLE ? editor(current, line) : "");
 }
 
 // -- the page's index as assembled, one row per line
@@ -348,7 +354,7 @@ function renderIndex() {
   const own = VIEW.warnings.filter(w => w.page === current && !w.band);
   $("#pageinfo").replaceChildren(h("b", {}, `PDF page ${current}`),
     page ? ` · book page ${page.book_page} · ${page.lines.length} Index Lines` : " · no answer for this page",
-    own.map(w => warningLine(w)));
+    ...own.map(w => warningLine(w)));
   if (!page) { index.replaceChildren(); return; }
   const open = OPEN[current] || {};
   const lines = distinctLines(current);
@@ -407,6 +413,12 @@ async function confirmLine(p, line) {
 // Corrected: the line stays shown, with its Warnings now
 async function saveLine(p, line, values) {
   await change({type: "confirmed_line", page: p, band: line.band, values});
+}
+
+// Deleted: confirmed as not of the index, which drops it from the index and clears its Warnings
+async function deleteLine(p, line) {
+  const values = {kind: "not_index", letter: "", numbers: [], text: line.line_read || line.page_read || ""};
+  if (await change({type: "confirmed_line", page: p, band: line.band, values})) nextOpen(1);
 }
 
 async function undoLine(p, line) {
@@ -501,6 +513,41 @@ function nextOpen(d) {
   go(pick.p, bandKey(pick.line.band));
 }
 
+// -- the splits between the scan and the right column, and between the line panel and the index, dragged to size and
+// remembered in this browser
+const SPLITS = {
+  "#split-v": {target: "main", prop: "--left", axis: "x", min: 200, rest: 320},
+  "#split-h": {target: "#right", prop: "--panel-h", axis: "y", min: 80, rest: 120},
+};
+
+function remembered(prop) {
+  try { return localStorage.getItem("topic-review" + prop); } catch { return null; }
+}
+
+function setSplit({target, prop}, px) {
+  document.querySelector(target).style.setProperty(prop, px + "px");
+  try { localStorage.setItem("topic-review" + prop, String(px)); } catch { /* not remembered */ }
+}
+
+function wireSplits() {
+  for (const [sel, split] of Object.entries(SPLITS)) {
+    const bar = $(sel), box = () => document.querySelector(split.target).getBoundingClientRect();
+    const px = Number(remembered(split.prop));
+    if (px) document.querySelector(split.target).style.setProperty(split.prop, px + "px");
+    bar.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      bar.setPointerCapture(e.pointerId);
+      const move = ev => {
+        const b = box();
+        const [at, size] = split.axis === "x" ? [ev.clientX - b.left, b.width] : [ev.clientY - b.top, b.height];
+        setSplit(split, Math.round(Math.max(split.min, Math.min(size - split.rest, at))));
+      };
+      bar.addEventListener("pointermove", move);
+      bar.addEventListener("pointerup", () => bar.removeEventListener("pointermove", move), {once: true});
+    });
+  }
+}
+
 function setZoom(z) {
   zoom = Math.max(0, Math.min(ZOOMS.length - 1, z));
   $("#sheet").style.width = ZOOMS[zoom] * 100 + "%";
@@ -515,6 +562,7 @@ function wire() {
   $("#list").addEventListener("click", () => toggleList(!showingList));
   $("#smaller").addEventListener("click", () => setZoom(zoom - 1));
   $("#larger").addEventListener("click", () => setZoom(zoom + 1));
+  wireSplits();
   document.addEventListener("keydown", e => {
     // Not while editing: the editor's fields take Enter and Escape themselves
     if (e.target.closest("textarea, input, select") || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -529,6 +577,7 @@ function wire() {
     else if (!WRITABLE || !line) return;
     else if (e.key === "c" && !line.confirmed && line.kind in LINE_KINDS) confirmLine(current, line);
     else if (e.key === "u" && line.confirmed) undoLine(current, line);
+    else if (e.key === "d" && line.kind !== "not_index") deleteLine(current, line);
     else if (e.key === "e") {
       e.preventDefault();
       $("#panel .editor label:not([hidden]) input")?.focus();

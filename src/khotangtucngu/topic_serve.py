@@ -9,8 +9,8 @@ uses the Python standard library only, so a store copied to any machine can be r
 
 serves the store on http://127.0.0.1:<port>/ and opens it in a browser: each page's scan (pages/) with its Index Lines
 tinted agreed, warned or confirmed, beside the index as assembled on that page, every Warning grouped by kind, and a
-line panel with the line's crop and its three reads. The developer confirms or corrects the lines that need it; nobody
-checks every line. Either way it becomes a Confirmed Line, appended whole to review.jsonl here with its time (see
+line panel with the line's crop and its three reads. The developer confirms, corrects or deletes (confirms as not of the
+index) the lines that need it; nobody checks every line. Either way it becomes a Confirmed Line, appended whole to review.jsonl here with its time (see
 topics.py for its lines). review.jsonl is never rewritten, and nothing else in the store is written. If the store can't
 be written, the page is read-only and says so.
 

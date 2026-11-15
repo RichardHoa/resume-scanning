@@ -5,8 +5,9 @@ Export of the Topic Index, run locally with no GPU by export.py for a key of set
 
 The index is rebuilt from the section's store, its answers.json with the Confirmed Lines of its review.jsonl laid over
 and checked against its entry_names.json (topics.py), as the run left them. The export stops, writing nothing, and lists
-why while any page of the section has no Index Lines, a Part had no answers.json when the index was run, or a line has
-an open disagreement or single-read Warning. Otherwise the store's export/ is emptied and written afresh:
+why while any page of the section has no Index Lines or a Part had no answers.json when the index was run. A line
+with an open disagreement or single-read Warning does not stop it: the model's read is taken as correct (Vision's where
+the model has none) and the line is printed as a warning. Otherwise the store's export/ is emptied and written afresh:
 
   topics.json        {"topics": [{"id": "I", "title", "subtopics": [{"id": "I.1", "number", "title", "entries": ["A-8",
                      ...], "unresolved": ["C-1858", ...]}]}]}: entries as the anchors letters/*.json uses, in printed
@@ -40,18 +41,16 @@ def back_matter_section(text, heading):
     return re.sub(r"\n{3,}", "\n\n", section).strip() + "\n"
 
 
-def blockers(answers, entry_names, result):
-    """Why the index can't be exported yet: each page of the section with no Index Lines, each Part with no
-    answers.json at run time, and each line with an open disagreement or single-read Warning."""
+def blockers(answers, entry_names):
+    """Why the index can't be exported yet: each page of the section with no Index Lines and each Part with no
+    answers.json at run time."""
     first, last = answers["section"]["pages"]
     pages = answers["pages"]
     out = [f"PDF page {page} has no Index Lines: "
            + (pages[str(page)]["why"] if str(page) in pages else "it was never run")
            for page in range(first, last + 1) if not (pages.get(str(page)) or {}).get("lines")]
-    out += [f"{part} had no answers.json when the index was run: run the index again once it has one"
-            for part in entry_names["missing_parts"]]
-    out += [w["reason"] for w in result["warnings"] if w["kind"] in READ_KINDS]
-    return out
+    return out + [f"{part} had no answers.json when the index was run: run the index again once it has one"
+                  for part in entry_names["missing_parts"]]
 
 
 def main(key):
@@ -66,10 +65,15 @@ def main(key):
     entry_names = read_json(os.path.join(store, "entry_names.json"))
     log = read_log(store)
     result = rebuild(answers, log, entry_names)
-    blocking = blockers(answers, entry_names, result)
+    blocking = blockers(answers, entry_names)
     if blocking:
-        sys.exit(f"[Kho tàng tục ngữ] {key}: not exported, {len(blocking)} thing(s) to settle first (review the open "
-                 f"lines in the review server):\n" + "\n".join(f"  {why}" for why in blocking))
+        sys.exit(f"[Kho tàng tục ngữ] {key}: not exported, {len(blocking)} thing(s) to settle first:\n"
+                 + "\n".join(f"  {why}" for why in blocking))
+    unsettled = [w["reason"] for w in result["warnings"] if w["kind"] in READ_KINDS]
+    if unsettled:
+        print(f"[Kho tàng tục ngữ] WARNING {key}: {len(unsettled)} unsettled line(s) exported as the model read "
+              f"them (Vision's read where the model has none); confirm them in the review server to settle:\n"
+              + "\n".join(f"  {why}" for why in unsettled))
 
     out = os.path.join(store, "export")
     shutil.rmtree(out, ignore_errors=True)
